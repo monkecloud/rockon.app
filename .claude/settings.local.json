@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx vite *)",
+      "Bash(node server/index.js)",
+      "Bash(curl -s -X POST http://localhost:3001/api/signup -H \"Content-Type: application/json\" -d '{\"username\":\"testuser\",\"password\":\"testpass123\"}')",
+      "Bash(curl -s -X POST http://localhost:3001/api/ascents -H \"Content-Type: application/json\" -d '{\"username\":\"testuser\",\"climbId\":\"1-1\",\"starRating\":4,\"grade\":\"V2\",\"comment\":\"Nice warm-up\",\"logAttempts\":true,\"attempts\":5,\"attemptsThisSession\":3}')",
+      "Bash(kill %1)",
+      "Bash(netstat -ano)",
+      "Bash(powershell -Command \"Get-Process -Id 25924 | Select-Object Id,ProcessName,Path,StartTime\")",
+      "Bash(curl -s -X POST http://localhost:3001/api/signup -H \"Content-Type: application/json\" -d '{\"username\":\"testuser2\",\"password\":\"testpass123\"}')",
+      "Bash(curl -s -X POST http://localhost:3001/api/ascents -H \"Content-Type: application/json\" -d '{\"username\":\"testuser2\",\"climbId\":\"1-1\",\"starRating\":4,\"grade\":\"V2\",\"comment\":\"Nice warm-up\",\"logAttempts\":true,\"attempts\":5,\"attemptsThisSession\":3}')",
+      "Bash(rm -f /tmp/gen_climbs.mjs)",
+      "Bash(node -e \"const icons = require\\('lucide-react'\\); console.log\\(Object.keys\\(icons\\).filter\\(k => /star/i.test\\(k\\)\\)\\);\")",
+      "Bash(node --check server/index.js)",
+      "Bash(PORT=3999 node server/index.js)",
+      "Bash(curl -s http://localhost:3999/api/climbs)",
+      "Bash(node -e ' *)",
+      "Bash(curl -s http://localhost:3001/api/climbs)",
+      "Bash(powershell -Command \"Get-Process -Id 33060 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,Path\")",
+      "Bash(powershell -Command \"Stop-Process -Id 33060 -Force\")",
+      "Bash(nohup node server/index.js)",
+      "Bash(powershell -Command \"Get-Process -Id 36704 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,Path\")",
+      "Bash(powershell -Command \"Stop-Process -Id 36704 -Force\")",
+      "Bash(curl -s -X DELETE \"http://localhost:3001/api/users/Derrick/ascents/e615dd92-3459-457e-91ea-a217b9149d16/comment\")",
+      "Bash(powershell -Command \"Get-Process -Id 34808 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName\")",
+      "Bash(powershell -Command \"Stop-Process -Id 34808 -Force\")",
+      "Bash(curl -s -X POST http://localhost:3001/api/signup -H \"Content-Type: application/json\" -d '{\"username\":\"testuser3\",\"password\":\"testpass123\",\"name\":\"Test Person\"}')",
+      "Bash(curl -s -X POST http://localhost:3001/api/login -H \"Content-Type: application/json\" -d '{\"username\":\"Derrick\",\"password\":\"wrongpass\"}')",
+      "Bash(curl -s -X POST http://localhost:3001/api/login -H \"Content-Type: application/json\" -d '{\"username\":\"testuser3\",\"password\":\"testpass123\"}')",
+      "Bash(powershell -Command \"Get-Process -Id 39316 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName\")",
+      "Bash(powershell -Command \"Stop-Process -Id 39316 -Force\")",
+      "Bash(curl -s -X POST http://localhost:3001/api/signup -H \"Content-Type: application/json\" -d '{\"username\":\"settingstest\",\"password\":\"pass1234\",\"name\":\"Test User\"}')",
+      "Bash(curl -s -X POST http://localhost:3001/api/users/settingstest/avatar -H \"Content-Type: application/json\" -d '{\"avatarUrl\":\"data:image/png;base64,iVBORw0KGgo=\"}')",
+      "Bash(curl -s -X POST http://localhost:3001/api/users/settingstest/username -H \"Content-Type: application/json\" -d '{\"newUsername\":\"settingstest2\"}')",
+      "Bash(curl -s -X POST http://localhost:3001/api/users/settingstest2/username -H \"Content-Type: application/json\" -d '{\"newUsername\":\"Derrick\"}')",
+      "Bash(curl -s -X POST http://localhost:3001/api/users/settingstest2/password -H \"Content-Type: application/json\" -d '{\"currentPassword\":\"wrong\",\"newPassword\":\"newpass1234\"}')"
+    ],
+    "additionalDirectories": [
+      "\\tmp"
+    ]
+  }
+}
