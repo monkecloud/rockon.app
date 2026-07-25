@@ -148,6 +148,41 @@ function currentClimbsOnly(climbs) {
   });
 }
 
+// The inverse of currentClimbsOnly: every climb from before a wall's most
+// recent reset, grouped back into the "sets" they were put up in (one
+// entry per setId) for the app's Archive screen.
+function archivedSets(climbs) {
+  const latestResetDateByWall = {};
+  for (const climb of climbs) {
+    if (climb.setType !== "reset") continue;
+    const current = latestResetDateByWall[climb.wallId];
+    if (!current || climb.setDate > current) {
+      latestResetDateByWall[climb.wallId] = climb.setDate;
+    }
+  }
+
+  const archivedClimbs = climbs.filter((climb) => {
+    const latestReset = latestResetDateByWall[climb.wallId];
+    return latestReset && climb.setDate < latestReset;
+  });
+
+  const setsById = {};
+  for (const climb of archivedClimbs) {
+    if (!setsById[climb.setId]) {
+      setsById[climb.setId] = {
+        setId: climb.setId,
+        wallId: climb.wallId,
+        setDate: climb.setDate,
+        setType: climb.setType,
+        climbs: [],
+      };
+    }
+    setsById[climb.setId].climbs.push(climb);
+  }
+
+  return Object.values(setsById).sort((a, b) => (a.setDate < b.setDate ? 1 : -1));
+}
+
 // Shape of the `user` object sent to the client after signup/login — never
 // includes passwordHash, and reduces followers/following to counts since
 // that's all the Profile tab currently needs to render.
@@ -314,39 +349,44 @@ app.post("/api/users/:username/password", async (req, res) => {
 // the climb itself — they're derived from every user's `ascents` list, so
 // they're computed fresh on each request rather than kept in sync in
 // climbs.json. A comment left while logging an ascent is surfaced on the
-// climb's Comments page alongside the seeded sample comments.
+// climb's Comments page alongside the seeded sample comments. Climbs have
+// no id of their own, so ascents are matched to climbs by wallId + name.
+const climbKey = (wallId, name) => `${wallId}::${name}`;
+
 async function withAscentStats(climbs) {
   const users = await readUsers();
-  const statsByClimbId = {};
-  const userCommentsByClimbId = {};
+  const statsByKey = {};
+  const userCommentsByKey = {};
 
   for (const user of users) {
     for (const ascent of user.ascents || []) {
-      const stats = statsByClimbId[ascent.climbId] || { count: 0, starSum: 0, starCount: 0 };
+      const key = climbKey(ascent.wallId, ascent.climbName);
+      const stats = statsByKey[key] || { count: 0, starSum: 0, starCount: 0 };
       stats.count += 1;
       if (ascent.starRating) {
         stats.starSum += ascent.starRating;
         stats.starCount += 1;
       }
-      statsByClimbId[ascent.climbId] = stats;
+      statsByKey[key] = stats;
 
       const comment = ascent.comment && ascent.comment.trim();
       if (comment) {
-        const list = userCommentsByClimbId[ascent.climbId] || [];
+        const list = userCommentsByKey[key] || [];
         list.push({
           id: `ascent-${ascent.id}`,
           ascentId: ascent.id,
           author: user.username,
           text: comment,
         });
-        userCommentsByClimbId[ascent.climbId] = list;
+        userCommentsByKey[key] = list;
       }
     }
   }
 
   return climbs.map((climb) => {
-    const stats = statsByClimbId[climb.id];
-    const userComments = userCommentsByClimbId[climb.id] || [];
+    const key = climbKey(climb.wallId, climb.name);
+    const stats = statsByKey[key];
+    const userComments = userCommentsByKey[key] || [];
     return {
       ...climb,
       ascentCount: stats ? stats.count : 0,
@@ -358,25 +398,34 @@ async function withAscentStats(climbs) {
 
 app.get("/api/climbs", async (req, res) => {
   const climbs = await readClimbs();
-  res.json({ climbs: await withAscentStats(climbs) });
+  res.json({ climbs: await withAscentStats(currentClimbsOnly(climbs)) });
 });
 
-app.get("/api/climbs/:id", async (req, res) => {
+app.get("/api/archive", async (req, res) => {
   const climbs = await readClimbs();
-  const climb = climbs.find((c) => c.id === req.params.id);
+  const sets = archivedSets(climbs);
 
-  if (!climb) {
-    return res.status(404).json({ error: "Climb not found." });
-  }
+  // Run every archived climb through the same stats/comments merge as the
+  // live list, then slot the results back into their sets by wallId+name.
+  const statsByKey = {};
+  const merged = await withAscentStats(sets.flatMap((set) => set.climbs));
+  merged.forEach((climb) => {
+    statsByKey[climbKey(climb.wallId, climb.name)] = climb;
+  });
 
-  const [climbWithStats] = await withAscentStats([climb]);
-  res.json({ climb: climbWithStats });
+  const setsWithStats = sets.map((set) => ({
+    ...set,
+    climbs: set.climbs.map((climb) => statsByKey[climbKey(climb.wallId, climb.name)] || climb),
+  }));
+
+  res.json({ sets: setsWithStats });
 });
 
 app.post("/api/ascents", async (req, res) => {
   const {
     username,
-    climbId,
+    wallId,
+    climbName,
     starRating,
     grade,
     comment,
@@ -385,8 +434,8 @@ app.post("/api/ascents", async (req, res) => {
     attemptsThisSession,
   } = req.body || {};
 
-  if (!username || !climbId) {
-    return res.status(400).json({ error: "Username and climb are required." });
+  if (!username || !wallId || !climbName) {
+    return res.status(400).json({ error: "Username, wall, and climb are required." });
   }
 
   const users = await readUsers();
@@ -398,7 +447,8 @@ app.post("/api/ascents", async (req, res) => {
   if (!user.ascents) user.ascents = [];
   user.ascents.push({
     id: crypto.randomUUID(),
-    climbId,
+    wallId,
+    climbName,
     starRating: starRating ?? null,
     grade: grade || "",
     comment: comment || "",

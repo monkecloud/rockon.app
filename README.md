@@ -59,19 +59,24 @@ Wi-Fi.
 
 ## Notes
 
-- **Climbs are stored server-side** in `server/climbs.json` — each has an
-  `id`, `wallId`, `name`, `difficulty`, `setter`, and a `comments` array of
+- **Climbs are stored server-side** in `server/climbs.json` — each has a
+  `wallId`, `name`, `difficulty`, `setter`, and a `comments` array of
   seeded sample comments (each with `id`, `author`, `text`). `GET
   /api/climbs` merges those in with any comments users have left while
   logging an ascent (see below), so the Comments page shows both.
-  Each climb also tracks which "set" put it up: `setId` (shared by every
-  climb set on the same wall at the same time), `setDate`, and `setType`
-  (`"reset"` — the whole wall gets stripped and reset — or `"backfill"` —
-  new climbs added without taking anything down), plus `archived` (true
-  once a later reset on that wall supersedes it). There's no moderator/
-  setter role or endpoint yet to actually create a set or archive one —
-  this is just the storage shape in place for that later. The app doesn't
-  filter out or visually distinguish archived climbs yet either.
+  Climbs have **no id of their own** — `wallId` + `name` (unique within a
+  wall) is the key everything else (ascents, front-end lookups) references
+  a climb by. Each climb also tracks which "set" put it up: `setId`
+  (shared by every climb set on the same wall at the same time), `setDate`,
+  and `setType` (`"reset"` — the whole wall gets stripped and reset — or
+  `"backfill"` — new climbs added without taking anything down), plus
+  `archived` (maintained for a future moderator tool, not currently trusted
+  by the server). `GET /api/climbs` only returns each wall's *current*
+  climbs — its most recent reset plus any backfills on top of it — via
+  `currentClimbsOnly()` in `server/index.js`; older resets are left out.
+  There's no moderator/setter role or endpoint yet to actually create a set
+  — this is just the storage shape and read-side query in place for that
+  later, and there's no "archived sets" view in the app yet either.
 - **Users are stored server-side** in `server/users.json`. Passwords are
   hashed with bcrypt before they're written — the server owner never sees
   plain-text passwords, only a one-way hash. This is still a toy auth
@@ -86,10 +91,12 @@ Wi-Fi.
   returned by signup/login (see `toClientUser` in `server/index.js`).
   Ascents are appended via
   `POST /api/ascents`, called from the "Log ascent" bottom sheet on the
-  Climb page. Each ascent has a `climbId`, `starRating`, `grade`, a
-  `comment`, a `logAttempts` toggle, and — only when that toggle is on —
-  `attempts` (total) and `attemptsThisSession`. A non-empty `comment` shows
-  up on that climb's Comments page, attributed to the logging user.
+  Climb page. Each ascent has a `wallId` + `climbName` (climbs have no id
+  of their own — see above), `starRating` (min half a star), `grade`, a
+  `comment`, and `attempts`/`attemptsThisSession` (min 1 attempt — both
+  required, validated client-side before the sheet can submit). A
+  non-empty `comment` shows up on that climb's Comments page, attributed to
+  the logging user.
 - The logged-in *session* is still kept client-side in `localStorage`, so
   refreshing the page keeps you logged in on that browser.
 - **Settings** (from the Profile tab's "Settings" button) lets a logged-in
