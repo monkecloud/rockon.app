@@ -226,5 +226,29 @@
         "id": "1c36f78a-969d-4b72-be6d-b22425b07bff"
       }
     ]
+  },
+  {
+    "username": "Cubesnail",
+    "passwordHash": "$2b$10$bqIcO2OimvfcVTWl461h2OWZiMCFOo8OicKlf7RCdlPYqDq6m2TV2",
+    "name": "derrick",
+    "followers": [],
+    "following": [],
+    "ascents": []
+  },
+  {
+    "username": "tester",
+    "passwordHash": "$2b$10$cAAMnrZaAYaxlgU1kXup7ufc/OH4xPENLfWUVOS7e01KepbegEg2S",
+    "name": "test",
+    "followers": [],
+    "following": [],
+    "ascents": []
+  },
+  {
+    "username": "test1",
+    "passwordHash": "$2b$10$6ojdjAHHZQcJ7r.wxhm2BOSMxWyDO6StUMF7s89tGofaXRml0UJni",
+    "name": "test1",
+    "followers": [],
+    "following": [],
+    "ascents": []
   }
 ]

@@ -369,7 +369,7 @@ function PlaceholderScreen({ title }) {
   );
 }
 
-function ProfileScreen({ currentUser, onSignup, onLogin, onLogout, onOpenSettings }) {
+function ProfileScreen({ currentUser, onSignup, onLogin, onOpenSettings, onOpenLogbook }) {
   const [mode, setMode] = useState("login"); // "login" | "signup"
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -445,9 +445,8 @@ function ProfileScreen({ currentUser, onSignup, onLogin, onLogout, onOpenSetting
             </button>
           </div>
         </div>
-        <button style={styles.logoutButton} onClick={onLogout}>
-          <LogOut size={16} />
-          Log out
+        <button style={styles.logbookButton} onClick={onOpenLogbook}>
+          Logbook
         </button>
       </div>
     );
@@ -527,10 +526,11 @@ function ProfileScreen({ currentUser, onSignup, onLogin, onLogout, onOpenSetting
 const SETTINGS_OPTIONS = [
   { id: "avatar", label: "Change profile picture" },
   { id: "username", label: "Change username" },
+  { id: "name", label: "Change name" },
   { id: "password", label: "Change password" },
 ];
 
-function SettingsScreen({ onSelectOption }) {
+function SettingsScreen({ onSelectOption, onLogout }) {
   return (
     <div style={styles.screen}>
       <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
@@ -544,6 +544,12 @@ function SettingsScreen({ onSelectOption }) {
             <ChevronRight size={18} color="#6A6A66" />
           </button>
         ))}
+      </div>
+      <div style={{ marginLeft: -20, marginRight: -20 }}>
+        <button style={styles.logoutButton} onClick={onLogout}>
+          <LogOut size={16} />
+          Log out
+        </button>
       </div>
     </div>
   );
@@ -644,6 +650,46 @@ function ChangeUsernameForm({ currentUser, onSave }) {
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
+          />
+        </label>
+        {error && <p style={styles.formError}>{error}</p>}
+        <button type="submit" style={styles.button} disabled={submitting}>
+          {submitting ? "Saving…" : "Save"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function ChangeNameForm({ currentUser, onSave }) {
+  const [name, setName] = useState(currentUser.name || "");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    setSubmitting(true);
+    setError("");
+    const result = await onSave(name.trim());
+    setSubmitting(false);
+
+    if (!result.success) {
+      setError(result.error);
+    }
+  };
+
+  return (
+    <div style={styles.screen}>
+      <form style={styles.form} onSubmit={handleSubmit}>
+        <label style={styles.label}>
+          Name
+          <input
+            style={styles.input}
+            type="text"
+            value={name}
+            placeholder="Jane Doe"
+            onChange={(e) => setName(e.target.value)}
           />
         </label>
         {error && <p style={styles.formError}>{error}</p>}
@@ -775,7 +821,7 @@ function ClimbActionBar({ attempts, onDecrement, onIncrement, onLogAscent }) {
   );
 }
 
-function StarRatingInput({ value, onChange }) {
+function StarRatingInput({ value, onChange, invalid }) {
   // A precise left-half/right-half tap on a 26px star is too fiddly with a
   // finger, so instead the whole row is a drag surface: press or drag
   // anywhere across it and the rating (in 0.5 steps) tracks the pointer's
@@ -809,7 +855,7 @@ function StarRatingInput({ value, onChange }) {
   return (
     <div
       ref={rowRef}
-      style={styles.starRow}
+      style={{ ...styles.starRow, ...(invalid ? styles.starRowInvalid : {}) }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={stopDragging}
@@ -834,61 +880,46 @@ function StarRatingInput({ value, onChange }) {
   );
 }
 
-function Toggle({ checked, onChange, label }) {
-  return (
-    <button
-      type="button"
-      style={styles.toggleRow}
-      onClick={() => onChange(!checked)}
-    >
-      <span style={styles.toggleLabel}>{label}</span>
-      <span
-        style={{
-          ...styles.toggleTrack,
-          background: checked ? "#1D9E75" : "#33332F",
-        }}
-      >
-        <span
-          style={{
-            ...styles.toggleThumb,
-            transform: checked ? "translateX(18px)" : "translateX(0)",
-          }}
-        />
-      </span>
-    </button>
-  );
-}
-
 // Full-width bottom sheet for logging an ascent. Slides up from behind the
-// climb action bar; the "Log attempts" toggle controls whether attempts /
-// attemptsThisSession are included in what gets saved (see handleSubmit in
-// App, which passes both through to POST /api/ascents).
+// climb action bar. Attempts (total and this session) are always included
+// in what gets saved, via POST /api/ascents (see App's handleSubmitAscent).
 function LogAscentSheet({ open, attemptsThisSession, onClose, onSubmit }) {
   const [starRating, setStarRating] = useState(0);
-  const [logAttempts, setLogAttempts] = useState(true);
   const [attempts, setAttempts] = useState(attemptsThisSession);
   const [grade, setGrade] = useState("");
   const [comment, setComment] = useState("");
+  const [showValidation, setShowValidation] = useState(false);
 
   useEffect(() => {
     if (open) {
       setStarRating(0);
-      setLogAttempts(true);
       setAttempts(attemptsThisSession);
       setGrade("");
       setComment("");
+      setShowValidation(false);
     }
   }, [open, attemptsThisSession]);
 
+  const attemptsValue = Number(attempts) || 0;
+  const ratingInvalid = showValidation && starRating < 0.5;
+  const attemptsInvalid = showValidation && attemptsValue < 1;
+
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    if (starRating < 0.5 || attemptsValue < 1) {
+      setShowValidation(true);
+      return;
+    }
+
+    setShowValidation(false);
     onSubmit({
       starRating,
       grade,
       comment,
-      logAttempts,
-      attempts: logAttempts ? Number(attempts) || 0 : null,
-      attemptsThisSession: logAttempts ? attemptsThisSession : null,
+      logAttempts: true,
+      attempts: attemptsValue,
+      attemptsThisSession,
     });
   };
 
@@ -909,10 +940,10 @@ function LogAscentSheet({ open, attemptsThisSession, onClose, onSubmit }) {
         }}
       >
         <div style={styles.sheetHandle} />
-        <form style={styles.sheetForm} onSubmit={handleSubmit}>
+        <form style={styles.sheetForm} onSubmit={handleSubmit} noValidate>
           <label style={styles.label}>
             Rating
-            <StarRatingInput value={starRating} onChange={setStarRating} />
+            <StarRatingInput value={starRating} onChange={setStarRating} invalid={ratingInvalid} />
           </label>
 
           <label style={styles.label}>
@@ -939,9 +970,9 @@ function LogAscentSheet({ open, attemptsThisSession, onClose, onSubmit }) {
           <label style={styles.label}>
             Attempts
             <input
-              style={styles.input}
+              style={{ ...styles.input, ...(attemptsInvalid ? styles.inputInvalid : {}) }}
               type="number"
-              min={0}
+              min={1}
               value={attempts}
               onChange={(e) => setAttempts(e.target.value)}
             />
@@ -949,8 +980,6 @@ function LogAscentSheet({ open, attemptsThisSession, onClose, onSubmit }) {
           <p style={styles.sheetSessionAttempts}>
             This session: {attemptsThisSession}
           </p>
-
-          <Toggle checked={logAttempts} onChange={setLogAttempts} label="Log attempts" />
 
           <button type="submit" style={styles.button}>
             Save ascent
@@ -1042,6 +1071,9 @@ export default function App() {
     setShowSettings(true);
   };
 
+  // TODO: wire this up once there's an actual logbook screen to open.
+  const handleOpenLogbook = () => {};
+
   // Shared by the three Settings forms: POST to a /api/users/:username/...
   // route, and on success replace currentUser with the fresh copy the
   // server sends back (it stays in sync with localStorage via the effect
@@ -1070,6 +1102,7 @@ export default function App() {
 
   const handleUpdateAvatar = (avatarUrl) => callSettingsApi("/avatar", { avatarUrl });
   const handleUpdateUsername = (newUsername) => callSettingsApi("/username", { newUsername });
+  const handleUpdateName = (name) => callSettingsApi("/name", { name });
   const handleUpdatePassword = ({ currentPassword, newPassword }) =>
     callSettingsApi("/password", { currentPassword, newPassword });
 
@@ -1176,18 +1209,21 @@ export default function App() {
           if (settingsOption === "username") {
             return <ChangeUsernameForm currentUser={currentUser} onSave={handleUpdateUsername} />;
           }
+          if (settingsOption === "name") {
+            return <ChangeNameForm currentUser={currentUser} onSave={handleUpdateName} />;
+          }
           if (settingsOption === "password") {
             return <ChangePasswordForm onSave={handleUpdatePassword} />;
           }
-          return <SettingsScreen onSelectOption={setSettingsOption} />;
+          return <SettingsScreen onSelectOption={setSettingsOption} onLogout={handleLogout} />;
         }
         return (
           <ProfileScreen
             currentUser={currentUser}
             onSignup={handleSignup}
             onLogin={handleLogin}
-            onLogout={handleLogout}
             onOpenSettings={handleOpenSettings}
+            onOpenLogbook={handleOpenLogbook}
           />
         );
       }
@@ -1680,6 +1716,21 @@ const styles = {
     fontSize: 12,
     color: "#8F8F8A",
   },
+  logbookButton: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "12px 16px",
+    borderRadius: 0,
+    border: "none",
+    borderTop: "1px solid #2E2E2C",
+    background: "transparent",
+    color: "#E4E3DF",
+    fontSize: 15,
+    fontWeight: 500,
+    cursor: "pointer",
+  },
   logoutButton: {
     width: "100%",
     display: "flex",
@@ -1689,7 +1740,6 @@ const styles = {
     padding: "12px 16px",
     borderRadius: 0,
     border: "none",
-    borderTop: "1px solid #2E2E2C",
     borderBottom: "1px solid #2E2E2C",
     background: "transparent",
     color: "#E4E3DF",
@@ -1741,6 +1791,9 @@ const styles = {
     fontSize: 15,
     color: "#F2F1EE",
     outline: "none",
+  },
+  inputInvalid: {
+    border: "1px solid #E4685C",
   },
   formError: {
     fontSize: 13,
@@ -1864,45 +1917,16 @@ const styles = {
   starRow: {
     display: "flex",
     gap: 6,
-    padding: "8px 0",
+    padding: "8px 10px",
+    border: "1px solid transparent",
+    borderRadius: 10,
     touchAction: "none",
     userSelect: "none",
     cursor: "pointer",
     width: "fit-content",
   },
-  toggleRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: "100%",
-    background: "none",
-    border: "none",
-    padding: "4px 0",
-    cursor: "pointer",
-    font: "inherit",
-  },
-  toggleLabel: {
-    fontSize: 15,
-    color: "#F2F1EE",
-    fontWeight: 500,
-  },
-  toggleTrack: {
-    position: "relative",
-    width: 40,
-    height: 22,
-    borderRadius: 999,
-    transition: "background 0.2s ease",
-    flexShrink: 0,
-  },
-  toggleThumb: {
-    position: "absolute",
-    top: 2,
-    left: 2,
-    width: 18,
-    height: 18,
-    borderRadius: "50%",
-    background: "#F2F1EE",
-    transition: "transform 0.2s ease",
+  starRowInvalid: {
+    border: "1px solid #E4685C",
   },
   textarea: {
     background: "#1C1C1C",

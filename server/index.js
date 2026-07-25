@@ -27,7 +27,10 @@ import bcrypt from "bcryptjs";
 // the "Log ascent" bottom sheet in the app calls. Each entry looks like:
 //   {
 //     id: string,                 // uuid, used to target this ascent's comment for deletion
-//     climbId: string,
+//     wallId: number,             // which wall the climb is on
+//     climbName: string,          // climbs have no id of their own — see
+//                                 // readClimbs() below — so wallId + name
+//                                 // is the key that identifies a climb
 //     starRating: number,        // e.g. 1-5
 //     grade: string,             // e.g. "V4"
 //     comment: string,
@@ -81,11 +84,35 @@ async function writeUsers(users) {
   await fs.writeFile(DATA_FILE, JSON.stringify(users, null, 2));
 }
 
-// climbs.json itself is read-only from the API's point of view — it's
-// seeded sample data (name, difficulty grade, a few sample comments) read
-// on request. User-submitted comments don't live here: they come from the
-// `comment` field on logged ascents in users.json and get merged in by
-// withAscentStats() below.
+// climbs.json itself is read-only from the API's point of view for now —
+// it's seeded/hand-edited data, read on request. User-submitted comments
+// don't live here: they come from the `comment` field on logged ascents in
+// users.json and get merged in by withAscentStats() below.
+//
+// Each wall gets a new "set" of climbs periodically — either a **reset**
+// (every old climb on that wall comes down, replaced by the new set) or a
+// **backfill** (new climbs go up alongside whatever's already there,
+// nothing comes down). Every climb record tracks which set put it up:
+//   {
+//     wallId: number,
+//     name: string,           // unique within a wall — doubles as that
+//                             // climb's key, see the note below
+//     difficulty: string,    // "VB", "V0"-"V9"
+//     setter: string,
+//     comments: [...],       // seeded sample comments; see withAscentStats
+//     setId: string,         // uuid shared by every climb put up in the same event
+//     setDate: string,       // "YYYY-MM-DD", the day this set went up
+//     setType: "reset" | "backfill",
+//     archived: boolean,     // maintained for a future moderator tool to
+//                            // hand-flip; GET /api/climbs below doesn't
+//                            // trust it, it derives currency itself (see
+//                            // currentClimbsOnly)
+//   }
+// Climbs have no id of their own: wallId + name is the key everything else
+// (ascents, comments) references them by, since name is unique within a
+// wall. There's no endpoint yet to create a new set or archive an old one —
+// that waits on moderator/setter accounts (a role this API doesn't have
+// yet).
 async function readClimbs() {
   try {
     const raw = await fs.readFile(CLIMBS_FILE, "utf-8");
@@ -94,6 +121,31 @@ async function readClimbs() {
     if (err.code === "ENOENT") return [];
     throw err;
   }
+}
+
+// A wall's "current" climbs are whatever went up in its most recent reset,
+// plus any backfills on top of that reset (backfills never take anything
+// down, so they keep layering onto the same current set until the next
+// reset). Everything from before that reset is left out here — that's the
+// "archived sets" the app doesn't have a view for yet, but this is the
+// query that view would eventually use.
+function currentClimbsOnly(climbs) {
+  const latestResetDateByWall = {};
+  for (const climb of climbs) {
+    if (climb.setType !== "reset") continue;
+    const current = latestResetDateByWall[climb.wallId];
+    if (!current || climb.setDate > current) {
+      latestResetDateByWall[climb.wallId] = climb.setDate;
+    }
+  }
+
+  return climbs.filter((climb) => {
+    const latestReset = latestResetDateByWall[climb.wallId];
+    // No reset on record for this wall (shouldn't happen once every wall
+    // has been seeded at least once) — show everything rather than hide it.
+    if (!latestReset) return true;
+    return climb.setDate >= latestReset;
+  });
 }
 
 // Shape of the `user` object sent to the client after signup/login — never
@@ -117,7 +169,8 @@ app.post("/api/signup", async (req, res) => {
   }
 
   const users = await readUsers();
-  const exists = users.some((u) => u.username === username);
+  // Case-insensitive so "Cubesnail" and "cubesnail" can't both exist.
+  const exists = users.some((u) => u.username.toLowerCase() === username.toLowerCase());
   if (exists) {
     return res.status(409).json({ error: "That username is already taken." });
   }
@@ -160,9 +213,24 @@ app.post("/api/login", async (req, res) => {
   res.json({ user: toClientUser(user) });
 });
 
-// The three Settings-page actions below all authorize the same toy way as
-// the rest of this API: the :username in the URL is trusted as-is, with no
+// The Settings-page actions below all authorize the same toy way as the
+// rest of this API: the :username in the URL is trusted as-is, with no
 // session token to verify it actually belongs to the caller.
+
+app.post("/api/users/:username/name", async (req, res) => {
+  const { username } = req.params;
+  const { name } = req.body || {};
+
+  const users = await readUsers();
+  const user = users.find((u) => u.username === username);
+  if (!user) {
+    return res.status(404).json({ error: "User not found." });
+  }
+
+  user.name = (name || "").trim();
+  await writeUsers(users);
+  res.json({ user: toClientUser(user) });
+});
 
 app.post("/api/users/:username/avatar", async (req, res) => {
   const { username } = req.params;
@@ -198,7 +266,15 @@ app.post("/api/users/:username/username", async (req, res) => {
     return res.status(404).json({ error: "User not found." });
   }
 
-  if (trimmed !== username && users.some((u) => u.username === trimmed)) {
+  // Case-insensitive, same as signup, so "Cubesnail" and "cubesnail" can't
+  // both exist — but a pure case change on your own name (e.g. "cube" ->
+  // "Cube") is still allowed, hence the exact-match self-exclusion below.
+  const trimmedLower = trimmed.toLowerCase();
+  const isOwnUsername = trimmed === username;
+  const isTakenByOther = users.some(
+    (u) => u.username !== username && u.username.toLowerCase() === trimmedLower
+  );
+  if (!isOwnUsername && isTakenByOther) {
     return res.status(409).json({ error: "That username is already taken." });
   }
 

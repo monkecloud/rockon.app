@@ -1,485 +1,761 @@
 [
   {
-    "id": "1-1",
+    "wallId": 1,
     "name": "Morning Gaston",
     "difficulty": "V5",
     "setter": "Casey M.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "1-2",
+    "wallId": 1,
     "name": "Golden Overhang",
     "difficulty": "V5",
     "setter": "Casey M.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "1-3",
+    "wallId": 1,
     "name": "Lonesome Chimney",
     "difficulty": "V1",
     "setter": "Sam R.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "1-4",
+    "wallId": 1,
     "name": "Frozen Gaston",
     "difficulty": "V2",
     "setter": "Casey M.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "1-5",
+    "wallId": 1,
     "name": "Iron Rail",
     "difficulty": "V6",
     "setter": "Wei L.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "1-6",
+    "wallId": 1,
     "name": "Wild Prow",
     "difficulty": "V0",
     "setter": "Priya N.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "1-7",
+    "wallId": 1,
     "name": "Salty Traverse",
     "difficulty": "V3",
     "setter": "Marcus T.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "1-8",
+    "wallId": 1,
     "name": "Morning Roof Problem",
     "difficulty": "V3",
     "setter": "Jordan K.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "1-9",
+    "wallId": 1,
     "name": "Granite Slab",
     "difficulty": "V7",
     "setter": "Wei L.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "1-10",
+    "wallId": 1,
     "name": "Golden Ledge",
     "difficulty": "V5",
     "setter": "Nina P.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "1-11",
+    "wallId": 1,
     "name": "Lonesome Mantle",
     "difficulty": "V6",
     "setter": "Devon R.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "1-12",
+    "wallId": 1,
     "name": "Ghost Seam",
     "difficulty": "V6",
     "setter": "Alex P.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "1-13",
+    "wallId": 1,
     "name": "Iron Nose",
     "difficulty": "VB",
     "setter": "Theo K.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "1-14",
+    "wallId": 1,
     "name": "Restless Highball",
     "difficulty": "V2",
     "setter": "Jordan K.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "1-15",
+    "wallId": 1,
     "name": "Salty Dyno",
     "difficulty": "VB",
     "setter": "Devon R.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "1-16",
+    "wallId": 1,
     "name": "Hollow Undercling",
     "difficulty": "V3",
     "setter": "Priya N.",
-    "comments": []
+    "comments": [],
+    "setId": "63d30c30-ca47-4322-89d1-cbd253313acc",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-1",
+    "wallId": 2,
     "name": "Iron Nose",
     "difficulty": "VB",
     "setter": "Marcus T.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-2",
+    "wallId": 2,
     "name": "Jagged Overhang",
     "difficulty": "V0",
     "setter": "Jordan K.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-3",
+    "wallId": 2,
     "name": "Amber Chimney",
     "difficulty": "V9",
     "setter": "Theo K.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-4",
+    "wallId": 2,
     "name": "Crimson Gaston",
     "difficulty": "V5",
     "setter": "Alex P.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-5",
+    "wallId": 2,
     "name": "Iron Rail",
     "difficulty": "V5",
     "setter": "Marcus T.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-6",
+    "wallId": 2,
     "name": "Restless Prow",
     "difficulty": "V1",
     "setter": "Alex P.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-7",
+    "wallId": 2,
     "name": "Electric Traverse",
     "difficulty": "V1",
     "setter": "Marcus T.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-8",
+    "wallId": 2,
     "name": "Neon Roof Problem",
     "difficulty": "V3",
     "setter": "Jordan K.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-9",
+    "wallId": 2,
     "name": "Granite Slab",
     "difficulty": "V1",
     "setter": "Theo K.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-10",
+    "wallId": 2,
     "name": "Jagged Ledge",
     "difficulty": "V0",
     "setter": "Alex P.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-11",
+    "wallId": 2,
     "name": "Amber Mantle",
     "difficulty": "V4",
     "setter": "Devon R.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-12",
+    "wallId": 2,
     "name": "Crimson Seam",
     "difficulty": "V5",
     "setter": "Nina P.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-13",
+    "wallId": 2,
     "name": "Burning Nose",
     "difficulty": "V3",
     "setter": "Wei L.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-14",
+    "wallId": 2,
     "name": "Wild Highball",
     "difficulty": "V3",
     "setter": "Casey M.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-15",
+    "wallId": 2,
     "name": "Salty Dyno",
     "difficulty": "V7",
     "setter": "Theo K.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-16",
+    "wallId": 2,
     "name": "Hollow Undercling",
     "difficulty": "V4",
     "setter": "Casey M.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-17",
+    "wallId": 2,
     "name": "Midnight Groove",
     "difficulty": "V0",
     "setter": "Sam R.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "2-18",
+    "wallId": 2,
     "name": "Jagged Sloper",
     "difficulty": "V4",
     "setter": "Casey M.",
-    "comments": []
+    "comments": [],
+    "setId": "e29f5480-24b8-4b15-8c39-7865bc47f551",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-1",
+    "wallId": 3,
     "name": "Jagged Pinch",
     "difficulty": "V4",
     "setter": "Casey M.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-2",
+    "wallId": 3,
     "name": "Stormy Overhang",
     "difficulty": "V6",
     "setter": "Priya N.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-3",
+    "wallId": 3,
     "name": "Lonesome Chimney",
     "difficulty": "V5",
     "setter": "Wei L.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-4",
+    "wallId": 3,
     "name": "Ghost Gaston",
     "difficulty": "V2",
     "setter": "Alex P.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-5",
+    "wallId": 3,
     "name": "Copper Rail",
     "difficulty": "V8",
     "setter": "Marcus T.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-6",
+    "wallId": 3,
     "name": "Restless Prow",
     "difficulty": "V2",
     "setter": "Priya N.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-7",
+    "wallId": 3,
     "name": "Quiet Traverse",
     "difficulty": "V9",
     "setter": "Theo K.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-8",
+    "wallId": 3,
     "name": "Neon Roof Problem",
     "difficulty": "V0",
     "setter": "Alex P.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-9",
+    "wallId": 3,
     "name": "Granite Slab",
     "difficulty": "V9",
     "setter": "Devon R.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-10",
+    "wallId": 3,
     "name": "Stormy Ledge",
     "difficulty": "V4",
     "setter": "Casey M.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-11",
+    "wallId": 3,
     "name": "Lonesome Mantle",
     "difficulty": "V4",
     "setter": "Wei L.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-12",
+    "wallId": 3,
     "name": "Frozen Seam",
     "difficulty": "V0",
     "setter": "Priya N.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-13",
+    "wallId": 3,
     "name": "Iron Nose",
     "difficulty": "V1",
     "setter": "Devon R.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-14",
+    "wallId": 3,
     "name": "Wild Highball",
     "difficulty": "V6",
     "setter": "Casey M.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-15",
+    "wallId": 3,
     "name": "Electric Dyno",
     "difficulty": "V1",
     "setter": "Wei L.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-16",
+    "wallId": 3,
     "name": "Morning Undercling",
     "difficulty": "V1",
     "setter": "Alex P.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-17",
+    "wallId": 3,
     "name": "Granite Groove",
     "difficulty": "V0",
     "setter": "Sam R.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-18",
+    "wallId": 3,
     "name": "Lonesome Dyno",
     "difficulty": "V4",
     "setter": "Theo K.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-19",
+    "wallId": 3,
     "name": "Lonesome Crack",
     "difficulty": "V6",
     "setter": "Theo K.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "3-20",
+    "wallId": 3,
     "name": "Frozen Ridge",
     "difficulty": "V6",
     "setter": "Jordan K.",
-    "comments": []
+    "comments": [],
+    "setId": "9c76c879-a886-4008-afe1-987ea29a6cfd",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "4-1",
+    "wallId": 4,
     "name": "Quiet Traverse",
     "difficulty": "V9",
     "setter": "Marcus T.",
-    "comments": []
+    "comments": [],
+    "setId": "96433fb2-1486-4de9-ab2b-5f124c9db3f1",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "4-2",
+    "wallId": 4,
     "name": "Jagged Overhang",
     "difficulty": "V3",
     "setter": "Jordan K.",
-    "comments": []
+    "comments": [],
+    "setId": "96433fb2-1486-4de9-ab2b-5f124c9db3f1",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "4-3",
+    "wallId": 4,
     "name": "Silent Chimney",
     "difficulty": "V5",
     "setter": "Theo K.",
-    "comments": []
+    "comments": [],
+    "setId": "96433fb2-1486-4de9-ab2b-5f124c9db3f1",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "4-4",
+    "wallId": 4,
     "name": "Frozen Gaston",
     "difficulty": "V6",
     "setter": "Nina P.",
-    "comments": []
+    "comments": [],
+    "setId": "96433fb2-1486-4de9-ab2b-5f124c9db3f1",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "4-5",
+    "wallId": 4,
     "name": "Copper Rail",
     "difficulty": "V8",
     "setter": "Marcus T.",
-    "comments": []
+    "comments": [],
+    "setId": "96433fb2-1486-4de9-ab2b-5f124c9db3f1",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "4-6",
+    "wallId": 4,
     "name": "Velvet Prow",
     "difficulty": "V3",
     "setter": "Alex P.",
-    "comments": []
+    "comments": [],
+    "setId": "96433fb2-1486-4de9-ab2b-5f124c9db3f1",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "4-7",
+    "wallId": 4,
     "name": "Neon Seam",
     "difficulty": "V7",
     "setter": "Theo K.",
-    "comments": []
+    "comments": [],
+    "setId": "96433fb2-1486-4de9-ab2b-5f124c9db3f1",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "4-8",
+    "wallId": 4,
     "name": "Neon Roof Problem",
     "difficulty": "V0",
     "setter": "Jordan K.",
-    "comments": []
+    "comments": [],
+    "setId": "96433fb2-1486-4de9-ab2b-5f124c9db3f1",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "4-9",
+    "wallId": 4,
     "name": "Granite Slab",
     "difficulty": "V5",
     "setter": "Wei L.",
-    "comments": []
+    "comments": [],
+    "setId": "96433fb2-1486-4de9-ab2b-5f124c9db3f1",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "4-10",
+    "wallId": 4,
     "name": "Jagged Ledge",
     "difficulty": "V5",
     "setter": "Alex P.",
-    "comments": []
+    "comments": [],
+    "setId": "96433fb2-1486-4de9-ab2b-5f124c9db3f1",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "4-11",
+    "wallId": 4,
     "name": "Amber Mantle",
     "difficulty": "V3",
     "setter": "Wei L.",
-    "comments": []
+    "comments": [],
+    "setId": "96433fb2-1486-4de9-ab2b-5f124c9db3f1",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "4-12",
+    "wallId": 4,
     "name": "Crimson Seam",
     "difficulty": "V5",
     "setter": "Alex P.",
-    "comments": []
+    "comments": [],
+    "setId": "96433fb2-1486-4de9-ab2b-5f124c9db3f1",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "4-13",
+    "wallId": 4,
     "name": "Burning Nose",
     "difficulty": "V7",
     "setter": "Marcus T.",
-    "comments": []
+    "comments": [],
+    "setId": "96433fb2-1486-4de9-ab2b-5f124c9db3f1",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "4-14",
+    "wallId": 4,
     "name": "Restless Highball",
     "difficulty": "V3",
     "setter": "Casey M.",
-    "comments": []
+    "comments": [],
+    "setId": "96433fb2-1486-4de9-ab2b-5f124c9db3f1",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   },
   {
-    "id": "4-15",
+    "wallId": 4,
     "name": "Quiet Dyno",
     "difficulty": "V9",
     "setter": "Sam R.",
-    "comments": []
+    "comments": [],
+    "setId": "96433fb2-1486-4de9-ab2b-5f124c9db3f1",
+    "setDate": "2026-07-25",
+    "setType": "reset",
+    "archived": false
   }
 ]

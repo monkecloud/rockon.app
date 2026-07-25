@@ -60,10 +60,18 @@ Wi-Fi.
 ## Notes
 
 - **Climbs are stored server-side** in `server/climbs.json` — each has an
-  `id`, `name`, `difficulty`, and a `comments` array of seeded sample
-  comments (each with `id`, `author`, `text`). `GET /api/climbs` merges
-  those in with any comments users have left while logging an ascent (see
-  below), so the Comments page shows both.
+  `id`, `wallId`, `name`, `difficulty`, `setter`, and a `comments` array of
+  seeded sample comments (each with `id`, `author`, `text`). `GET
+  /api/climbs` merges those in with any comments users have left while
+  logging an ascent (see below), so the Comments page shows both.
+  Each climb also tracks which "set" put it up: `setId` (shared by every
+  climb set on the same wall at the same time), `setDate`, and `setType`
+  (`"reset"` — the whole wall gets stripped and reset — or `"backfill"` —
+  new climbs added without taking anything down), plus `archived` (true
+  once a later reset on that wall supersedes it). There's no moderator/
+  setter role or endpoint yet to actually create a set or archive one —
+  this is just the storage shape in place for that later. The app doesn't
+  filter out or visually distinguish archived climbs yet either.
 - **Users are stored server-side** in `server/users.json`. Passwords are
   hashed with bcrypt before they're written — the server owner never sees
   plain-text passwords, only a one-way hash. This is still a toy auth
