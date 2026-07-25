@@ -270,14 +270,7 @@ function CommentsScreen({ climb, currentUser, onDeleteComment }) {
   );
 }
 
-function ListScreen({
-  selectedItem,
-  selectedSubItem,
-  climbsByWall,
-  onSelectItem,
-  onSelectSubItem,
-  onOpenArchive,
-}) {
+function ListScreen({ selectedItem, selectedSubItem, climbsByWall, onSelectItem, onSelectSubItem }) {
   if (selectedItem && selectedSubItem) {
     const climb = (climbsByWall[selectedItem.id] || []).find((c) => c.name === selectedSubItem);
     const title = climb ? `${climb.difficulty} · ${climb.name}` : "Loading…";
@@ -350,10 +343,7 @@ function ListScreen({
             <ChevronRight size={18} color="#6A6A66" />
           </button>
         ))}
-        <button style={styles.archiveBar} onClick={onOpenArchive}>
-          <span>Archive</span>
-          <ChevronRight size={18} color="#6A6A66" />
-        </button>
+        <ArchiveSection />
       </div>
     </div>
   );
@@ -361,66 +351,89 @@ function ListScreen({
 
 const WALL_NAME_BY_ID = Object.fromEntries(WALLS.map((wall) => [wall.id, wall.name]));
 
-function ArchiveScreen({ sets, onSelectSet }) {
-  return (
-    <div style={styles.screen}>
-      {sets.length === 0 ? (
-        <p style={styles.placeholderText}>No archived sets yet.</p>
-      ) : (
-        <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
-          {sets.map((set) => (
-            <button
-              key={set.setId}
-              style={styles.wallRow}
-              onClick={() => onSelectSet(set.setId)}
-            >
-              <div>
-                <p style={styles.listTitle}>
-                  {WALL_NAME_BY_ID[set.wallId] ?? `Wall ${set.wallId}`}
-                </p>
-                <p style={styles.listMeta}>
-                  {set.setType === "reset" ? "Reset" : "Backfill"} on {set.setDate}
-                </p>
-              </div>
-              <ChevronRight size={18} color="#6A6A66" />
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+// Not a separate page — tapping "Archive" expands the older sets inline,
+// right underneath it, in the same Walls list. Tapping a set expands its
+// climbs (read-only; archived climbs aren't climbable/loggable) the same
+// way, one level deeper.
+function ArchiveSection() {
+  const [expanded, setExpanded] = useState(false);
+  const [sets, setSets] = useState(null);
+  const [expandedSetId, setExpandedSetId] = useState(null);
 
-function ArchiveSetScreen({ set }) {
-  if (!set) return null;
+  const handleToggle = () => {
+    const next = !expanded;
+    setExpanded(next);
+    if (next && sets === null) {
+      fetch("/api/archive")
+        .then((res) => res.json())
+        .then((data) => setSets(data.sets || []))
+        .catch((err) => console.error("Failed to load /api/archive:", err));
+    }
+  };
 
   return (
-    <div style={styles.screen}>
-      <p style={styles.listMeta}>
-        {WALL_NAME_BY_ID[set.wallId] ?? `Wall ${set.wallId}`} ·{" "}
-        {set.setType === "reset" ? "Reset" : "Backfill"} on {set.setDate}
-      </p>
-      <div style={{ ...styles.list, marginTop: 16, gap: 0, marginLeft: -20, marginRight: -20 }}>
-        {set.climbs.map((climb) => (
-          <div key={climb.name} style={{ ...styles.climbRow, cursor: "default" }}>
-            <div style={styles.climbRowLeft}>
-              <span style={styles.climbDifficulty}>{climb.difficulty}</span>
-              <span style={styles.climbStars}>
-                {(() => {
-                  const filled = Math.round(climb.averageStars || 0);
-                  return "⭐".repeat(filled) + "☆".repeat(5 - filled);
-                })()}
-              </span>
-              <span style={styles.climbAscents}>{climb.ascentCount ?? 0} ascents</span>
-            </div>
-            <div style={styles.climbRowRight}>
-              <span style={styles.climbTitle}>{climb.name}</span>
-              <span style={styles.climbSetter}>{climb.setter}</span>
-            </div>
-          </div>
-        ))}
+    <>
+      <div style={styles.archiveBar} onClick={handleToggle}>
+        <span>Archive</span>
+        <ChevronRight
+          size={18}
+          color="#6A6A66"
+          style={{ transform: expanded ? "rotate(90deg)" : "none" }}
+        />
       </div>
-    </div>
+
+      {expanded &&
+        (sets === null ? (
+          <p style={{ ...styles.placeholderText, padding: "16px 20px" }}>Loading…</p>
+        ) : sets.length === 0 ? (
+          <p style={{ ...styles.placeholderText, padding: "16px 20px" }}>No archived sets yet.</p>
+        ) : (
+          sets.map((set) => (
+            <div key={set.setId}>
+              <div
+                style={styles.archiveSetRow}
+                onClick={() =>
+                  setExpandedSetId(expandedSetId === set.setId ? null : set.setId)
+                }
+              >
+                <div>
+                  <p style={styles.listTitle}>
+                    {WALL_NAME_BY_ID[set.wallId] ?? `Wall ${set.wallId}`}
+                  </p>
+                  <p style={styles.listMeta}>
+                    {set.setType === "reset" ? "Reset" : "Backfill"} on {set.setDate}
+                  </p>
+                </div>
+                <ChevronRight
+                  size={18}
+                  color="#6A6A66"
+                  style={{ transform: expandedSetId === set.setId ? "rotate(90deg)" : "none" }}
+                />
+              </div>
+
+              {expandedSetId === set.setId &&
+                set.climbs.map((climb) => (
+                  <div key={climb.name} style={styles.archiveClimbRow}>
+                    <div style={styles.climbRowLeft}>
+                      <span style={styles.climbDifficulty}>{climb.difficulty}</span>
+                      <span style={styles.climbStars}>
+                        {(() => {
+                          const filled = Math.round(climb.averageStars || 0);
+                          return "⭐".repeat(filled) + "☆".repeat(5 - filled);
+                        })()}
+                      </span>
+                      <span style={styles.climbAscents}>{climb.ascentCount ?? 0} ascents</span>
+                    </div>
+                    <div style={styles.climbRowRight}>
+                      <span style={styles.climbTitle}>{climb.name}</span>
+                      <span style={styles.climbSetter}>{climb.setter}</span>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          ))
+        ))}
+    </>
   );
 }
 
@@ -1062,9 +1075,6 @@ export default function App() {
   const [showLogAscentSheet, setShowLogAscentSheet] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOption, setSettingsOption] = useState(null);
-  const [showArchive, setShowArchive] = useState(false);
-  const [archiveSets, setArchiveSets] = useState([]);
-  const [selectedArchiveSetId, setSelectedArchiveSetId] = useState(null);
 
   // --- Climbs data -----------------------------------------------------
   // Fetched from the server (server/climbs.json via GET /api/climbs), which
@@ -1082,14 +1092,6 @@ export default function App() {
       .then((res) => res.json())
       .then((data) => setClimbs(data.climbs || []))
       .catch((err) => console.error("Failed to load /api/climbs:", err));
-
-  // Archived sets are only fetched once the Archive bar is actually
-  // opened, since most sessions will never look at it.
-  const fetchArchive = () =>
-    fetch("/api/archive")
-      .then((res) => res.json())
-      .then((data) => setArchiveSets(data.sets || []))
-      .catch((err) => console.error("Failed to load /api/archive:", err));
 
   useEffect(() => {
     fetchClimbs();
@@ -1195,12 +1197,6 @@ export default function App() {
     setShowComments(false);
   };
 
-  const handleOpenArchive = () => {
-    setSelectedArchiveSetId(null);
-    setShowArchive(true);
-    fetchArchive();
-  };
-
   // Tapping the Walls tab while already on it pops all the way back to the
   // top-level Walls list, same as re-tapping the current tab in most apps.
   const handleTabPress = (tabId) => {
@@ -1209,8 +1205,6 @@ export default function App() {
       setSelectedSubItem(null);
       setShowComments(false);
       setShowLogAscentSheet(false);
-      setShowArchive(false);
-      setSelectedArchiveSetId(null);
       return;
     }
     if (tabId === activeTab && tabId === "profile") {
@@ -1272,13 +1266,6 @@ export default function App() {
       case "home":
         return <HomeScreen />;
       case "list": {
-        if (showArchive) {
-          if (selectedArchiveSetId) {
-            const set = archiveSets.find((s) => s.setId === selectedArchiveSetId);
-            return <ArchiveSetScreen set={set} />;
-          }
-          return <ArchiveScreen sets={archiveSets} onSelectSet={setSelectedArchiveSetId} />;
-        }
         if (selectedListItem && selectedSubItem && showComments) {
           return (
             <CommentsScreen
@@ -1295,7 +1282,6 @@ export default function App() {
             climbsByWall={climbsByWall}
             onSelectItem={handleSelectListItem}
             onSelectSubItem={handleSelectSubItem}
-            onOpenArchive={handleOpenArchive}
           />
         );
       }
@@ -1339,9 +1325,6 @@ export default function App() {
     showComments,
     showSettings,
     settingsOption,
-    showArchive,
-    archiveSets,
-    selectedArchiveSetId,
   ]);
 
   const tabTitle = TABS.find((tab) => tab.id === activeTab)?.label ?? "";
@@ -1349,16 +1332,7 @@ export default function App() {
   let showBack = false;
   let handleBack = () => {};
 
-  if (activeTab === "list" && showArchive && selectedArchiveSetId) {
-    const set = archiveSets.find((s) => s.setId === selectedArchiveSetId);
-    topBarTitle = set ? WALL_NAME_BY_ID[set.wallId] ?? "Archive" : "Archive";
-    showBack = true;
-    handleBack = () => setSelectedArchiveSetId(null);
-  } else if (activeTab === "list" && showArchive) {
-    topBarTitle = "Archive";
-    showBack = true;
-    handleBack = () => setShowArchive(false);
-  } else if (activeTab === "list" && selectedListItem && selectedSubItem && showComments) {
+  if (activeTab === "list" && selectedListItem && selectedSubItem && showComments) {
     topBarTitle = "Comments";
     showBack = true;
     handleBack = () => setShowComments(false);
@@ -1640,6 +1614,34 @@ const styles = {
     fontWeight: 500,
     cursor: "pointer",
     font: "inherit",
+  },
+  archiveSetRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    flexShrink: 0,
+    textAlign: "left",
+    background: "#101010",
+    border: "none",
+    borderTop: "1px solid #2E2E2C",
+    borderRadius: 0,
+    padding: "12px 20px",
+    cursor: "pointer",
+    font: "inherit",
+  },
+  archiveClimbRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    flexShrink: 0,
+    textAlign: "left",
+    background: "#0B0B0B",
+    border: "none",
+    borderTop: "1px solid #2E2E2C",
+    padding: "12px 24px",
+    cursor: "default",
   },
   climbRow: {
     display: "flex",
