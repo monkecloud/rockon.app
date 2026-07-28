@@ -148,39 +148,74 @@ function currentClimbsOnly(climbs) {
   });
 }
 
-// The inverse of currentClimbsOnly: every climb from before a wall's most
-// recent reset, grouped back into the "sets" they were put up in (one
-// entry per setId) for the app's Archive screen.
-function archivedSets(climbs) {
-  const latestResetDateByWall = {};
+// Groups climbs into "cycles" the same way currentClimbsOnly treats the
+// live one: each cycle is a reset plus every backfill dated on/after it
+// and before the *next* reset on that wall — merged together the same way
+// a reset and its backfill(s) merge into one current list. Returns one
+// entry per cycle, keyed by the reset's setId, newest first.
+function groupIntoCycles(climbs) {
+  const resetsByWall = {};
   for (const climb of climbs) {
     if (climb.setType !== "reset") continue;
-    const current = latestResetDateByWall[climb.wallId];
-    if (!current || climb.setDate > current) {
-      latestResetDateByWall[climb.wallId] = climb.setDate;
-    }
+    (resetsByWall[climb.wallId] ||= []).push({ setId: climb.setId, setDate: climb.setDate });
   }
+  Object.values(resetsByWall).forEach((resets) =>
+    resets.sort((a, b) => (a.setDate < b.setDate ? -1 : 1))
+  );
 
-  const archivedClimbs = climbs.filter((climb) => {
-    const latestReset = latestResetDateByWall[climb.wallId];
-    return latestReset && climb.setDate < latestReset;
-  });
+  const cyclesBySetId = {};
+  for (const climb of climbs) {
+    const resets = resetsByWall[climb.wallId] || [];
+    // The cycle a climb belongs to is started by the most recent reset
+    // dated at or before it — same "which reset governs this climb" rule
+    // currentClimbsOnly uses, just evaluated per-reset instead of only
+    // for the latest one.
+    let cycleReset = null;
+    for (const reset of resets) {
+      if (reset.setDate <= climb.setDate) cycleReset = reset;
+      else break;
+    }
+    if (!cycleReset) continue; // shouldn't happen once a wall has a reset
 
-  const setsById = {};
-  for (const climb of archivedClimbs) {
-    if (!setsById[climb.setId]) {
-      setsById[climb.setId] = {
-        setId: climb.setId,
+    if (!cyclesBySetId[cycleReset.setId]) {
+      cyclesBySetId[cycleReset.setId] = {
+        setId: cycleReset.setId,
         wallId: climb.wallId,
-        setDate: climb.setDate,
-        setType: climb.setType,
+        setDate: cycleReset.setDate,
         climbs: [],
       };
     }
-    setsById[climb.setId].climbs.push(climb);
+    cyclesBySetId[cycleReset.setId].climbs.push(climb);
   }
 
-  return Object.values(setsById).sort((a, b) => (a.setDate < b.setDate ? 1 : -1));
+  return Object.values(cyclesBySetId).sort((a, b) => (a.setDate < b.setDate ? 1 : -1));
+}
+
+// The inverse of currentClimbsOnly: every climb from before a wall's most
+// recent cycle, flattened into one list per wall — no date/cycle grouping
+// surfaced, same as the live view is just "this wall's climbs" with no
+// reset/backfill distinction visible. One entry per wall that actually has
+// archived climbs.
+function archivedClimbsByWall(climbs) {
+  const cycles = groupIntoCycles(climbs);
+
+  const latestDateByWall = {};
+  for (const cycle of cycles) {
+    const current = latestDateByWall[cycle.wallId];
+    if (!current || cycle.setDate > current) {
+      latestDateByWall[cycle.wallId] = cycle.setDate;
+    }
+  }
+
+  const archivedCycles = cycles.filter((cycle) => cycle.setDate < latestDateByWall[cycle.wallId]);
+
+  const byWall = {};
+  for (const cycle of archivedCycles) {
+    if (!byWall[cycle.wallId]) byWall[cycle.wallId] = { wallId: cycle.wallId, climbs: [] };
+    byWall[cycle.wallId].climbs.push(...cycle.climbs);
+  }
+
+  return Object.values(byWall);
 }
 
 // Shape of the `user` object sent to the client after signup/login — never
@@ -193,6 +228,7 @@ function toClientUser(user) {
     avatarUrl: user.avatarUrl || "",
     followersCount: (user.followers || []).length,
     followingCount: (user.following || []).length,
+    isModerator: !!user.isModerator,
   };
 }
 
@@ -233,7 +269,16 @@ app.post("/api/login", async (req, res) => {
   }
 
   const users = await readUsers();
-  const user = users.find((u) => u.username === username);
+  // Case-insensitive, same as the uniqueness check at signup — "Cubesnail"
+  // and "cubesnail" refer to the same account.
+  const user = users.find((u) => u.username.toLowerCase() === username.toLowerCase());
+
+  // An empty passwordHash means the account was created without a password
+  // (e.g. hand-added to users.json) — let anyone in as that user, but flag
+  // the client to immediately prompt for a real password before continuing.
+  if (user && !user.passwordHash) {
+    return res.json({ user: toClientUser(user), needsPasswordReset: true });
+  }
 
   // Compare against a hash whether or not the user exists, so response
   // timing doesn't reveal which usernames are registered.
@@ -325,8 +370,8 @@ app.post("/api/users/:username/password", async (req, res) => {
   const { username } = req.params;
   const { currentPassword, newPassword } = req.body || {};
 
-  if (!currentPassword || !newPassword) {
-    return res.status(400).json({ error: "Current and new password are required." });
+  if (!newPassword) {
+    return res.status(400).json({ error: "New password is required." });
   }
 
   const users = await readUsers();
@@ -335,9 +380,16 @@ app.post("/api/users/:username/password", async (req, res) => {
     return res.status(404).json({ error: "User not found." });
   }
 
-  const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
-  if (!isMatch) {
-    return res.status(401).json({ error: "Current password is incorrect." });
+  // Accounts with no password set yet (see /api/login) can go straight to
+  // setting a new one, since there's nothing to verify against.
+  if (user.passwordHash) {
+    if (!currentPassword) {
+      return res.status(400).json({ error: "Current password is required." });
+    }
+    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isMatch) {
+      return res.status(401).json({ error: "Current password is incorrect." });
+    }
   }
 
   user.passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
@@ -403,22 +455,37 @@ app.get("/api/climbs", async (req, res) => {
 
 app.get("/api/archive", async (req, res) => {
   const climbs = await readClimbs();
-  const sets = archivedSets(climbs);
+  const walls = archivedClimbsByWall(climbs);
+  const archivedFlat = walls.flatMap((wall) => wall.climbs);
+
+  // Within the archive itself, the most recent cycle per wall is still
+  // loggable — same rule as the live list, just applied one level down.
+  // Older cycles beyond that stay view-only.
+  const loggableKeys = new Set(
+    currentClimbsOnly(archivedFlat).map((climb) => climbKey(climb.wallId, climb.name))
+  );
 
   // Run every archived climb through the same stats/comments merge as the
-  // live list, then slot the results back into their sets by wallId+name.
+  // live list, then slot the results back into their wall group by
+  // wallId+name.
   const statsByKey = {};
-  const merged = await withAscentStats(sets.flatMap((set) => set.climbs));
+  const merged = await withAscentStats(archivedFlat);
   merged.forEach((climb) => {
     statsByKey[climbKey(climb.wallId, climb.name)] = climb;
   });
 
-  const setsWithStats = sets.map((set) => ({
-    ...set,
-    climbs: set.climbs.map((climb) => statsByKey[climbKey(climb.wallId, climb.name)] || climb),
+  const wallsWithStats = walls.map((wall) => ({
+    ...wall,
+    climbs: wall.climbs.map((climb) => {
+      const key = climbKey(climb.wallId, climb.name);
+      return {
+        ...(statsByKey[key] || climb),
+        loggable: loggableKeys.has(key),
+      };
+    }),
   }));
 
-  res.json({ sets: setsWithStats });
+  res.json({ walls: wallsWithStats });
 });
 
 app.post("/api/ascents", async (req, res) => {
@@ -482,6 +549,71 @@ app.delete("/api/users/:username/ascents/:ascentId/comment", async (req, res) =>
   ascent.comment = "";
   await writeUsers(users);
   res.json({ success: true });
+});
+
+// Buckets a grade string ("V4", "vb", "V11") into one of the Profile
+// page's pyramid categories, or null if it doesn't parse as a V-grade.
+function gradeToBucket(grade) {
+  if (!grade) return null;
+  const trimmed = grade.trim().toUpperCase();
+  if (trimmed === "VB") return "VB";
+
+  const match = trimmed.match(/^V(\d+)$/);
+  if (!match) return null;
+
+  const n = parseInt(match[1], 10);
+  return n >= 10 ? "V10+" : `V${n}`;
+}
+
+const GRADE_BUCKETS = ["VB", ...Array.from({ length: 10 }, (_, n) => `V${n}`), "V10+"];
+
+// The Profile page's grade pyramid: how many logged ascents fall in each
+// V-grade bucket. Prefers the grade the user typed on the ascent itself;
+// falls back to the climb's own difficulty (looked up by wallId+name,
+// across current AND archived climbs) when that was left blank.
+app.get("/api/users/:username/grade-counts", async (req, res) => {
+  const { username } = req.params;
+
+  const users = await readUsers();
+  const user = users.find((u) => u.username === username);
+  if (!user) {
+    return res.status(404).json({ error: "User not found." });
+  }
+
+  const climbs = await readClimbs();
+  const difficultyByKey = {};
+  climbs.forEach((climb) => {
+    difficultyByKey[climbKey(climb.wallId, climb.name)] = climb.difficulty;
+  });
+
+  const counts = Object.fromEntries(GRADE_BUCKETS.map((g) => [g, 0]));
+
+  for (const ascent of user.ascents || []) {
+    const grade =
+      (ascent.grade && ascent.grade.trim()) ||
+      difficultyByKey[climbKey(ascent.wallId, ascent.climbName)] ||
+      "";
+    const bucket = gradeToBucket(grade);
+    if (bucket) counts[bucket] += 1;
+  }
+
+  res.json({ counts: GRADE_BUCKETS.map((grade) => ({ grade, count: counts[grade] })) });
+});
+
+// The Home page's grade pyramid: how many *currently active* climbs (this
+// wall's latest reset + backfill — see currentClimbsOnly) fall in each
+// V-grade bucket. Unlike the per-user chart above, this isn't about who's
+// climbed what — it's what's actually up on the walls right now.
+app.get("/api/climbs/grade-counts", async (req, res) => {
+  const climbs = await readClimbs();
+  const counts = Object.fromEntries(GRADE_BUCKETS.map((g) => [g, 0]));
+
+  for (const climb of currentClimbsOnly(climbs)) {
+    const bucket = gradeToBucket(climb.difficulty);
+    if (bucket) counts[bucket] += 1;
+  }
+
+  res.json({ counts: GRADE_BUCKETS.map((grade) => ({ grade, count: counts[grade] })) });
 });
 
 const PORT = process.env.PORT || 3001;

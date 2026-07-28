@@ -15,6 +15,7 @@ import {
   StarHalf,
   Trash2,
   Camera,
+  Filter,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -22,7 +23,10 @@ import {
 // - Persistent top bar showing the current screen's title, with a back
 //   button when drilled into a list item
 // - 4 tabs, persistent bottom bar with icon + label
-// - Home tab: shows a random line of text, with a "shuffle" action
+// - Home tab: shows a grade pyramid of every *currently active* climb
+//   across all walls (see GradeBarChart — same component the Profile
+//   page uses for the logged-in user's own ascent history, just pointed
+//   at a different endpoint)
 // - Walls tab (bottom bar label): a scrollable list of "walls", each
 //   drilling into its own "Climbs" list, each of which drills into a
 //   "Climb" detail page. Top bar title reflects the current level
@@ -46,17 +50,6 @@ const TABS = [
   { id: "list", label: "Walls", icon: ListChecks },
   { id: "search", label: "Search", icon: Search },
   { id: "profile", label: "Profile", icon: User },
-];
-
-const RANDOM_LINES = [
-  "The tide only tells half the story.",
-  "Somewhere, a kettle is about to whistle.",
-  "Good ideas arrive disguised as distractions.",
-  "Every map is a little bit of fiction.",
-  "The quiet room remembers every conversation.",
-  "Start before you feel ready.",
-  "A shortcut is just a risk with confidence.",
-  "Most doors open if you actually push.",
 ];
 
 // The 4 walls. Climbs themselves (name, difficulty, comments) are fetched
@@ -104,29 +97,22 @@ function saveToStorage(key, value) {
   }
 }
 
+const RECENT_ACTIVITY_PLACEHOLDERS = [1, 2, 3, 4, 5];
+
 function HomeScreen() {
-  const [line, setLine] = useState(
-    () => RANDOM_LINES[Math.floor(Math.random() * RANDOM_LINES.length)]
-  );
-
-  const shuffle = () => {
-    setLine((current) => {
-      let next = current;
-      while (next === current) {
-        next = RANDOM_LINES[Math.floor(Math.random() * RANDOM_LINES.length)];
-      }
-      return next;
-    });
-  };
-
   return (
     <div style={styles.screen}>
-      <div style={styles.quoteCard}>
-        <p style={styles.quoteText}>{line}</p>
+      <GradeBarChart title="Climbs on the wall" endpoint="/api/climbs/grade-counts" />
+      <div style={{ marginLeft: -20, marginRight: -20 }}>
+        <div style={styles.archiveBar}>
+          <p style={{ margin: 0 }}>Recent Activity</p>
+        </div>
+        {RECENT_ACTIVITY_PLACEHOLDERS.map((n) => (
+          <button key={n} style={styles.wallRow}>
+            <p style={styles.listTitle}>Placeholder {n}</p>
+          </button>
+        ))}
       </div>
-      <button style={styles.button} onClick={shuffle}>
-        Shuffle text
-      </button>
     </div>
   );
 }
@@ -270,7 +256,19 @@ function CommentsScreen({ climb, currentUser, onDeleteComment }) {
   );
 }
 
-function ListScreen({ selectedItem, selectedSubItem, climbsByWall, onSelectItem, onSelectSubItem }) {
+function ListScreen({
+  selectedItem,
+  selectedSubItem,
+  climbsByWall,
+  onSelectItem,
+  onSelectSubItem,
+  archiveExpanded,
+  archiveWalls,
+  onToggleArchive,
+  onSelectArchiveWall,
+}) {
+  const [climbSearch, setClimbSearch] = useState("");
+
   if (selectedItem && selectedSubItem) {
     const climb = (climbsByWall[selectedItem.id] || []).find((c) => c.name === selectedSubItem);
     const title = climb ? `${climb.difficulty} · ${climb.name}` : "Loading…";
@@ -281,17 +279,39 @@ function ListScreen({ selectedItem, selectedSubItem, climbsByWall, onSelectItem,
 
   if (selectedItem) {
     const climbs = climbsByWall[selectedItem.id] || [];
+    const filteredClimbs = climbs.filter((climb) =>
+      climb.name.toLowerCase().includes(climbSearch.trim().toLowerCase())
+    );
 
     return (
       <div style={styles.screen}>
-        <p style={styles.listMeta}>{climbs.length} climbs</p>
+        {climbs.length > 0 && (
+          <GradeBarChart
+            title={`${climbs.length} climbs`}
+            counts={bucketGradeCounts(climbs.map((c) => c.difficulty))}
+          />
+        )}
+        <div style={styles.climbsFilterRow}>
+          <input
+            style={styles.climbsFilterInput}
+            type="text"
+            placeholder="Search climbs"
+            value={climbSearch}
+            onChange={(e) => setClimbSearch(e.target.value)}
+          />
+          <button type="button" style={styles.climbsFilterButton}>
+            <Filter size={18} />
+          </button>
+        </div>
         {climbs.length === 0 ? (
           <p style={styles.placeholderText}>Loading climbs…</p>
+        ) : filteredClimbs.length === 0 ? (
+          <p style={styles.placeholderText}>No climbs match "{climbSearch}".</p>
         ) : (
-          <div style={{ ...styles.list, marginTop: 16, gap: 0, marginLeft: -20, marginRight: -20 }}>
-            {climbs.map((climb) => (
+          <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
+            {filteredClimbs.map((climb) => (
               <button
-                key={climb.name}
+                key={`${climb.setId}::${climb.name}`}
                 style={styles.climbRow}
                 onClick={() => onSelectSubItem(climb.name)}
               >
@@ -318,24 +338,10 @@ function ListScreen({ selectedItem, selectedSubItem, climbsByWall, onSelectItem,
   }
 
   return (
-    <div style={{ ...styles.screen, height: "100%", display: "flex", flexDirection: "column" }}>
-      <div
-        style={{
-          ...styles.list,
-          gap: 0,
-          marginLeft: -20,
-          marginRight: -20,
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
+    <div style={styles.screen}>
+      <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
         {LIST_ITEMS.map((item) => (
-          <button
-            key={item.id}
-            style={{ ...styles.wallRow, flex: 1 }}
-            onClick={() => onSelectItem(item)}
-          >
+          <button key={item.id} style={styles.wallRow} onClick={() => onSelectItem(item)}>
             <div>
               <p style={styles.listTitle}>{item.title}</p>
               <p style={styles.listMeta}>{(climbsByWall[item.id] || []).length} climbs</p>
@@ -343,7 +349,12 @@ function ListScreen({ selectedItem, selectedSubItem, climbsByWall, onSelectItem,
             <ChevronRight size={18} color="#6A6A66" />
           </button>
         ))}
-        <ArchiveSection />
+        <ArchiveSection
+          expanded={archiveExpanded}
+          walls={archiveWalls}
+          onToggle={onToggleArchive}
+          onSelectWall={onSelectArchiveWall}
+        />
       </div>
     </div>
   );
@@ -351,29 +362,22 @@ function ListScreen({ selectedItem, selectedSubItem, climbsByWall, onSelectItem,
 
 const WALL_NAME_BY_ID = Object.fromEntries(WALLS.map((wall) => [wall.id, wall.name]));
 
-// Not a separate page — tapping "Archive" expands the older sets inline,
-// right underneath it, in the same Walls list. Tapping a set expands its
-// climbs (read-only; archived climbs aren't climbable/loggable) the same
-// way, one level deeper.
-function ArchiveSection() {
-  const [expanded, setExpanded] = useState(false);
-  const [sets, setSets] = useState(null);
-  const [expandedSetId, setExpandedSetId] = useState(null);
-
-  const handleToggle = () => {
-    const next = !expanded;
-    setExpanded(next);
-    if (next && sets === null) {
-      fetch("/api/archive")
-        .then((res) => res.json())
-        .then((data) => setSets(data.sets || []))
-        .catch((err) => console.error("Failed to load /api/archive:", err));
-    }
-  };
-
+// Not a separate page — tapping "Archive" expands the list of walls that
+// have older climbs, right underneath it, in the same Walls list. Tapping
+// a wall, though, opens its own dedicated page of climbs (see onSelectWall
+// / App's viewingArchiveWallId) — same as tapping a wall does for its
+// current climbs, and just as flat: every past climb for that wall in one
+// list, with no reset/backfill/date grouping surfaced, exactly like the
+// live Climbs page shows no such grouping either.
+//
+// Fully controlled from App (expanded/walls all live there) so this state
+// survives ListScreen unmounting — e.g. switching tabs away and back, or
+// drilling into a wall/climb and backing out — instead of resetting every
+// time this component remounts.
+function ArchiveSection({ expanded, walls, onToggle, onSelectWall }) {
   return (
     <>
-      <div style={styles.archiveBar} onClick={handleToggle}>
+      <div style={styles.archiveBar} onClick={onToggle}>
         <span>Archive</span>
         <ChevronRight
           size={18}
@@ -383,57 +387,68 @@ function ArchiveSection() {
       </div>
 
       {expanded &&
-        (sets === null ? (
+        (walls === null ? (
           <p style={{ ...styles.placeholderText, padding: "16px 20px" }}>Loading…</p>
-        ) : sets.length === 0 ? (
-          <p style={{ ...styles.placeholderText, padding: "16px 20px" }}>No archived sets yet.</p>
+        ) : walls.length === 0 ? (
+          <p style={{ ...styles.placeholderText, padding: "16px 20px" }}>No archived climbs yet.</p>
         ) : (
-          sets.map((set) => (
-            <div key={set.setId}>
-              <div
-                style={styles.archiveSetRow}
-                onClick={() =>
-                  setExpandedSetId(expandedSetId === set.setId ? null : set.setId)
-                }
-              >
-                <div>
-                  <p style={styles.listTitle}>
-                    {WALL_NAME_BY_ID[set.wallId] ?? `Wall ${set.wallId}`}
-                  </p>
-                  <p style={styles.listMeta}>
-                    {set.setType === "reset" ? "Reset" : "Backfill"} on {set.setDate}
-                  </p>
-                </div>
-                <ChevronRight
-                  size={18}
-                  color="#6A6A66"
-                  style={{ transform: expandedSetId === set.setId ? "rotate(90deg)" : "none" }}
-                />
+          walls.map((wall) => (
+            <div
+              key={wall.wallId}
+              style={styles.archiveSetRow}
+              onClick={() => onSelectWall(wall.wallId)}
+            >
+              <div>
+                <p style={styles.listTitle}>
+                  {WALL_NAME_BY_ID[wall.wallId] ?? `Wall ${wall.wallId}`}
+                </p>
+                <p style={styles.listMeta}>{wall.climbs.length} climbs</p>
               </div>
-
-              {expandedSetId === set.setId &&
-                set.climbs.map((climb) => (
-                  <div key={climb.name} style={styles.archiveClimbRow}>
-                    <div style={styles.climbRowLeft}>
-                      <span style={styles.climbDifficulty}>{climb.difficulty}</span>
-                      <span style={styles.climbStars}>
-                        {(() => {
-                          const filled = Math.round(climb.averageStars || 0);
-                          return "⭐".repeat(filled) + "☆".repeat(5 - filled);
-                        })()}
-                      </span>
-                      <span style={styles.climbAscents}>{climb.ascentCount ?? 0} ascents</span>
-                    </div>
-                    <div style={styles.climbRowRight}>
-                      <span style={styles.climbTitle}>{climb.name}</span>
-                      <span style={styles.climbSetter}>{climb.setter}</span>
-                    </div>
-                  </div>
-                ))}
+              <ChevronRight size={18} color="#6A6A66" />
             </div>
           ))
         ))}
     </>
+  );
+}
+
+// The dedicated page for one wall's archived climbs — opened from
+// ArchiveSection, styled the same as ListScreen's current-climbs list (and
+// just as flat — no date/cycle grouping). Tapping a climb opens its detail
+// image (see onSelectClimb / App's viewingArchivedClimb), same as a
+// current climb, but without the ability to log an ascent unless it's from
+// the most recent archived cycle.
+function ArchiveWallScreen({ wall, onSelectClimb }) {
+  if (!wall) return null;
+
+  return (
+    <div style={styles.screen}>
+      <p style={styles.listMeta}>{wall.climbs.length} climbs</p>
+      <div style={{ ...styles.list, marginTop: 16, gap: 0, marginLeft: -20, marginRight: -20 }}>
+        {wall.climbs.map((climb) => (
+          <button
+            key={`${climb.name}-${climb.setDate}`}
+            style={styles.climbRow}
+            onClick={() => onSelectClimb(climb)}
+          >
+            <div style={styles.climbRowLeft}>
+              <span style={styles.climbDifficulty}>{climb.difficulty}</span>
+              <span style={styles.climbStars}>
+                {(() => {
+                  const filled = Math.round(climb.averageStars || 0);
+                  return "⭐".repeat(filled) + "☆".repeat(5 - filled);
+                })()}
+              </span>
+              <span style={styles.climbAscents}>{climb.ascentCount ?? 0} ascents</span>
+            </div>
+            <div style={styles.climbRowRight}>
+              <span style={styles.climbTitle}>{climb.name}</span>
+              <span style={styles.climbSetter}>{climb.setter}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -445,13 +460,210 @@ function PlaceholderScreen({ title }) {
   );
 }
 
-function ProfileScreen({ currentUser, onSignup, onLogin, onOpenSettings, onOpenLogbook }) {
+// Opened from the "+" button on the Climbs page (moderators only). Not
+// wired up to anything yet — just the page shell and placeholder fields
+// for whatever a real create-a-climb form ends up needing.
+function NewClimbForm({ resetDate }) {
+  const [photo, setPhoto] = useState("");
+  const [isBackfill, setIsBackfill] = useState(false);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [date, setDate] = useState(todayStr);
+  // Not backfilling: the climb is part of the wall's current reset, so its
+  // date is that reset's date, not user-editable — hence no Date field.
+  const effectiveDate = isBackfill ? date : resetDate;
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => setPhoto(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div style={styles.screen}>
+      <form style={styles.form} onSubmit={(e) => e.preventDefault()}>
+        {photo ? (
+          <img src={photo} alt="" style={styles.avatarPreview} />
+        ) : (
+          <div style={styles.avatarPreviewPlaceholder}>
+            <Camera size={28} color="#5A5A56" strokeWidth={1.5} />
+          </div>
+        )}
+        <label style={styles.pickImageButton}>
+          Choose photo
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handlePhotoChange}
+            style={{ display: "none" }}
+          />
+        </label>
+
+        <label style={styles.label}>
+          Climb name
+          <input style={styles.input} type="text" placeholder="e.g. Golden Overhang" />
+        </label>
+        <label style={styles.label}>
+          Grade
+          <input style={styles.input} type="text" placeholder="e.g. V4" />
+        </label>
+        <label style={styles.label}>
+          Setter
+          <input style={styles.input} type="text" placeholder="e.g. Alex" />
+        </label>
+        <label style={styles.checkboxRow}>
+          <input
+            style={styles.checkboxInput}
+            type="checkbox"
+            checked={isBackfill}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              setIsBackfill(checked);
+              if (checked) setDate(todayStr);
+            }}
+          />
+          Backfill
+        </label>
+        <label style={styles.label}>
+          Date
+          <input
+            style={isBackfill ? styles.input : { ...styles.input, ...styles.inputDisabled }}
+            type="date"
+            value={effectiveDate || ""}
+            disabled={!isBackfill}
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </label>
+        <button type="button" style={styles.button}>
+          Save
+        </button>
+      </form>
+    </div>
+  );
+}
+
+const GRADE_BUCKETS = ["VB", ...Array.from({ length: 10 }, (_, n) => `V${n}`), "V10+"];
+
+// Client-side mirror of gradeToBucket in server/index.js, for charts built
+// from climbs already in memory rather than from a counts endpoint.
+function bucketGradeCounts(grades) {
+  const counts = Object.fromEntries(GRADE_BUCKETS.map((g) => [g, 0]));
+
+  for (const raw of grades) {
+    if (!raw) continue;
+    const trimmed = raw.trim().toUpperCase();
+    if (trimmed === "VB") {
+      counts.VB += 1;
+      continue;
+    }
+    const match = trimmed.match(/^V(\d+)$/);
+    if (!match) continue;
+    const n = parseInt(match[1], 10);
+    counts[n >= 10 ? "V10+" : `V${n}`] += 1;
+  }
+
+  return GRADE_BUCKETS.map((grade) => ({ grade, count: counts[grade] }));
+}
+
+// A grade pyramid — how many things fall in each V-grade bucket (VB,
+// V0-V9, V10+). Takes either pre-computed `counts` (when the data is
+// already in memory, e.g. a wall's climbs) or an `endpoint` to fetch them
+// from. The Home tab points this at GET /api/climbs/grade-counts
+// (currently active climbs); the Profile tab points it at
+// GET /api/users/:username/grade-counts (that user's logged ascents,
+// preferring the grade typed on the ascent and falling back to the
+// climb's own difficulty when that was left blank).
+function GradeBarChart({ title, endpoint, counts: providedCounts }) {
+  const [fetchedCounts, setFetchedCounts] = useState(null);
+
+  useEffect(() => {
+    if (!endpoint) return;
+    setFetchedCounts(null);
+    fetch(endpoint)
+      .then((res) => res.json())
+      .then((data) => setFetchedCounts(data.counts || []))
+      .catch((err) => console.error(`Failed to load ${endpoint}:`, err));
+  }, [endpoint]);
+
+  const counts = providedCounts ?? fetchedCounts;
+  if (!counts) return null;
+
+  const maxCount = Math.max(1, ...counts.map((c) => c.count));
+  const trackHeight = 80;
+  // Same 4 fractions the gridlines in gradeBarTrack are drawn at (100%
+  // down to 25%), plus the 0 baseline — rounded so the axis always shows
+  // whole ascents, never fractional counts.
+  // Rounding to integers can collapse neighboring fractions to the same
+  // whole number when maxCount is small (e.g. 1, 1, 1, 0, 0) — blank out
+  // repeats so the axis never shows the same value twice in a row.
+  let lastTick = null;
+  const axisTicks = [1, 0.75, 0.5, 0.25, 0].map((frac) => {
+    const value = Math.round(maxCount * frac);
+    if (value === lastTick) return null;
+    lastTick = value;
+    return value;
+  });
+  // The 0 baseline is implied by the bars starting from the bottom, so
+  // don't print it on the axis.
+  axisTicks[axisTicks.length - 1] = null;
+
+  return (
+    <div style={styles.gradeChartWrapper}>
+      {title && <p style={styles.gradeChartTitle}>{title}</p>}
+      <div style={styles.gradeChart}>
+        <div style={styles.gradeAxisColumn}>
+          <span style={styles.gradeAxisSpacer} />
+          <div style={styles.gradeAxisTrack}>
+            {axisTicks.map((tick, i) => (
+              <span key={i} style={styles.gradeAxisLabel}>
+                {tick === null ? "" : tick}
+              </span>
+            ))}
+          </div>
+          <span style={styles.gradeAxisSpacer} />
+        </div>
+        <div style={styles.gradeBarsRow}>
+          {/* Drawn once behind every column, rather than once per column,
+              so the lines are continuous instead of broken up by the gaps
+              between bars. */}
+          <div style={styles.gradeGridlines} />
+          {counts.map(({ grade, count }) => (
+            <div key={grade} style={styles.gradeBarColumn}>
+              <span style={styles.gradeBarCount}>{count > 0 ? count : ""}</span>
+              <div style={styles.gradeBarTrack}>
+                <div
+                  style={{
+                    ...styles.gradeBar,
+                    height: count > 0 ? Math.max(3, (count / maxCount) * trackHeight) : 0,
+                  }}
+                />
+              </div>
+              <span style={styles.gradeBarLabel}>{grade === "V10+" ? "10+" : grade}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileScreen({
+  currentUser,
+  onSignup,
+  onLogin,
+  onOpenSettings,
+  onOpenLogbook,
+  onSetPassword,
+}) {
   const [mode, setMode] = useState("login"); // "login" | "signup"
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [forcePasswordReset, setForcePasswordReset] = useState(false);
 
   const switchMode = (nextMode) => {
     setMode(nextMode);
@@ -486,7 +698,22 @@ function ProfileScreen({ currentUser, onSignup, onLogin, onOpenSettings, onOpenL
     setUsername("");
     setPassword("");
     setName("");
+    if (result.needsPasswordReset) setForcePasswordReset(true);
   };
+
+  if (currentUser && forcePasswordReset) {
+    return (
+      <ChangePasswordForm
+        requireCurrentPassword={false}
+        helperText="Password reset"
+        onSave={async (credentials) => {
+          const result = await onSetPassword(credentials);
+          if (result.success) setForcePasswordReset(false);
+          return result;
+        }}
+      />
+    );
+  }
 
   if (currentUser) {
     const initials = currentUser.username.slice(0, 2).toUpperCase();
@@ -521,6 +748,10 @@ function ProfileScreen({ currentUser, onSignup, onLogin, onOpenSettings, onOpenL
             </button>
           </div>
         </div>
+        <GradeBarChart
+          title="Your ascents"
+          endpoint={`/api/users/${encodeURIComponent(currentUser.username)}/grade-counts`}
+        />
         <button style={styles.logbookButton} onClick={onOpenLogbook}>
           Logbook
         </button>
@@ -777,7 +1008,7 @@ function ChangeNameForm({ currentUser, onSave }) {
   );
 }
 
-function ChangePasswordForm({ onSave }) {
+function ChangePasswordForm({ onSave, requireCurrentPassword = true, helperText }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -787,8 +1018,12 @@ function ChangePasswordForm({ onSave }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!currentPassword || !newPassword) {
-      setError("Please fill in both password fields.");
+    if ((requireCurrentPassword && !currentPassword) || !newPassword) {
+      setError(
+        requireCurrentPassword
+          ? "Please fill in both password fields."
+          : "Please enter a new password."
+      );
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -813,17 +1048,20 @@ function ChangePasswordForm({ onSave }) {
 
   return (
     <div style={styles.screen}>
+      {helperText && <p style={styles.gradeChartTitle}>{helperText}</p>}
       <form style={styles.form} onSubmit={handleSubmit}>
-        <label style={styles.label}>
-          Current password
-          <input
-            style={styles.input}
-            type="password"
-            value={currentPassword}
-            placeholder="••••••••"
-            onChange={(e) => setCurrentPassword(e.target.value)}
-          />
-        </label>
+        {requireCurrentPassword && (
+          <label style={styles.label}>
+            Current password
+            <input
+              style={styles.input}
+              type="password"
+              value={currentPassword}
+              placeholder="••••••••"
+              onChange={(e) => setCurrentPassword(e.target.value)}
+            />
+          </label>
+        )}
         <label style={styles.label}>
           New password
           <input
@@ -853,7 +1091,15 @@ function ChangePasswordForm({ onSave }) {
   );
 }
 
-function TopBar({ title, showBack, onBack, showCommentsButton, onShowComments }) {
+function TopBar({
+  title,
+  showBack,
+  onBack,
+  showCommentsButton,
+  onShowComments,
+  showAddButton,
+  onAdd,
+}) {
   return (
     <header style={styles.topBar}>
       {showBack ? (
@@ -868,6 +1114,10 @@ function TopBar({ title, showBack, onBack, showCommentsButton, onShowComments })
         <button style={styles.topBarBackButton} onClick={onShowComments}>
           <Info size={20} />
         </button>
+      ) : showAddButton ? (
+        <button style={styles.topBarBackButton} onClick={onAdd}>
+          <Plus size={20} />
+        </button>
       ) : (
         <div style={styles.topBarSpacer} />
       )}
@@ -878,19 +1128,41 @@ function TopBar({ title, showBack, onBack, showCommentsButton, onShowComments })
 // Replaces the persistent tab bar while viewing a Climb detail page: an
 // attempts counter (with -/+ buttons on either side) above a center button
 // to log an ascent. Logging isn't wired up to anything yet.
-function ClimbActionBar({ attempts, onDecrement, onIncrement, onLogAscent }) {
+function ClimbActionBar({ attempts, onDecrement, onIncrement, onLogAscent, disabled }) {
   return (
     <nav style={styles.climbActionBar}>
-      <button style={styles.climbActionSideButton} onClick={onDecrement}>
+      <button
+        style={{
+          ...styles.climbActionSideButton,
+          ...(disabled ? styles.climbActionSideButtonDisabled : {}),
+        }}
+        onClick={disabled ? undefined : onDecrement}
+        disabled={disabled}
+      >
         <Minus size={22} />
       </button>
       <div style={styles.climbActionCenter}>
-        <span style={styles.attemptsCounter}>{attempts}</span>
-        <button style={styles.logAscentButton} onClick={onLogAscent}>
+        <span
+          style={{ ...styles.attemptsCounter, ...(disabled ? styles.attemptsCounterDisabled : {}) }}
+        >
+          {attempts}
+        </span>
+        <button
+          style={{ ...styles.logAscentButton, ...(disabled ? styles.logAscentButtonDisabled : {}) }}
+          onClick={disabled ? undefined : onLogAscent}
+          disabled={disabled}
+        >
           Log ascent
         </button>
       </div>
-      <button style={styles.climbActionSideButton} onClick={onIncrement}>
+      <button
+        style={{
+          ...styles.climbActionSideButton,
+          ...(disabled ? styles.climbActionSideButtonDisabled : {}),
+        }}
+        onClick={disabled ? undefined : onIncrement}
+        disabled={disabled}
+      >
         <Plus size={22} />
       </button>
     </nav>
@@ -959,10 +1231,12 @@ function StarRatingInput({ value, onChange, invalid }) {
 // Full-width bottom sheet for logging an ascent. Slides up from behind the
 // climb action bar. Attempts (total and this session) are always included
 // in what gets saved, via POST /api/ascents (see App's handleSubmitAscent).
-function LogAscentSheet({ open, attemptsThisSession, onClose, onSubmit }) {
+const GRADE_OPTIONS = ["VB", ...Array.from({ length: 12 }, (_, n) => `V${n}`)];
+
+function LogAscentSheet({ open, attemptsThisSession, currentGrade, onClose, onSubmit }) {
   const [starRating, setStarRating] = useState(0);
   const [attempts, setAttempts] = useState(attemptsThisSession);
-  const [grade, setGrade] = useState("");
+  const [grade, setGrade] = useState(currentGrade || "VB");
   const [comment, setComment] = useState("");
   const [showValidation, setShowValidation] = useState(false);
 
@@ -970,11 +1244,11 @@ function LogAscentSheet({ open, attemptsThisSession, onClose, onSubmit }) {
     if (open) {
       setStarRating(0);
       setAttempts(attemptsThisSession);
-      setGrade("");
+      setGrade(currentGrade || "VB");
       setComment("");
       setShowValidation(false);
     }
-  }, [open, attemptsThisSession]);
+  }, [open, attemptsThisSession, currentGrade]);
 
   const attemptsValue = Number(attempts) || 0;
   const ratingInvalid = showValidation && starRating < 0.5;
@@ -1024,13 +1298,17 @@ function LogAscentSheet({ open, attemptsThisSession, onClose, onSubmit }) {
 
           <label style={styles.label}>
             Grade
-            <input
+            <select
               style={styles.input}
-              type="text"
-              placeholder="V4"
               value={grade}
               onChange={(e) => setGrade(e.target.value)}
-            />
+            >
+              {GRADE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label style={styles.label}>
@@ -1053,9 +1331,6 @@ function LogAscentSheet({ open, attemptsThisSession, onClose, onSubmit }) {
               onChange={(e) => setAttempts(e.target.value)}
             />
           </label>
-          <p style={styles.sheetSessionAttempts}>
-            This session: {attemptsThisSession}
-          </p>
 
           <button type="submit" style={styles.button}>
             Save ascent
@@ -1071,6 +1346,17 @@ export default function App() {
   const [selectedListItem, setSelectedListItem] = useState(null);
   const [selectedSubItem, setSelectedSubItem] = useState(null);
   const [showComments, setShowComments] = useState(false);
+  const [viewingArchivedClimb, setViewingArchivedClimb] = useState(null);
+  // Lifted out of ArchiveSection so it survives that component unmounting
+  // (tab switches, drilling into a wall/climb and back) instead of
+  // resetting. viewingArchiveWallId is which wall's archived-climbs page
+  // (ArchiveWallScreen) is currently open, if any.
+  const [archiveExpanded, setArchiveExpanded] = useState(false);
+  const [archiveWalls, setArchiveWalls] = useState(null);
+  const [viewingArchiveWallId, setViewingArchiveWallId] = useState(null);
+  // Moderator-only "add" flow from the Climbs page — not wired up to
+  // anything yet, just the page shell and a placeholder form.
+  const [creatingClimb, setCreatingClimb] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const [showLogAscentSheet, setShowLogAscentSheet] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -1111,6 +1397,12 @@ export default function App() {
       ? (climbsByWall[selectedListItem.id] || []).find((c) => c.name === selectedSubItem)
       : null;
 
+  // Whichever climb the Climb-detail UI (image, comments, action bar) is
+  // currently showing — a normal current climb, or one opened from the
+  // Archive. Both use the exact same detail UI; only the action bar
+  // (attempts/log-ascent) is disabled for an archived climb.
+  const activeClimb = viewingArchivedClimb || selectedClimb;
+
   // --- Persisted session ---------------------------------------------------
   // The user *database* now lives on the server, in server/users.json — see
   // handleSignup/handleLogin below. We still keep the logged-in session
@@ -1137,7 +1429,7 @@ export default function App() {
       }
 
       setCurrentUser(data.user);
-      return { success: true };
+      return { success: true, needsPasswordReset: !!data.needsPasswordReset };
     } catch (err) {
       console.error(`Failed to reach /api/${endpoint}:`, err);
       return {
@@ -1195,6 +1487,25 @@ export default function App() {
     setSelectedListItem(item);
     setSelectedSubItem(null);
     setShowComments(false);
+    setCreatingClimb(false);
+  };
+
+  const handleViewArchivedClimb = (climb) => {
+    setViewingArchivedClimb(climb);
+    setShowComments(false);
+    setAttempts(0);
+    setShowLogAscentSheet(false);
+  };
+
+  const handleToggleArchive = () => {
+    const next = !archiveExpanded;
+    setArchiveExpanded(next);
+    if (next && archiveWalls === null) {
+      fetch("/api/archive")
+        .then((res) => res.json())
+        .then((data) => setArchiveWalls(data.walls || []))
+        .catch((err) => console.error("Failed to load /api/archive:", err));
+    }
   };
 
   // Tapping the Walls tab while already on it pops all the way back to the
@@ -1205,6 +1516,9 @@ export default function App() {
       setSelectedSubItem(null);
       setShowComments(false);
       setShowLogAscentSheet(false);
+      setViewingArchivedClimb(null);
+      setViewingArchiveWallId(null);
+      setCreatingClimb(false);
       return;
     }
     if (tabId === activeTab && tabId === "profile") {
@@ -1229,7 +1543,13 @@ export default function App() {
   const handleSubmitAscent = async (fields) => {
     setShowLogAscentSheet(false);
 
-    if (!currentUser) return;
+    // Most archived climbs are view-only — the Log Ascent button is
+    // disabled for them (see isClimbActionDisabled below), so this
+    // shouldn't be reachable, but guard against it as defense in depth.
+    // The most recent archived reset+backfill per wall stays loggable
+    // (climb.loggable, set by GET /api/archive), same as a current climb.
+    const isDisabledArchivedClimb = viewingArchivedClimb && !viewingArchivedClimb.loggable;
+    if (!currentUser || !activeClimb || isDisabledArchivedClimb) return;
 
     try {
       await fetch("/api/ascents", {
@@ -1237,8 +1557,8 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username: currentUser.username,
-          wallId: selectedListItem?.id,
-          climbName: selectedSubItem,
+          wallId: activeClimb.wallId,
+          climbName: activeClimb.name,
           ...fields,
         }),
       });
@@ -1266,14 +1586,34 @@ export default function App() {
       case "home":
         return <HomeScreen />;
       case "list": {
-        if (selectedListItem && selectedSubItem && showComments) {
+        if (creatingClimb) {
+          // The reset date for the wall being added to — every current
+          // climb on that wall shares the same setDate for its "reset"
+          // entry, so the first one found is enough.
+          const wallClimbs = climbsByWall[selectedListItem?.id] || [];
+          const resetDate =
+            wallClimbs.find((c) => c.setType === "reset")?.setDate ??
+            wallClimbs[0]?.setDate ??
+            "";
+          return <NewClimbForm resetDate={resetDate} />;
+        }
+        if (activeClimb && showComments) {
           return (
             <CommentsScreen
-              climb={selectedClimb}
+              climb={activeClimb}
               currentUser={currentUser}
               onDeleteComment={handleDeleteComment}
             />
           );
+        }
+        if (viewingArchivedClimb) {
+          const title = `${viewingArchivedClimb.difficulty} · ${viewingArchivedClimb.name}`;
+          const subtitle = `Set by ${viewingArchivedClimb.setter}`;
+          return <ZoomableImageViewer title={title} subtitle={subtitle} />;
+        }
+        if (viewingArchiveWallId) {
+          const wall = (archiveWalls || []).find((w) => w.wallId === viewingArchiveWallId);
+          return <ArchiveWallScreen wall={wall} onSelectClimb={handleViewArchivedClimb} />;
         }
         return (
           <ListScreen
@@ -1282,6 +1622,10 @@ export default function App() {
             climbsByWall={climbsByWall}
             onSelectItem={handleSelectListItem}
             onSelectSubItem={handleSelectSubItem}
+            archiveExpanded={archiveExpanded}
+            archiveWalls={archiveWalls}
+            onToggleArchive={handleToggleArchive}
+            onSelectArchiveWall={setViewingArchiveWallId}
           />
         );
       }
@@ -1310,6 +1654,7 @@ export default function App() {
             onLogin={handleLogin}
             onOpenSettings={handleOpenSettings}
             onOpenLogbook={handleOpenLogbook}
+            onSetPassword={handleUpdatePassword}
           />
         );
       }
@@ -1325,6 +1670,11 @@ export default function App() {
     showComments,
     showSettings,
     settingsOption,
+    viewingArchivedClimb,
+    archiveExpanded,
+    archiveWalls,
+    viewingArchiveWallId,
+    creatingClimb,
   ]);
 
   const tabTitle = TABS.find((tab) => tab.id === activeTab)?.label ?? "";
@@ -1332,16 +1682,28 @@ export default function App() {
   let showBack = false;
   let handleBack = () => {};
 
-  if (activeTab === "list" && selectedListItem && selectedSubItem && showComments) {
+  if (activeTab === "list" && creatingClimb) {
+    topBarTitle = "New Climb";
+    showBack = true;
+    handleBack = () => setCreatingClimb(false);
+  } else if (activeTab === "list" && activeClimb && showComments) {
     topBarTitle = "Comments";
     showBack = true;
     handleBack = () => setShowComments(false);
+  } else if (activeTab === "list" && viewingArchivedClimb) {
+    topBarTitle = "Climb";
+    showBack = true;
+    handleBack = () => setViewingArchivedClimb(null);
+  } else if (activeTab === "list" && viewingArchiveWallId) {
+    topBarTitle = WALL_NAME_BY_ID[viewingArchiveWallId] ?? "Archive";
+    showBack = true;
+    handleBack = () => setViewingArchiveWallId(null);
   } else if (activeTab === "list" && selectedListItem && selectedSubItem) {
     topBarTitle = "Climb";
     showBack = true;
     handleBack = () => setSelectedSubItem(null);
   } else if (activeTab === "list" && selectedListItem) {
-    topBarTitle = "Climbs";
+    topBarTitle = selectedListItem.title;
     showBack = true;
     handleBack = () => setSelectedListItem(null);
   } else if (activeTab === "profile" && showSettings && settingsOption) {
@@ -1354,11 +1716,22 @@ export default function App() {
     handleBack = () => setShowSettings(false);
   }
 
-  const showCommentsButton =
-    activeTab === "list" && Boolean(selectedListItem) && Boolean(selectedSubItem) && !showComments;
+  const showCommentsButton = activeTab === "list" && Boolean(activeClimb) && !showComments;
 
-  const isClimbDetail =
-    activeTab === "list" && Boolean(selectedListItem) && Boolean(selectedSubItem) && !showComments;
+  const isClimbDetail = activeTab === "list" && Boolean(activeClimb) && !showComments;
+
+  // Root of the Walls tab: no wall/climb drilled into, not inside the
+  // Archive's own climb page. Only moderators get the add button here —
+  // there's no create-a-wall/reset flow wired up behind it yet.
+  const isWallsRoot =
+    activeTab === "list" &&
+    !selectedListItem &&
+    !viewingArchivedClimb &&
+    !viewingArchiveWallId;
+  // A wall's Climbs list (selectedListItem set, no climb drilled into yet).
+  const isClimbsList =
+    activeTab === "list" && Boolean(selectedListItem) && !selectedSubItem && !creatingClimb;
+  const showAddButton = (isWallsRoot || isClimbsList) && Boolean(currentUser?.isModerator);
 
   return (
     <div style={styles.app}>
@@ -1368,6 +1741,10 @@ export default function App() {
         onBack={handleBack}
         showCommentsButton={showCommentsButton}
         onShowComments={() => setShowComments(true)}
+        showAddButton={showAddButton}
+        onAdd={() => {
+          if (isClimbsList) setCreatingClimb(true);
+        }}
       />
       <div style={styles.content}>{content}</div>
 
@@ -1377,6 +1754,7 @@ export default function App() {
           onDecrement={handleDecrementAttempts}
           onIncrement={handleIncrementAttempts}
           onLogAscent={handleLogAscent}
+          disabled={Boolean(viewingArchivedClimb) && !viewingArchivedClimb.loggable}
         />
       ) : (
         <nav style={styles.tabBar}>
@@ -1411,6 +1789,7 @@ export default function App() {
         <LogAscentSheet
           open={showLogAscentSheet}
           attemptsThisSession={attempts}
+          currentGrade={activeClimb?.difficulty}
           onClose={() => setShowLogAscentSheet(false)}
           onSubmit={handleSubmitAscent}
         />
@@ -1530,24 +1909,6 @@ const styles = {
     userSelect: "none",
     willChange: "transform",
   },
-  quoteCard: {
-    background: "#1C1C1C",
-    border: "1px solid #2E2E2C",
-    borderRadius: 14,
-    padding: "28px 20px",
-    marginBottom: 16,
-    minHeight: 100,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    textAlign: "center",
-  },
-  quoteText: {
-    fontSize: 17,
-    lineHeight: 1.5,
-    color: "#E4E3DF",
-    margin: 0,
-  },
   button: {
     width: "100%",
     padding: "12px 16px",
@@ -1588,6 +1949,8 @@ const styles = {
     alignItems: "center",
     justifyContent: "space-between",
     width: "100%",
+    height: 72,
+    flexShrink: 0,
     textAlign: "left",
     background: "#1C1C1C",
     border: "none",
@@ -1629,19 +1992,6 @@ const styles = {
     padding: "12px 20px",
     cursor: "pointer",
     font: "inherit",
-  },
-  archiveClimbRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: "100%",
-    flexShrink: 0,
-    textAlign: "left",
-    background: "#0B0B0B",
-    border: "none",
-    borderTop: "1px solid #2E2E2C",
-    padding: "12px 24px",
-    cursor: "default",
   },
   climbRow: {
     display: "flex",
@@ -1848,6 +2198,101 @@ const styles = {
     fontSize: 12,
     color: "#8F8F8A",
   },
+  gradeChartWrapper: {
+    marginBottom: 20,
+  },
+  gradeChartTitle: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#C9C9C4",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    margin: "0 0 12px",
+  },
+  gradeChart: {
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: 2,
+  },
+  gradeBarColumn: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 4,
+  },
+  gradeBarCount: {
+    fontSize: 9,
+    color: "#8F8F8A",
+    lineHeight: 1,
+    minHeight: 9,
+  },
+  gradeBarsRow: {
+    flex: 1,
+    position: "relative",
+    display: "flex",
+    alignItems: "flex-end",
+    gap: 2,
+  },
+  gradeGridlines: {
+    position: "absolute",
+    top: 13,
+    left: 0,
+    right: 0,
+    height: 80,
+    pointerEvents: "none",
+    // Solid horizontal lines at 0/25/50/75/100% of the track height,
+    // drawn once across the full width so they read as continuous lines
+    // rather than being broken up by the gaps between bars.
+    backgroundImage:
+      "linear-gradient(#2E2E2C, #2E2E2C), linear-gradient(#2E2E2C, #2E2E2C), linear-gradient(#2E2E2C, #2E2E2C), linear-gradient(#2E2E2C, #2E2E2C)",
+    backgroundSize: "100% 1px",
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "top 0 left 0, bottom 25% left 0, bottom 50% left 0, bottom 75% left 0",
+  },
+  gradeBarTrack: {
+    height: 80,
+    width: "100%",
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "center",
+    position: "relative",
+  },
+  gradeBar: {
+    width: "70%",
+    background: "#1D9E75",
+    borderRadius: "3px 3px 0 0",
+  },
+  gradeBarLabel: {
+    fontSize: 9,
+    color: "#8F8F8A",
+    lineHeight: 1,
+    minHeight: 9,
+  },
+  gradeAxisColumn: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: 4,
+    paddingRight: 6,
+    flexShrink: 0,
+  },
+  gradeAxisSpacer: {
+    minHeight: 9,
+  },
+  gradeAxisTrack: {
+    height: 80,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+  },
+  gradeAxisLabel: {
+    fontSize: 9,
+    color: "#6A6A66",
+    lineHeight: 1,
+  },
   logbookButton: {
     width: "100%",
     display: "flex",
@@ -1915,6 +2360,18 @@ const styles = {
     fontSize: 13,
     color: "#8F8F8A",
   },
+  checkboxRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    fontSize: 13,
+    color: "#8F8F8A",
+  },
+  checkboxInput: {
+    width: 18,
+    height: 18,
+    accentColor: "#1D9E75",
+  },
   input: {
     background: "#1C1C1C",
     border: "1px solid #2E2E2C",
@@ -1924,8 +2381,40 @@ const styles = {
     color: "#F2F1EE",
     outline: "none",
   },
+  climbsFilterRow: {
+    display: "flex",
+    gap: 8,
+    marginBottom: 20,
+  },
+  climbsFilterInput: {
+    flex: 1,
+    background: "#1C1C1C",
+    border: "1px solid #2E2E2C",
+    borderRadius: 10,
+    padding: "10px 12px",
+    fontSize: 15,
+    color: "#F2F1EE",
+    outline: "none",
+  },
+  climbsFilterButton: {
+    width: 42,
+    height: 42,
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#1C1C1C",
+    border: "1px solid #2E2E2C",
+    borderRadius: 10,
+    color: "#C9C9C4",
+    cursor: "pointer",
+  },
   inputInvalid: {
     border: "1px solid #E4685C",
+  },
+  inputDisabled: {
+    color: "#6A6A66",
+    cursor: "not-allowed",
   },
   formError: {
     fontSize: 13,
@@ -1983,6 +2472,10 @@ const styles = {
     color: "#F2F1EE",
     cursor: "pointer",
   },
+  climbActionSideButtonDisabled: {
+    color: "#4A4A46",
+    cursor: "not-allowed",
+  },
   climbActionCenter: {
     flex: 1,
     display: "flex",
@@ -1995,6 +2488,9 @@ const styles = {
     fontWeight: 600,
     color: "#8F8F8A",
   },
+  attemptsCounterDisabled: {
+    color: "#4A4A46",
+  },
   logAscentButton: {
     width: "100%",
     padding: "12px 16px",
@@ -2005,6 +2501,11 @@ const styles = {
     fontSize: 15,
     fontWeight: 600,
     cursor: "pointer",
+  },
+  logAscentButtonDisabled: {
+    background: "#2E2E2C",
+    color: "#6A6A66",
+    cursor: "not-allowed",
   },
   sheetBackdrop: {
     position: "absolute",

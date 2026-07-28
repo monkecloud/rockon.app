@@ -1,7 +1,7 @@
 [
   {
     "username": "Derrick",
-    "passwordHash": "$2b$10$BkMr8PIfJwJRYSAaWtuk2ObZ9hSdGuTPBSmweNnOkmdIMnSiLwAAu",
+    "passwordHash": "",
     "followers": [],
     "following": [],
     "ascents": [
@@ -251,11 +251,24 @@
   },
   {
     "username": "Cubesnail",
-    "passwordHash": "$2b$10$bqIcO2OimvfcVTWl461h2OWZiMCFOo8OicKlf7RCdlPYqDq6m2TV2",
+    "passwordHash": "$2b$10$lWgLaHCM0sOEIcZc/RgvOe77cO16vn3SUO33WP3wfUZtRV0LFzKQu",
     "name": "derrick",
+    "isModerator": true,
     "followers": [],
     "following": [],
-    "ascents": []
+    "ascents": [
+      {
+        "id": "d6962886-6e40-4f26-8ee9-1d0514b67fb1",
+        "wallId": 1,
+        "climbName": "Copper Nose",
+        "starRating": 3,
+        "grade": "V8",
+        "comment": "asdf",
+        "logAttempts": true,
+        "attempts": 2,
+        "attemptsThisSession": 0
+      }
+    ]
   },
   {
     "username": "tester",
@@ -322,6 +335,73 @@
     "name": "cubesnails",
     "followers": [],
     "following": [],
-    "ascents": []
+    "ascents": [
+      {
+        "id": "6aa88d76-2910-4881-8e80-30c7914d019a",
+        "wallId": 1,
+        "climbName": "Cracked Traverse",
+        "starRating": 2.5,
+        "grade": "",
+        "comment": "",
+        "logAttempts": true,
+        "attempts": 1,
+        "attemptsThisSession": 0
+      },
+      {
+        "id": "d692f0e7-04bf-47fd-b8d3-e8b113a41260",
+        "wallId": 1,
+        "climbName": "Cracked Traverse",
+        "starRating": 2.5,
+        "grade": "",
+        "comment": "",
+        "logAttempts": true,
+        "attempts": 4,
+        "attemptsThisSession": 4
+      },
+      {
+        "id": "3474e63a-21e5-48fe-9313-4b811477e97c",
+        "wallId": 1,
+        "climbName": "Faded Arête",
+        "starRating": 2,
+        "grade": "",
+        "comment": "",
+        "logAttempts": true,
+        "attempts": 9,
+        "attemptsThisSession": 0
+      },
+      {
+        "id": "726444f3-9092-4ea2-98cb-90e029f63265",
+        "wallId": 3,
+        "climbName": "Quiet Gaston",
+        "starRating": 3.5,
+        "grade": "V3",
+        "comment": "",
+        "logAttempts": true,
+        "attempts": 1,
+        "attemptsThisSession": 0
+      },
+      {
+        "id": "e9f141e3-e3e8-4261-a2a0-fff4d0b4e4aa",
+        "wallId": 3,
+        "climbName": "Quiet Gaston",
+        "starRating": 3.5,
+        "grade": "V2",
+        "comment": "",
+        "logAttempts": true,
+        "attempts": 2,
+        "attemptsThisSession": 0
+      },
+      {
+        "id": "2048feb6-b681-4887-a31b-8aae5a1782b9",
+        "wallId": 3,
+        "climbName": "Quiet Gaston",
+        "starRating": 1.5,
+        "grade": "V6",
+        "comment": "",
+        "logAttempts": true,
+        "attempts": 1,
+        "attemptsThisSession": 0
+      }
+    ]
   }
 ]
