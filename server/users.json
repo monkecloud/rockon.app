@@ -2,6 +2,8 @@
   {
     "username": "Derrick",
     "passwordHash": "",
+    "isModerator": true,
+    "isAdmin": true,
     "followers": [],
     "following": [],
     "ascents": [
@@ -246,14 +248,38 @@
         "id": "1c36f78a-969d-4b72-be6d-b22425b07bff",
         "wallId": 1,
         "climbName": "Morning Gaston"
+      },
+      {
+        "id": "13c280ac-504c-4ec5-8888-7296a625b69d",
+        "wallId": 4,
+        "climbName": "Iron Crack",
+        "starRating": 3.5,
+        "grade": "V8",
+        "comment": ",jkhgzx",
+        "logAttempts": true,
+        "attempts": 1,
+        "attemptsThisSession": 0
+      },
+      {
+        "id": "3be4e02f-0e65-444e-936c-249062bfd09b",
+        "wallId": 4,
+        "climbName": "Iron Crack",
+        "starRating": 3,
+        "grade": "V8",
+        "comment": "ljkhjojhj",
+        "logAttempts": true,
+        "attempts": 1,
+        "attemptsThisSession": 0
       }
-    ]
+    ],
+    "sessionToken": "5a3d37e029456e72ce2fe8df9a20c2e26c2f65084a09f6d5bb3a91e8057e5c8e"
   },
   {
     "username": "Cubesnail",
     "passwordHash": "$2b$10$lWgLaHCM0sOEIcZc/RgvOe77cO16vn3SUO33WP3wfUZtRV0LFzKQu",
     "name": "derrick",
-    "isModerator": true,
+    "isModerator": false,
+    "isAdmin": false,
     "followers": [],
     "following": [],
     "ascents": [
@@ -268,7 +294,9 @@
         "attempts": 2,
         "attemptsThisSession": 0
       }
-    ]
+    ],
+    "isSetter": true,
+    "sessionToken": ""
   },
   {
     "username": "tester",
@@ -276,7 +304,10 @@
     "name": "test",
     "followers": [],
     "following": [],
-    "ascents": []
+    "ascents": [],
+    "isModerator": true,
+    "isAdmin": true,
+    "isSetter": true
   },
   {
     "username": "test1",
@@ -327,7 +358,10 @@
         "attempts": 4,
         "attemptsThisSession": 4
       }
-    ]
+    ],
+    "isModerator": false,
+    "isSetter": false,
+    "isAdmin": false
   },
   {
     "username": "cubesnaill",
@@ -403,5 +437,27 @@
         "attemptsThisSession": 0
       }
     ]
+  },
+  {
+    "username": "grisha",
+    "passwordHash": "$2b$10$JHzwMGDxcGbOoawHReLeoOs/ZP7XS3/sZiMzzzdn16.XiL9cGiM/a",
+    "name": "grisha",
+    "followers": [],
+    "following": [],
+    "ascents": [],
+    "isModerator": false,
+    "isSetter": true,
+    "isAdmin": false
+  },
+  {
+    "username": "tiff",
+    "passwordHash": "$2b$10$614YtxRMwQ17JoE9KCa.0e1RU35/IBPb1ky39.sMGGp7ZljPY0Ebe",
+    "name": "tiff",
+    "followers": [],
+    "following": [],
+    "ascents": [],
+    "isModerator": false,
+    "isSetter": true,
+    "isAdmin": false
   }
 ]

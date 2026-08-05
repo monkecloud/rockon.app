@@ -1,3 +1,44 @@
+/* ---------------------------------------------------------------------
+ * Design tokens — the single place to edit the app's colors and font.
+ * Referenced from src/App.jsx's inline styles as var(--token-name), so
+ * changing a value here updates every place it's used at once.
+ * ------------------------------------------------------------------- */
+:root {
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  /* Surfaces, darkest to lightest */
+  --color-bg: #000000;
+  --color-surface-0: #101010;
+  --color-surface-1: #141414;
+  --color-surface-2: #151515;
+  --color-surface-3: #181816;
+  --color-surface-4: #181818;
+  --color-surface-5: #1c1c1c;
+  --color-surface-6: #232320;
+  --color-surface-7: #2a2a28;
+
+  /* Borders */
+  --color-border: #2e2e2c;
+  --color-border-strong: #33332f;
+  --color-border-subtle: #3a3a36;
+
+  /* Text, darkest/most-muted to brightest */
+  --color-text-disabled: #4a4a46;
+  --color-text-faint: #5a5a56;
+  --color-text-muted: #6a6a66;
+  --color-text-inactive: #7a7a76;
+  --color-text-tertiary: #8f8f8a;
+  --color-text-secondary: #c9c9c4;
+  --color-text-offwhite: #e4e3df;
+  --color-text-primary: #f2f1ee;
+
+  /* Accent (theme) + status colors */
+  --color-accent: #1f5c94;
+  --color-accent-bright: #4fa8e8;
+  --color-danger: #e4685c;
+  --color-star: #f5c518;
+}
+
 * {
   box-sizing: border-box;
   scrollbar-width: none; /* Firefox */
@@ -15,10 +56,11 @@ body,
   margin: 0;
   overflow: hidden;
   touch-action: manipulation;
-  background: #000;
+  background: var(--color-bg);
 }
 
 body {
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
