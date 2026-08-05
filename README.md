@@ -30,6 +30,46 @@ npm run server   # starts the API on http://localhost:3001
 npm run dev      # starts the UI on http://localhost:5173
 ```
 
+## Running it persistently (production-style)
+
+For a deploy meant to stay up (e.g. on a home server or Raspberry Pi) rather
+than a dev session, build the frontend once and let the API server serve it
+directly — no separate Vite process needed:
+
+```bash
+npm run build   # writes the optimized frontend to dist/
+npm start        # serves dist/ AND the API, both on http://localhost:3001
+```
+
+`server/worker.js` serves `dist/` as static files and falls back to
+`index.html` for any non-`/api` route (so client-side navigation/refreshes
+still work), while `/api/*` keeps going to the Express routes as before —
+same port, same process, via the primary/worker proxy in `server/index.js`.
+Only one port (`3001` by default, override with `PORT`) needs to be reachable
+now, instead of both `5173` and `3001`.
+
+**Don't set `NODE_ENV=production`** unless you've also put this behind HTTPS.
+`setSessionCookie` in `server/worker.js` marks the session cookie `secure`
+when `NODE_ENV === "production"`, and browsers silently drop `secure`
+cookies sent over plain HTTP — which would break login on a LAN deploy with
+no TLS in front of it. Leave `NODE_ENV` unset for a plain-HTTP LAN server.
+
+To survive reboots/logouts, run it as a systemd service (or equivalent)
+rather than in a terminal you might close. `deploy/climbing-app.service` is
+a ready-to-use unit file — it rebuilds `dist/` and restarts on every start
+(so a `git pull` + `systemctl restart` always picks up the latest code) and
+comes back up automatically if the process crashes:
+
+```bash
+sudo cp deploy/climbing-app.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now climbing-app
+```
+
+Edit `User=`/`WorkingDirectory=` in that file first to match where you
+cloned the repo and which user should run it. Check on it with
+`systemctl status climbing-app` / `journalctl -u climbing-app -f`.
+
 ## Access it from other devices on your network
 
 Vite is already configured (`host: true` in `vite.config.js`) to listen on

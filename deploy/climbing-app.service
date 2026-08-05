@@ -1,0 +1,28 @@
+# systemd unit for running this app persistently (e.g. on a home server or
+# Raspberry Pi), serving the built frontend + API together on one port via
+# `npm start` — see the "Running it persistently" section in README.md.
+#
+# Install:
+#   sudo cp deploy/climbing-app.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now climbing-app
+#
+# Adjust User/WorkingDirectory below to match where you cloned the repo.
+
+[Unit]
+Description=Climbing app (built frontend + API, served together)
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/site
+# Rebuilds dist/ on every (re)start, so a `git pull` + restart always picks
+# up the latest code without a separate manual `npm run build` step.
+ExecStartPre=/usr/bin/npm run build
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

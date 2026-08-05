@@ -46,7 +46,13 @@ let pendingWorker = null;
 // finishes, instead of forking a pile of overlapping workers.
 let restartQueued = false;
 
-function retireWorker(worker) {
+// Snapshot of module state, exported for tests — production code never
+// reads this, it uses the closure variables above directly.
+export function getState() {
+  return { activeWorker, activeWorkerPort, pendingWorker, restartQueued };
+}
+
+export function retireWorker(worker) {
   if (!worker) return;
   const killTimer = setTimeout(() => worker.kill(), OLD_WORKER_KILL_TIMEOUT_MS);
   worker.once("exit", () => clearTimeout(killTimer));
@@ -60,7 +66,7 @@ function retireWorker(worker) {
 // it's "pending" — since the *active* worker is the one that'll actually
 // receive the next climbs.json-writing request and need to send the next
 // "climbs-updated" message.
-function handleWorkerMessage(worker, msg) {
+export function handleWorkerMessage(worker, msg) {
   if (msg?.type === "climbs-updated") {
     startWorker();
     return;
@@ -80,7 +86,7 @@ function handleWorkerMessage(worker, msg) {
   }
 }
 
-function startWorker() {
+export function startWorker() {
   if (pendingWorker) {
     restartQueued = true;
     return;
@@ -94,9 +100,14 @@ function startWorker() {
   worker.on("message", (msg) => handleWorkerMessage(worker, msg));
 }
 
-startWorker();
+// Skipped under the test runner (NODE_ENV=test) so importing this module for
+// unit tests doesn't fork a real worker process — tests drive startWorker()
+// explicitly against a mocked child_process.fork instead.
+if (process.env.NODE_ENV !== "test") {
+  startWorker();
+}
 
-const proxy = http.createServer((clientReq, clientRes) => {
+export const proxy = http.createServer((clientReq, clientRes) => {
   if (!activeWorkerPort) {
     clientRes.writeHead(503, { "Content-Type": "text/plain" });
     clientRes.end("Server starting, try again in a moment.");
@@ -123,17 +134,19 @@ const proxy = http.createServer((clientReq, clientRes) => {
   clientReq.pipe(proxyReq);
 });
 
-proxy.listen(PORT, () => {
-  console.log(`API proxy running at http://localhost:${PORT}`);
-});
-
 // child_process.fork()'d workers aren't tied to this process's lifetime on
 // their own — without this they'd become orphans (still holding their
 // throwaway ports) if the primary is stopped directly (Ctrl+C, kill, etc.).
-function shutdown() {
+export function shutdown() {
   if (activeWorker) activeWorker.kill();
   if (pendingWorker) pendingWorker.kill();
   process.exit(0);
 }
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+
+if (process.env.NODE_ENV !== "test") {
+  proxy.listen(PORT, () => {
+    console.log(`API proxy running at http://localhost:${PORT}`);
+  });
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+}

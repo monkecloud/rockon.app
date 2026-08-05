@@ -78,8 +78,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_FILE = path.join(__dirname, "users.json");
 const CLIMBS_FILE = path.join(__dirname, "climbs.json");
+// `npm run build`'s output — only present once someone's actually built the
+// app. In dev, nothing ever requests this worker for anything but /api (the
+// Vite dev server on 5173 serves the UI and only proxies /api here — see
+// vite.config.js), so it's fine that DIST_DIR won't exist yet in that mode.
+const DIST_DIR = path.join(__dirname, "..", "dist");
 
-const app = express();
+export const app = express();
 // credentials: true + reflecting the request origin (rather than "*") is
 // required for the session cookie to travel on cross-origin requests — e.g.
 // if the client ever isn't served through the Vite dev proxy that makes
@@ -89,13 +94,13 @@ app.use(cors({ origin: true, credentials: true }));
 // upload (see POST /api/users/:username/avatar below).
 app.use(express.json({ limit: "5mb" }));
 
-function generateSessionToken() {
+export function generateSessionToken() {
   return crypto.randomBytes(32).toString("hex");
 }
 
 // No cookie-parser dependency in this project, so parse the one header we
 // need by hand rather than pull in a package for it.
-function getCookie(req, name) {
+export function getCookie(req, name) {
   const header = req.headers.cookie;
   if (!header) return undefined;
   for (const part of header.split(";")) {
@@ -108,7 +113,7 @@ function getCookie(req, name) {
   return undefined;
 }
 
-function setSessionCookie(res, token) {
+export function setSessionCookie(res, token) {
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
@@ -126,7 +131,7 @@ function setSessionCookie(res, token) {
 // is the one source of truth for "who is making this request" from here on;
 // route handlers should never trust a username handed to them via
 // params/body/query instead.
-async function authenticate(req, res, next) {
+export async function authenticate(req, res, next) {
   const token = getCookie(req, SESSION_COOKIE);
   if (!token) {
     return res.status(401).json({ error: "Not logged in." });
@@ -144,14 +149,14 @@ async function authenticate(req, res, next) {
 
 // For routes shaped as /api/users/:username/... that act on one account —
 // only that account's own (authenticated) session may call them.
-function requireSelf(req, res, next) {
+export function requireSelf(req, res, next) {
   if (req.user.username !== req.params.username) {
     return res.status(403).json({ error: "You can only do this for your own account." });
   }
   next();
 }
 
-function requireAdmin(req, res, next) {
+export function requireAdmin(req, res, next) {
   if (!req.user.isAdmin) {
     return res.status(403).json({ error: "Admins only." });
   }
@@ -160,14 +165,14 @@ function requireAdmin(req, res, next) {
 
 // isAdmin implies isModerator + isSetter (see the role model note above
 // ROLES below), so checking these two covers admins too.
-function requireModeratorOrSetter(req, res, next) {
+export function requireModeratorOrSetter(req, res, next) {
   if (!req.user.isModerator && !req.user.isSetter) {
     return res.status(403).json({ error: "Moderators/setters only." });
   }
   next();
 }
 
-async function readUsers() {
+export async function readUsers() {
   let users;
   try {
     const raw = await fs.readFile(DATA_FILE, "utf-8");
@@ -209,7 +214,7 @@ async function readUsers() {
   return users;
 }
 
-async function writeUsers(users) {
+export async function writeUsers(users) {
   await fs.writeFile(DATA_FILE, JSON.stringify(users, null, 2));
 }
 
@@ -259,7 +264,7 @@ async function writeUsers(users) {
 // wall. There's no endpoint yet to create a new set or archive an old one —
 // that waits on moderator/setter accounts (a role this API doesn't have
 // yet).
-async function readClimbs() {
+export async function readClimbs() {
   let climbs;
   try {
     const raw = await fs.readFile(CLIMBS_FILE, "utf-8");
@@ -287,7 +292,7 @@ async function readClimbs() {
   return climbs;
 }
 
-async function writeClimbs(climbs) {
+export async function writeClimbs(climbs) {
   await fs.writeFile(CLIMBS_FILE, JSON.stringify(climbs, null, 2));
   // Tell the primary (index.js) climbs.json changed so it can spin up a
   // fresh worker and swap traffic over — see the module comment up top.
@@ -303,7 +308,7 @@ async function writeClimbs(climbs) {
 // reset). Everything from before that reset is left out here — that's the
 // "archived sets" the app doesn't have a view for yet, but this is the
 // query that view would eventually use.
-function currentClimbsOnly(climbs) {
+export function currentClimbsOnly(climbs) {
   const latestResetDateByWall = {};
   for (const climb of climbs) {
     if (climb.setType !== "reset") continue;
@@ -327,7 +332,7 @@ function currentClimbsOnly(climbs) {
 // and before the *next* reset on that wall — merged together the same way
 // a reset and its backfill(s) merge into one current list. Returns one
 // entry per cycle, keyed by the reset's setId, newest first.
-function groupIntoCycles(climbs) {
+export function groupIntoCycles(climbs) {
   const resetsByWall = {};
   for (const climb of climbs) {
     if (climb.setType !== "reset") continue;
@@ -370,7 +375,7 @@ function groupIntoCycles(climbs) {
 // surfaced, same as the live view is just "this wall's climbs" with no
 // reset/backfill distinction visible. One entry per wall that actually has
 // archived climbs.
-function archivedClimbsByWall(climbs) {
+export function archivedClimbsByWall(climbs) {
   const cycles = groupIntoCycles(climbs);
 
   const latestDateByWall = {};
@@ -395,7 +400,7 @@ function archivedClimbsByWall(climbs) {
 // Shape of the `user` object sent to the client after signup/login — never
 // includes passwordHash, and reduces followers/following to counts since
 // that's all the Profile tab currently needs to render.
-function toClientUser(user) {
+export function toClientUser(user) {
   return {
     username: user.username,
     name: user.name || "",
@@ -411,7 +416,7 @@ function toClientUser(user) {
 
 // Shape of a user row in the admin-only "Manage roles" list — no password,
 // no followers/following, just enough to show and change someone's role.
-function toRoleListEntry(user) {
+export function toRoleListEntry(user) {
   return {
     username: user.username,
     name: user.name || "",
@@ -424,7 +429,7 @@ function toRoleListEntry(user) {
 // Shape of a user row in the public Search tab's "Users" results — just
 // enough to display a match and open a read-only profile view for them
 // (see UserProfileScreen client-side), nothing account-sensitive.
-function toSearchResultEntry(user) {
+export function toSearchResultEntry(user) {
   return {
     username: user.username,
     name: user.name || "",
@@ -437,7 +442,7 @@ function toSearchResultEntry(user) {
 
 // Shape of a user row in the New Climb form's Setter dropdown — just
 // enough to label an option, nothing account-sensitive.
-function toSetterListEntry(user) {
+export function toSetterListEntry(user) {
   return { username: user.username, name: user.name || "" };
 }
 
@@ -714,19 +719,19 @@ app.post("/api/users/:username/reset-password", authenticate, requireAdmin, asyn
 // climbs.json. A comment left while logging an ascent is surfaced on the
 // climb's Comments page alongside the seeded sample comments. Climbs have
 // no id of their own, so ascents are matched to climbs by wallId + name.
-const climbKey = (wallId, name) => `${wallId}::${name}`;
+export const climbKey = (wallId, name) => `${wallId}::${name}`;
 
 // A user's ascentCount (see the User record note above) — how many of their
 // logged ascents are for a climb that's still part of its wall's current
 // set (see currentClimbsOnly), i.e. not superseded by a newer reset.
-function computeAscentCount(ascents, climbs) {
+export function computeAscentCount(ascents, climbs) {
   const currentKeys = new Set(
     currentClimbsOnly(climbs).map((c) => climbKey(c.wallId, c.name))
   );
   return (ascents || []).filter((a) => currentKeys.has(climbKey(a.wallId, a.climbName))).length;
 }
 
-async function withAscentStats(climbs) {
+export async function withAscentStats(climbs) {
   const users = await readUsers();
   const statsByKey = {};
   const userCommentsByKey = {};
@@ -1010,7 +1015,7 @@ app.delete("/api/users/:username/ascents/:ascentId/comment", authenticate, requi
 
 // Buckets a grade string ("V4", "vb", "V11") into one of the Profile
 // page's pyramid categories, or null if it doesn't parse as a V-grade.
-function gradeToBucket(grade) {
+export function gradeToBucket(grade) {
   if (!grade) return null;
   const trimmed = grade.trim().toUpperCase();
   if (trimmed === "VB") return "VB";
@@ -1026,7 +1031,7 @@ function gradeToBucket(grade) {
 // it has one, otherwise its setterGrade — bucketed by the top end of a
 // range (e.g. "V2-4" buckets as V4) since that's the harder, more
 // conservative read of the setter's guess.
-function climbBucketGrade(climb) {
+export function climbBucketGrade(climb) {
   if (climb.grade) return climb.grade;
   const setterGrade = climb.setterGrade || "";
   const dashIndex = setterGrade.indexOf("-");
@@ -1084,21 +1089,38 @@ app.get("/api/climbs/grade-counts", async (req, res) => {
   res.json({ counts: GRADE_BUCKETS.map((grade) => ({ grade, count: counts[grade] })) });
 });
 
-// Port 0 = let the OS pick a free one. The real PORT (3001 by default) is
-// owned by the primary process's proxy in index.js; this worker just needs
-// *a* port to listen on, then reports it back over IPC so the primary can
-// route traffic here.
-const server = app.listen(0, () => {
-  const { port } = server.address();
-  console.log(`Worker ${process.pid} listening on http://127.0.0.1:${port}`);
-  if (process.send) process.send({ type: "ready", port });
+// Serves the built frontend (see DIST_DIR above) so this one server/port can
+// stand in for both the Vite dev server and the API in a persistent
+// deployment — nothing else serves dist/ in production. Registered after
+// every /api route above so those always win; falls through to index.html
+// for anything else (client-side routing), except /api itself, which should
+// 404 through Express's default handler rather than get index.html back.
+app.use(express.static(DIST_DIR));
+app.use((req, res, next) => {
+  if (req.method !== "GET" || req.path.startsWith("/api")) return next();
+  res.sendFile(path.join(DIST_DIR, "index.html"));
 });
 
-// Sent by the primary once a replacement worker is up and taking new
-// traffic — stop accepting new connections but let in-flight ones finish,
-// then exit. (The primary force-kills this process if it takes too long.)
-process.on("message", (msg) => {
-  if (msg?.type === "shutdown") {
-    server.close(() => process.exit(0));
-  }
-});
+// Skipped under the test runner (NODE_ENV=test) so importing this module for
+// unit tests doesn't bind a real socket or register a real process-level
+// message listener — tests exercise `app` directly (e.g. via supertest).
+if (process.env.NODE_ENV !== "test") {
+  // Port 0 = let the OS pick a free one. The real PORT (3001 by default) is
+  // owned by the primary process's proxy in index.js; this worker just needs
+  // *a* port to listen on, then reports it back over IPC so the primary can
+  // route traffic here.
+  const server = app.listen(0, () => {
+    const { port } = server.address();
+    console.log(`Worker ${process.pid} listening on http://127.0.0.1:${port}`);
+    if (process.send) process.send({ type: "ready", port });
+  });
+
+  // Sent by the primary once a replacement worker is up and taking new
+  // traffic — stop accepting new connections but let in-flight ones finish,
+  // then exit. (The primary force-kills this process if it takes too long.)
+  process.on("message", (msg) => {
+    if (msg?.type === "shutdown") {
+      server.close(() => process.exit(0));
+    }
+  });
+}

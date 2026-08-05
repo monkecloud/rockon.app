@@ -272,7 +272,8 @@
         "attemptsThisSession": 0
       }
     ],
-    "sessionToken": "5a3d37e029456e72ce2fe8df9a20c2e26c2f65084a09f6d5bb3a91e8057e5c8e"
+    "sessionToken": "5a3d37e029456e72ce2fe8df9a20c2e26c2f65084a09f6d5bb3a91e8057e5c8e",
+    "ascentCount": 2
   },
   {
     "username": "Cubesnail",
@@ -296,7 +297,8 @@
       }
     ],
     "isSetter": true,
-    "sessionToken": ""
+    "sessionToken": "",
+    "ascentCount": 0
   },
   {
     "username": "tester",
@@ -307,7 +309,8 @@
     "ascents": [],
     "isModerator": true,
     "isAdmin": true,
-    "isSetter": true
+    "isSetter": true,
+    "ascentCount": 0
   },
   {
     "username": "test1",
@@ -338,7 +341,8 @@
         "attempts": 23,
         "attemptsThisSession": 4
       }
-    ]
+    ],
+    "ascentCount": 0
   },
   {
     "username": "derrickk",
@@ -361,7 +365,8 @@
     ],
     "isModerator": false,
     "isSetter": false,
-    "isAdmin": false
+    "isAdmin": false,
+    "ascentCount": 0
   },
   {
     "username": "cubesnaill",
@@ -436,7 +441,8 @@
         "attempts": 1,
         "attemptsThisSession": 0
       }
-    ]
+    ],
+    "ascentCount": 3
   },
   {
     "username": "grisha",
@@ -447,7 +453,8 @@
     "ascents": [],
     "isModerator": false,
     "isSetter": true,
-    "isAdmin": false
+    "isAdmin": false,
+    "ascentCount": 0
   },
   {
     "username": "tiff",
@@ -458,6 +465,7 @@
     "ascents": [],
     "isModerator": false,
     "isSetter": true,
-    "isAdmin": false
+    "isAdmin": false,
+    "ascentCount": 0
   }
 ]

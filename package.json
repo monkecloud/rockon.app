@@ -8,7 +8,9 @@
     "server": "node server/index.js",
     "dev:all": "concurrently -n client,server -c blue,green \"npm:dev\" \"npm:server\"",
     "build": "vite build",
-    "preview": "vite preview"
+    "start": "node server/index.js",
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -21,7 +23,9 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.7.0",
     "concurrently": "^10.0.3",
-    "vite": "^7.3.6"
+    "supertest": "^7.2.2",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.10"
   },
   "allowScripts": {
     "esbuild@0.28.1": true
