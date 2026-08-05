@@ -26,7 +26,7 @@ Then open the local URL Vite prints (usually `http://localhost:5173`).
 
 If you'd rather run them in two separate terminals:
 ```bash
-npm run server   # starts the API on http://localhost:3001
+npm run server   # starts the API on http://localhost:30210
 npm run dev      # starts the UI on http://localhost:5173
 ```
 
@@ -38,15 +38,15 @@ directly — no separate Vite process needed:
 
 ```bash
 npm run build   # writes the optimized frontend to dist/
-npm start        # serves dist/ AND the API, both on http://localhost:3001
+npm start        # serves dist/ AND the API, both on http://localhost:30210
 ```
 
 `server/worker.js` serves `dist/` as static files and falls back to
 `index.html` for any non-`/api` route (so client-side navigation/refreshes
 still work), while `/api/*` keeps going to the Express routes as before —
 same port, same process, via the primary/worker proxy in `server/index.js`.
-Only one port (`3001` by default, override with `PORT`) needs to be reachable
-now, instead of both `5173` and `3001`.
+Only one port (`30210` by default, override with `PORT`) needs to be reachable
+now, instead of both `5173` and `30210`.
 
 **Don't set `NODE_ENV=production`** unless you've also put this behind HTTPS.
 `setSessionCookie` in `server/worker.js` marks the session cookie `secure`
@@ -89,7 +89,7 @@ computer on the same Wi-Fi/LAN:
    networks; don't allow it for Public networks).
 
 The `/api` requests from the React app still route correctly in this setup
-— they go through Vite's own proxy to `http://localhost:3001` on the same
+— they go through Vite's own proxy to `http://localhost:30210` on the same
 machine, regardless of which IP you used to load the page.
 
 **Heads up:** this makes the app reachable by anyone else on that network,

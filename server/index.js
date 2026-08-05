@@ -33,7 +33,7 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const WORKER_PATH = path.join(__dirname, "worker.js");
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 30210;
 // If a retiring worker hasn't finished its in-flight requests and exited on
 // its own within this long, force it closed rather than leak it forever.
 const OLD_WORKER_KILL_TIMEOUT_MS = 15000;
