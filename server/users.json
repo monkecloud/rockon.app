@@ -1,7 +1,7 @@
 [
   {
     "username": "Derrick",
-    "passwordHash": "",
+    "passwordHash": "$2b$10$/agPMYN2fPSVcMva6U1VT.AUrfVY4JBkw4xhDLILBRslCK0ciyiOe",
     "isModerator": true,
     "isAdmin": true,
     "followers": [],
@@ -270,10 +270,21 @@
         "logAttempts": true,
         "attempts": 1,
         "attemptsThisSession": 0
+      },
+      {
+        "id": "7db75bcc-39ca-4ced-8565-bb08c202f691",
+        "wallId": 1,
+        "climbName": "Amber Sloper",
+        "starRating": 3.5,
+        "grade": "VB",
+        "comment": "test fa",
+        "logAttempts": true,
+        "attempts": 1,
+        "attemptsThisSession": 0
       }
     ],
-    "sessionToken": "5a3d37e029456e72ce2fe8df9a20c2e26c2f65084a09f6d5bb3a91e8057e5c8e",
-    "ascentCount": 2
+    "sessionToken": "a274d0aeb5ca3072be3b2871982bc851e58ace404598c45fe4f5464dd21eb040",
+    "ascentCount": 3
   },
   {
     "username": "Cubesnail",

@@ -109,10 +109,61 @@ function saveToStorage(key, value) {
 
 const RECENT_ACTIVITY_PLACEHOLDERS = [1, 2, 3, 4, 5];
 
+// Static stand-in data — no leaderboard endpoint exists yet server-side.
+// Shaped like the real user records (username/name/avatarUrl/ascentCount)
+// so wiring this up to a real "top ascenders" endpoint later is a data swap,
+// not a layout change.
+const LEADERBOARD_PLACEHOLDERS = [
+  { rank: 1, username: "placeholder1", name: "Placeholder One", avatarUrl: "", ascentCount: 128 },
+  { rank: 2, username: "placeholder2", name: "Placeholder Two", avatarUrl: "", ascentCount: 97 },
+  { rank: 3, username: "placeholder3", name: "Placeholder Three", avatarUrl: "", ascentCount: 84 },
+];
+
+// Podium block heights, tallest in the middle (1st place) — left-to-right
+// display order is 2nd/1st/3rd, the standard podium arrangement.
+const PODIUM_HEIGHTS = { 1: 64, 2: 44, 3: 30 };
+const PODIUM_ORDER = [2, 1, 3];
+
+function Leaderboard() {
+  return (
+    <div style={styles.gradeChartWrapper}>
+      <p style={styles.gradeChartTitle}>Leaderboard</p>
+      <div style={styles.leaderboardRow}>
+        {PODIUM_ORDER.map((rank) => {
+          const entry = LEADERBOARD_PLACEHOLDERS.find((e) => e.rank === rank);
+          const initials = entry.username.slice(0, 2).toUpperCase();
+          return (
+            <div key={rank} style={styles.leaderboardColumn}>
+              {entry.avatarUrl ? (
+                <img src={entry.avatarUrl} alt="" style={styles.avatarImage} />
+              ) : (
+                <div style={styles.avatar}>{initials}</div>
+              )}
+              <p style={styles.leaderboardUsername}>{entry.username}</p>
+              <p style={styles.leaderboardName}>{entry.name}</p>
+              <p style={styles.leaderboardAscents}>{entry.ascentCount} ascents</p>
+              <div
+                style={{
+                  ...styles.leaderboardPodiumBlock,
+                  height: PODIUM_HEIGHTS[rank],
+                  background: rank === 1 ? "var(--color-accent)" : "var(--color-surface-5)",
+                }}
+              >
+                <span style={styles.leaderboardPodiumRank}>{rank}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function HomeScreen() {
   return (
     <div style={styles.screen}>
       <GradeBarChart title="Climbs on the wall" endpoint="/api/climbs/grade-counts" />
+      <Leaderboard />
       <div style={{ marginLeft: -20, marginRight: -20 }}>
         <div style={styles.archiveBar}>
           <p style={{ margin: 0 }}>Recent Activity</p>
@@ -131,7 +182,7 @@ function HomeScreen() {
 // (zoom out / percentage / zoom in / reset) that stays pinned just below
 // the persistent top bar. Uses the Pointer Events API so mouse drag,
 // touch drag, and two-finger pinch all go through the same code path.
-function ZoomableImageViewer({ title, subtitle }) {
+function ZoomableImageViewer({ title, subtitle, photoUrl }) {
   const imageRef = useRef(null);
   // Mutable, not React state: on mobile, calling setState on every single
   // pointermove event was enough to make pinch/drag feel glitchy, since
@@ -215,9 +266,13 @@ function ZoomableImageViewer({ title, subtitle }) {
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
       >
-        <div ref={imageRef} style={styles.imagePlaceholder}>
-          <ImageIcon size={56} color="var(--color-text-faint)" strokeWidth={1.5} />
-        </div>
+        {photoUrl ? (
+          <img ref={imageRef} src={photoUrl} alt="" style={styles.climbPhoto} />
+        ) : (
+          <div ref={imageRef} style={styles.imagePlaceholder}>
+            <ImageIcon size={56} color="var(--color-text-faint)" strokeWidth={1.5} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -285,7 +340,7 @@ function ListScreen({
     const title = climb ? climbTitleNode(climb) : "Loading…";
     const subtitle = climb ? `Set by ${climb.setter}` : undefined;
 
-    return <ZoomableImageViewer title={title} subtitle={subtitle} />;
+    return <ZoomableImageViewer title={title} subtitle={subtitle} photoUrl={climb?.photoUrl} />;
   }
 
   if (selectedItem) {
@@ -685,12 +740,14 @@ function composeSetterGrade(bottom, top) {
 }
 
 // Opened from the "+" button on a wall's Climbs page (moderators/setters
-// only) — wallId/resetDate are fixed and no wall picker is shown. Also
-// opened from the "+" button on the Walls root list, where there's no
-// wall already selected: pass `walls` (+ `climbsByWall`, to derive each
-// wall's current resetDate) instead of `wallId`/`resetDate` and a Wall
-// dropdown appears in their place.
-function NewClimbForm({ wallId, resetDate, walls, climbsByWall, onSave }) {
+// only) — wallId/resetDate are fixed, no wall picker. Every climb saved
+// here is stored server-side as a "backfill" (see POST /api/climbs) — the
+// Backfill checkbox only decides which date it's dated: today's/the
+// current reset's date, or a picked date in the past for logging a climb
+// that's been up for a while already. Compare with NewWallForm below,
+// opened from the Walls root list's "+" instead — similar fields, but for
+// starting a wall's next "reset" rather than adding to its current set.
+function NewClimbForm({ wallId, resetDate, onSave }) {
   const [photo, setPhoto] = useState("");
   const [name, setName] = useState("");
   const [gradeBottom, setGradeBottom] = useState("VB");
@@ -699,7 +756,8 @@ function NewClimbForm({ wallId, resetDate, walls, climbsByWall, onSave }) {
   const [setters, setSetters] = useState([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [selectedWallId, setSelectedWallId] = useState(wallId ?? walls?.[0]?.id ?? "");
+  const [isBackfill, setIsBackfill] = useState(false);
+  const [backfillDate, setBackfillDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
     fetch("/api/users/setters")
@@ -707,19 +765,6 @@ function NewClimbForm({ wallId, resetDate, walls, climbsByWall, onSave }) {
       .then((data) => setSetters(data.setters || []))
       .catch((err) => console.error("Failed to load /api/users/setters:", err));
   }, []);
-
-  const effectiveWallId = wallId ?? selectedWallId;
-  // Every current climb on a wall shares the same setDate for its "reset"
-  // entry, so the first one found is enough — see the identical comment
-  // this used to live next to in App(), before the wall picker moved that
-  // computation in here.
-  const effectiveResetDate =
-    wallId != null
-      ? resetDate
-      : (() => {
-          const wallClimbs = (climbsByWall && climbsByWall[selectedWallId]) || [];
-          return wallClimbs.find((c) => c.setType === "reset")?.setDate ?? wallClimbs[0]?.setDate ?? "";
-        })();
 
   const handlePhotoChange = (e) => {
     const file = e.target.files?.[0];
@@ -746,11 +791,12 @@ function NewClimbForm({ wallId, resetDate, walls, climbsByWall, onSave }) {
     setError("");
     setSaving(true);
     const result = await onSave({
-      wallId: effectiveWallId,
+      wallId,
       name: name.trim(),
       setterGrade: composeSetterGrade(gradeBottom, gradeTop),
       setter: setter.trim(),
-      setDate: effectiveResetDate,
+      setDate: isBackfill ? backfillDate : resetDate,
+      photoUrl: photo,
     });
     setSaving(false);
 
@@ -779,22 +825,179 @@ function NewClimbForm({ wallId, resetDate, walls, climbsByWall, onSave }) {
           />
         </label>
 
-        {wallId == null && walls && (
-          <label style={styles.label}>
-            Wall
-            <select
-              style={styles.input}
-              value={selectedWallId}
-              onChange={(e) => setSelectedWallId(Number(e.target.value))}
-            >
-              {walls.map((wall) => (
-                <option key={wall.id} value={wall.id}>
-                  {wall.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        <label style={styles.label}>
+          Climb name
+          <input
+            style={styles.input}
+            type="text"
+            placeholder="e.g. Golden Overhang"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+        <label style={styles.label}>
+          Bottom grade
+          <select style={styles.input} value={gradeBottom} onChange={(e) => setGradeBottom(e.target.value)}>
+            {GRADE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={styles.label}>
+          Top grade
+          <select style={styles.input} value={gradeTop} onChange={(e) => setGradeTop(e.target.value)}>
+            {GRADE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={styles.label}>
+          Setter
+          <select style={styles.input} value={setter} onChange={(e) => setSetter(e.target.value)}>
+            <option value="">Select a setter</option>
+            {setters.map((s) => (
+              <option key={s.username} value={s.username}>
+                {s.name ? `${s.name} (${s.username})` : s.username}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={styles.checkboxRow}>
+          <input
+            style={styles.checkboxInput}
+            type="checkbox"
+            checked={isBackfill}
+            onChange={(e) => setIsBackfill(e.target.checked)}
+          />
+          Backfill (pick a past date)
+        </label>
+        <label style={styles.label}>
+          Date
+          <input
+            style={isBackfill ? styles.input : { ...styles.input, ...styles.inputDisabled }}
+            type="date"
+            value={isBackfill ? backfillDate : resetDate || ""}
+            onChange={(e) => setBackfillDate(e.target.value)}
+            disabled={!isBackfill}
+          />
+        </label>
+        {error && <p style={styles.formError}>{error}</p>}
+        <button type="submit" style={styles.button} disabled={saving}>
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// Opened from the "+" button on the Walls root list (moderators/setters
+// only), where no wall is selected yet — always shows a Wall dropdown.
+// Unlike NewClimbForm, this always saves as setType "reset": adding a
+// climb here starts (or adds to) a wall's next cycle, which — per
+// currentClimbsOnly — supersedes every older climb on that wall as soon as
+// it's saved, without anything needing to be deleted from climbs.json.
+// There's no Backfill checkbox, since every save here already is the new
+// current set; the Date field is plain and always editable (rather than
+// locked/toggle-based like NewClimbForm's) so a setter adding several
+// climbs to the same new set can give them all the same date and have them
+// land in one cycle together.
+function NewWallForm({ walls, onSave }) {
+  const [photo, setPhoto] = useState("");
+  const [name, setName] = useState("");
+  const [gradeBottom, setGradeBottom] = useState("VB");
+  const [gradeTop, setGradeTop] = useState("VB");
+  const [setter, setSetter] = useState("");
+  const [setters, setSetters] = useState([]);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [selectedWallId, setSelectedWallId] = useState(walls?.[0]?.id ?? "");
+  const [setDate, setSetDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  useEffect(() => {
+    fetch("/api/users/setters")
+      .then((res) => res.json())
+      .then((data) => setSetters(data.setters || []))
+      .catch((err) => console.error("Failed to load /api/users/setters:", err));
+  }, []);
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => setPhoto(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (saving) return;
+
+    if (!name.trim() || !setter.trim()) {
+      setError("Climb name and setter are required.");
+      return;
+    }
+    if (GRADE_OPTIONS.indexOf(gradeBottom) > GRADE_OPTIONS.indexOf(gradeTop)) {
+      setError("Bottom grade must be the same as or easier than top grade.");
+      return;
+    }
+
+    setError("");
+    setSaving(true);
+    const result = await onSave({
+      wallId: selectedWallId,
+      name: name.trim(),
+      setterGrade: composeSetterGrade(gradeBottom, gradeTop),
+      setter: setter.trim(),
+      setDate,
+      photoUrl: photo,
+      setType: "reset",
+    });
+    setSaving(false);
+
+    if (!result.success) {
+      setError(result.error || "Something went wrong.");
+    }
+  };
+
+  return (
+    <div style={styles.screen}>
+      <form style={styles.form} onSubmit={handleSubmit}>
+        {photo ? (
+          <img src={photo} alt="" style={styles.avatarPreview} />
+        ) : (
+          <div style={styles.avatarPreviewPlaceholder}>
+            <Camera size={28} color="var(--color-text-faint)" strokeWidth={1.5} />
+          </div>
         )}
+        <label style={styles.pickImageButton}>
+          Choose photo
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handlePhotoChange}
+            style={{ display: "none" }}
+          />
+        </label>
+
+        <label style={styles.label}>
+          Wall
+          <select
+            style={styles.input}
+            value={selectedWallId}
+            onChange={(e) => setSelectedWallId(Number(e.target.value))}
+          >
+            {walls.map((wall) => (
+              <option key={wall.id} value={wall.id}>
+                {wall.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <label style={styles.label}>
           Climb name
           <input
@@ -839,10 +1042,10 @@ function NewClimbForm({ wallId, resetDate, walls, climbsByWall, onSave }) {
         <label style={styles.label}>
           Date
           <input
-            style={{ ...styles.input, ...styles.inputDisabled }}
+            style={styles.input}
             type="date"
-            value={effectiveResetDate || ""}
-            disabled
+            value={setDate}
+            onChange={(e) => setSetDate(e.target.value)}
           />
         </label>
         {error && <p style={styles.formError}>{error}</p>}
@@ -2388,14 +2591,9 @@ export default function App() {
             );
           }
           // Opened from the "+" on the Walls root list: no wall selected
-          // yet, so let NewClimbForm show its own Wall dropdown.
-          return (
-            <NewClimbForm
-              walls={WALLS}
-              climbsByWall={climbsByWall}
-              onSave={handleCreateClimb}
-            />
-          );
+          // yet, and this always starts a new "reset" cycle rather than
+          // adding to whatever's current — see NewWallForm.
+          return <NewWallForm walls={WALLS} onSave={handleCreateClimb} />;
         }
         if (filteringClimbs) {
           return <ClimbsFilterForm />;
@@ -2412,7 +2610,13 @@ export default function App() {
         if (viewingArchivedClimb) {
           const title = climbTitleNode(viewingArchivedClimb);
           const subtitle = `Set by ${viewingArchivedClimb.setter}`;
-          return <ZoomableImageViewer title={title} subtitle={subtitle} />;
+          return (
+            <ZoomableImageViewer
+              title={title}
+              subtitle={subtitle}
+              photoUrl={viewingArchivedClimb.photoUrl}
+            />
+          );
         }
         if (viewingArchiveWallId) {
           const wall = (archiveWalls || []).find((w) => w.wallId === viewingArchiveWallId);
@@ -2519,7 +2723,7 @@ export default function App() {
   let handleBack = () => {};
 
   if (activeTab === "list" && creatingClimb) {
-    topBarTitle = "New Climb";
+    topBarTitle = selectedListItem ? "New Climb" : "New Wall";
     showBack = true;
     handleBack = () => setCreatingClimb(false);
   } else if (activeTab === "list" && filteringClimbs) {
@@ -2565,9 +2769,9 @@ export default function App() {
   const isClimbDetail = activeTab === "list" && Boolean(activeClimb) && !showComments;
 
   // Root of the Walls tab: no wall/climb drilled into, not inside the
-  // Archive's own climb page. Only moderators get the add button here —
-  // it opens the same NewClimbForm as a wall's Climbs page, but with a
-  // Wall dropdown since none is selected yet.
+  // Archive's own climb page. Only moderators/setters get the add button
+  // here — it opens NewWallForm (a Wall dropdown, and always a new
+  // "reset" cycle) rather than NewClimbForm.
   const isWallsRoot =
     activeTab === "list" &&
     !selectedListItem &&
@@ -2755,6 +2959,13 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
+    userSelect: "none",
+    willChange: "transform",
+  },
+  climbPhoto: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
     userSelect: "none",
     willChange: "transform",
   },
@@ -3098,6 +3309,48 @@ const styles = {
     alignItems: "flex-end",
     justifyContent: "space-between",
     gap: 2,
+  },
+  leaderboardRow: {
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "center",
+    gap: 12,
+  },
+  leaderboardColumn: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    flex: 1,
+  },
+  leaderboardUsername: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "var(--color-text-primary)",
+    margin: 0,
+  },
+  leaderboardName: {
+    fontSize: 11,
+    color: "var(--color-text-tertiary)",
+    margin: 0,
+  },
+  leaderboardAscents: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: "var(--color-text-secondary)",
+    margin: "4px 0 8px",
+  },
+  leaderboardPodiumBlock: {
+    width: "100%",
+    borderRadius: "8px 8px 0 0",
+    border: "1px solid var(--color-border-strong)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  leaderboardPodiumRank: {
+    fontSize: 18,
+    fontWeight: 700,
+    color: "var(--color-text-primary)",
   },
   gradeBarColumn: {
     flex: 1,

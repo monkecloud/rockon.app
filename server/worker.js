@@ -245,6 +245,10 @@ export async function writeUsers(users) {
 //                            // toSetterListEntry) — not just a display
 //                            // name, though it's never validated against
 //                            // an actual account server-side
+//     photoUrl: string,      // base64 data URL from the New Climb form's
+//                            // photo picker, stored inline same as user
+//                            // avatars — "" if no photo was chosen. Older
+//                            // seeded climbs won't have this field at all.
 //     comments: [...],       // seeded sample comments; see withAscentStats
 //     setId: string,         // uuid shared by every climb put up in the same event
 //     setDate: string,       // "YYYY-MM-DD", the day this set went up
@@ -261,9 +265,10 @@ export async function writeUsers(users) {
 //   }
 // Climbs have no id of their own: wallId + name is the key everything else
 // (ascents, comments) references them by, since name is unique within a
-// wall. There's no endpoint yet to create a new set or archive an old one —
-// that waits on moderator/setter accounts (a role this API doesn't have
-// yet).
+// wall. Both "backfill" and "reset" sets go up via POST /api/climbs below
+// (moderator/setter-only) — there's still no endpoint to explicitly archive
+// a climb; a reset archives everything older than it implicitly, via
+// currentClimbsOnly.
 export async function readClimbs() {
   let climbs;
   try {
@@ -779,19 +784,23 @@ app.get("/api/climbs", async (req, res) => {
   res.json({ climbs: await withAscentStats(currentClimbsOnly(climbs)) });
 });
 
-// Adds a single climb — the "+" button on a wall's Climbs page. Moderators/
-// setters only, now enforced server-side via `requireModeratorOrSetter`
-// (previously this was only hidden client-side in NewClimbForm, so anyone
-// who could reach the endpoint directly could create climbs). Every climb
-// created here is stored as setType "backfill": it always goes up alongside
-// whatever's already on the wall rather than taking anything down, whether
-// its date is today's/the current reset's date or a picked-in-the-past date
-// (that distinction is just the form's "Backfill" checkbox choosing which
-// date to use). A true new "reset" — a whole wall's climbs coming down at
-// once — still has no UI behind it; climbs.json stays hand/script-edited
-// for that.
+// Adds a single climb. Moderators/setters only, enforced server-side via
+// `requireModeratorOrSetter` (previously this was only hidden client-side,
+// so anyone who could reach the endpoint directly could create climbs).
+// Two client forms hit this endpoint: the "+" on a wall's Climbs page
+// (NewClimbForm) always sends setType "backfill" — the climb goes up
+// alongside whatever's already on the wall, dated either today's/the
+// current reset's date or a picked-in-the-past date depending on its
+// "Backfill" checkbox. The "+" on the Walls root list (NewWallForm) always
+// sends setType "reset" — see currentClimbsOnly, which treats a wall's
+// latest "reset"-dated climb as wiping out every older climb's "current"
+// status, so submitting one of these effectively starts a new cycle on
+// that wall without anything needing to be deleted from climbs.json.
+// Submitting several "reset" climbs with the same setDate lands them all
+// in the same cycle (see groupIntoCycles, which groups by date rather than
+// by each climb's own setId).
 app.post("/api/climbs", authenticate, requireModeratorOrSetter, async (req, res) => {
-  const { wallId, name, setterGrade, setter, setDate } = req.body || {};
+  const { wallId, name, setterGrade, setter, setDate, photoUrl, setType } = req.body || {};
 
   const trimmedName = (name || "").trim();
   const trimmedSetterGrade = (setterGrade || "").trim();
@@ -821,10 +830,11 @@ app.post("/api/climbs", authenticate, requireModeratorOrSetter, async (req, res)
     // this climb is no longer current on its wall.
     grade: "",
     setter: trimmedSetter,
+    photoUrl: photoUrl || "",
     comments: [],
     setId: crypto.randomUUID(),
     setDate: setDate || new Date().toISOString().slice(0, 10),
-    setType: "backfill",
+    setType: setType === "reset" ? "reset" : "backfill",
     archived: false,
     // Nobody's climbed a brand-new climb yet — ascentClaims (first ascent,
     // second ascent, ...) only ever gets filled in via POST /api/ascents,
