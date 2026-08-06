@@ -229,8 +229,15 @@ export async function writeUsers(users) {
 // nothing comes down). Every climb record tracks which set put it up:
 //   {
 //     wallId: number,
-//     name: string,           // unique within a wall — doubles as that
-//                             // climb's key, see the note below
+//     projectName: string,   // unique within a wall — doubles as that
+//                             // climb's key, see the note below. Filled in
+//                             // by the setter when the climb first goes up
+//                             // and never changes afterwards, even once the
+//                             // climb has earned a real name.
+//     displayName: string,   // the climb's earned name — "" until one of
+//                            // its nameProposals is approved (see POST
+//                            // /api/climbs/name-decision). Everything
+//                            // user-facing shows displayName || projectName.
 //     setterGrade: string,   // the setter's rough guess at the grade,
 //                            // given when the climb goes up — either a
 //                            // single grade ("V6") or a range ("V2-4"),
@@ -257,15 +264,24 @@ export async function writeUsers(users) {
 //                            // hand-flip; GET /api/climbs below doesn't
 //                            // trust it, it derives currency itself (see
 //                            // currentClimbsOnly)
-//     ascentClaims: [{ name: string, pass: boolean }],  // up to 5, set at
-//                            // creation via POST /api/climbs — who got the
-//                            // first/second/.../fifth ascent, or a "pass"
-//                            // if that slot was never named. Older seeded
-//                            // climbs won't have this field at all.
+//     nameProposals: [{      // at most 5, appended by POST /api/ascents —
+//       id: string,          // one slot per ascent, first come first served
+//       name: string,        // the name proposed for the climb ("" on a pass)
+//       pass: boolean,       // true if the climber declined to name it
+//       proposedBy: string,  // username of whoever logged that ascent
+//       proposedAt: string,  // ISO timestamp
+//       status: string,      // "pending" | "approved" | "rejected" | "passed"
+//     }],                    // Older seeded climbs won't have this field at
+//                            // all. A rejected proposal keeps its slot — see
+//                            // NAME_PROPOSAL_LIMIT — so a climb gets five
+//                            // naming attempts total however they turn out,
+//                            // and can stay unnamed forever if all five fail.
 //   }
-// Climbs have no id of their own: wallId + name is the key everything else
-// (ascents, comments) references them by, since name is unique within a
-// wall. Both "backfill" and "reset" sets go up via POST /api/climbs below
+// Climbs have no id of their own: wallId + projectName is the key everything
+// else (ascents, comments) references them by, since projectName is unique
+// within a wall and frozen at creation. Approving a name only ever writes
+// displayName, so no ascent or comment reference has to be rewritten.
+// Both "backfill" and "reset" sets go up via POST /api/climbs below
 // (moderator/setter-only) — there's still no endpoint to explicitly archive
 // a climb; a reset archives everything older than it implicitly, via
 // currentClimbsOnly.
@@ -289,6 +305,34 @@ export async function readClimbs() {
       climb.setterGrade = climb.difficulty;
       climb.grade = climb.difficulty;
       delete climb.difficulty;
+      backfilled = true;
+    }
+
+    // `name` was the key before climbs could earn a name of their own. It
+    // becomes projectName untouched, so every ascent.climbName still
+    // resolves — those store the string, not a reference.
+    if (climb.projectName === undefined && climb.name !== undefined) {
+      climb.projectName = climb.name;
+      delete climb.name;
+      backfilled = true;
+    }
+    if (climb.displayName === undefined) {
+      climb.displayName = "";
+      backfilled = true;
+    }
+
+    // Pre-approval claims were recorded without anyone reviewing them, so
+    // they migrate in as pending rather than silently becoming names.
+    if (climb.nameProposals === undefined) {
+      climb.nameProposals = (climb.ascentClaims || []).map((claim) => ({
+        id: crypto.randomUUID(),
+        name: claim.pass ? "" : (claim.name || "").trim(),
+        pass: Boolean(claim.pass),
+        proposedBy: "",
+        proposedAt: "",
+        status: claim.pass ? "passed" : "pending",
+      }));
+      delete climb.ascentClaims;
       backfilled = true;
     }
   }
@@ -723,15 +767,29 @@ app.post("/api/users/:username/reset-password", authenticate, requireAdmin, asyn
 // they're computed fresh on each request rather than kept in sync in
 // climbs.json. A comment left while logging an ascent is surfaced on the
 // climb's Comments page alongside the seeded sample comments. Climbs have
-// no id of their own, so ascents are matched to climbs by wallId + name.
-export const climbKey = (wallId, name) => `${wallId}::${name}`;
+// no id of their own, so ascents are matched to climbs by wallId +
+// projectName (ascent.climbName holds the projectName).
+export const climbKey = (wallId, projectName) => `${wallId}::${projectName}`;
+
+// How many ascents get offered the chance to name a climb. Every proposal
+// holds its slot whatever the moderator decides, so five rejections leave
+// the climb a project for good.
+export const NAME_PROPOSAL_LIMIT = 5;
+
+// A climb is still open to naming while it has no approved name and hasn't
+// used up its five slots. Note this stays true while a proposal is pending —
+// later ascents can queue up their own suggestion behind it.
+export function canProposeName(climb) {
+  if (climb.displayName) return false;
+  return (climb.nameProposals || []).length < NAME_PROPOSAL_LIMIT;
+}
 
 // A user's ascentCount (see the User record note above) — how many of their
 // logged ascents are for a climb that's still part of its wall's current
 // set (see currentClimbsOnly), i.e. not superseded by a newer reset.
 export function computeAscentCount(ascents, climbs) {
   const currentKeys = new Set(
-    currentClimbsOnly(climbs).map((c) => climbKey(c.wallId, c.name))
+    currentClimbsOnly(climbs).map((c) => climbKey(c.wallId, c.projectName))
   );
   return (ascents || []).filter((a) => currentKeys.has(climbKey(a.wallId, a.climbName))).length;
 }
@@ -767,7 +825,7 @@ export async function withAscentStats(climbs) {
   }
 
   return climbs.map((climb) => {
-    const key = climbKey(climb.wallId, climb.name);
+    const key = climbKey(climb.wallId, climb.projectName);
     const stats = statsByKey[key];
     const userComments = userCommentsByKey[key] || [];
     return {
@@ -800,31 +858,43 @@ app.get("/api/climbs", async (req, res) => {
 // in the same cycle (see groupIntoCycles, which groups by date rather than
 // by each climb's own setId).
 app.post("/api/climbs", authenticate, requireModeratorOrSetter, async (req, res) => {
-  const { wallId, name, setterGrade, setter, setDate, photoUrl, setType } = req.body || {};
+  const { wallId, projectName, setterGrade, setter, setDate, photoUrl, setType } = req.body || {};
 
-  const trimmedName = (name || "").trim();
+  const trimmedProjectName = (projectName || "").trim();
   const trimmedSetterGrade = (setterGrade || "").trim();
   const trimmedSetter = (setter || "").trim();
   const numericWallId = Number(wallId);
 
-  if (!Number.isFinite(numericWallId) || !trimmedName || !trimmedSetterGrade || !trimmedSetter) {
-    return res.status(400).json({ error: "Wall, climb name, grade, and setter are required." });
+  if (
+    !Number.isFinite(numericWallId) ||
+    !trimmedProjectName ||
+    !trimmedSetterGrade ||
+    !trimmedSetter
+  ) {
+    return res.status(400).json({ error: "Wall, project name, grade, and setter are required." });
   }
 
   const climbs = await readClimbs();
-  // Climb identity is wallId + name (see the note on readClimbs above), so
-  // that pair has to be unique across every climb ever put up on that wall,
-  // current or archived — not just the currently active set.
+  // Climb identity is wallId + projectName (see the note on readClimbs
+  // above), so that pair has to be unique across every climb ever put up on
+  // that wall, current or archived — not just the currently active set.
   const isDuplicate = climbs.some(
-    (c) => c.wallId === numericWallId && c.name.toLowerCase() === trimmedName.toLowerCase()
+    (c) =>
+      c.wallId === numericWallId &&
+      c.projectName.toLowerCase() === trimmedProjectName.toLowerCase()
   );
   if (isDuplicate) {
-    return res.status(409).json({ error: "A climb with that name already exists on this wall." });
+    return res
+      .status(409)
+      .json({ error: "A climb with that project name already exists on this wall." });
   }
 
   const climb = {
     wallId: numericWallId,
-    name: trimmedName,
+    projectName: trimmedProjectName,
+    // Unnamed until an ascent proposes a name and a moderator approves it —
+    // see POST /api/ascents and POST /api/climbs/name-decision.
+    displayName: "",
     setterGrade: trimmedSetterGrade,
     // Not confirmed yet — see POST /api/climbs/grade, only settable once
     // this climb is no longer current on its wall.
@@ -836,10 +906,9 @@ app.post("/api/climbs", authenticate, requireModeratorOrSetter, async (req, res)
     setDate: setDate || new Date().toISOString().slice(0, 10),
     setType: setType === "reset" ? "reset" : "backfill",
     archived: false,
-    // Nobody's climbed a brand-new climb yet — ascentClaims (first ascent,
-    // second ascent, ...) only ever gets filled in via POST /api/ascents,
-    // as ascents actually get logged. See the note there.
-    ascentClaims: [],
+    // Nobody's climbed a brand-new climb yet — naming slots only ever get
+    // filled in via POST /api/ascents, as ascents actually get logged.
+    nameProposals: [],
   };
 
   climbs.push(climb);
@@ -854,23 +923,23 @@ app.post("/api/climbs", authenticate, requireModeratorOrSetter, async (req, res)
 // has superseded it — see currentClimbsOnly) — the setter's original range
 // guess (setterGrade) stands until then.
 app.post("/api/climbs/grade", authenticate, requireModeratorOrSetter, async (req, res) => {
-  const { wallId, name, grade } = req.body || {};
+  const { wallId, projectName, grade } = req.body || {};
 
   const trimmedGrade = (grade || "").trim();
   const numericWallId = Number(wallId);
 
-  if (!Number.isFinite(numericWallId) || !name || !trimmedGrade) {
-    return res.status(400).json({ error: "Wall, climb name, and grade are required." });
+  if (!Number.isFinite(numericWallId) || !projectName || !trimmedGrade) {
+    return res.status(400).json({ error: "Wall, project name, and grade are required." });
   }
 
   const climbs = await readClimbs();
-  const climb = climbs.find((c) => c.wallId === numericWallId && c.name === name);
+  const climb = climbs.find((c) => c.wallId === numericWallId && c.projectName === projectName);
   if (!climb) {
     return res.status(404).json({ error: "Climb not found." });
   }
 
   const isCurrent = currentClimbsOnly(climbs).some(
-    (c) => c.wallId === numericWallId && c.name === name
+    (c) => c.wallId === numericWallId && c.projectName === projectName
   );
   if (isCurrent) {
     return res.status(409).json({
@@ -890,15 +959,101 @@ app.post("/api/climbs/grade", authenticate, requireModeratorOrSetter, async (req
 app.get("/api/climbs/needs-grade", async (req, res) => {
   const climbs = await readClimbs();
   const currentKeys = new Set(
-    currentClimbsOnly(climbs).map((c) => climbKey(c.wallId, c.name))
+    currentClimbsOnly(climbs).map((c) => climbKey(c.wallId, c.projectName))
   );
 
   const needsGrade = climbs
-    .filter((c) => !c.grade && !currentKeys.has(climbKey(c.wallId, c.name)))
+    .filter((c) => !c.grade && !currentKeys.has(climbKey(c.wallId, c.projectName)))
     .sort((a, b) => (a.setDate < b.setDate ? 1 : -1));
 
   res.json({ climbs: needsGrade });
 });
+
+// Every name still waiting on a decision, flattened one row per proposal
+// (a climb can have several queued at once — later ascents can suggest a
+// name while an earlier suggestion is still pending). Oldest first, so the
+// queue is worked in the order the ascents were logged. Backs the Approve
+// tab's naming list.
+app.get("/api/climbs/needs-name", authenticate, requireModeratorOrSetter, async (req, res) => {
+  const climbs = await readClimbs();
+
+  const proposals = climbs
+    .filter((climb) => !climb.displayName)
+    .flatMap((climb) =>
+      (climb.nameProposals || [])
+        .filter((proposal) => proposal.status === "pending")
+        .map((proposal) => ({
+          id: proposal.id,
+          name: proposal.name,
+          proposedBy: proposal.proposedBy,
+          proposedAt: proposal.proposedAt,
+          wallId: climb.wallId,
+          projectName: climb.projectName,
+          setter: climb.setter,
+          setterGrade: climb.setterGrade,
+        }))
+    )
+    .sort((a, b) => (a.proposedAt < b.proposedAt ? -1 : 1));
+
+  res.json({ proposals });
+});
+
+// Approve or reject one proposed name — moderators/setters only (admins
+// hold both flags, so they're covered). Approving locks the name in as the
+// climb's displayName and clears the rest of that climb's queue, since the
+// climb can only be called one thing. Rejecting frees the *next* ascent to
+// suggest something, but keeps its own slot spent — five rejections and the
+// climb stays a project (see NAME_PROPOSAL_LIMIT).
+app.post(
+  "/api/climbs/name-decision",
+  authenticate,
+  requireModeratorOrSetter,
+  async (req, res) => {
+    const { wallId, projectName, proposalId, approve } = req.body || {};
+
+    const numericWallId = Number(wallId);
+    if (!Number.isFinite(numericWallId) || !projectName || !proposalId) {
+      return res
+        .status(400)
+        .json({ error: "Wall, project name, and proposal are required." });
+    }
+
+    const climbs = await readClimbs();
+    const climb = climbs.find(
+      (c) => c.wallId === numericWallId && c.projectName === projectName
+    );
+    if (!climb) {
+      return res.status(404).json({ error: "Climb not found." });
+    }
+
+    const proposal = (climb.nameProposals || []).find((p) => p.id === proposalId);
+    if (!proposal) {
+      return res.status(404).json({ error: "Name proposal not found." });
+    }
+    if (proposal.status !== "pending") {
+      return res.status(409).json({ error: "That name has already been decided." });
+    }
+    // Guards the race where two moderators approve different names for the
+    // same climb at once — the second one in loses.
+    if (climb.displayName) {
+      return res.status(409).json({ error: "This climb has already been named." });
+    }
+
+    if (approve) {
+      proposal.status = "approved";
+      climb.displayName = proposal.name;
+      for (const other of climb.nameProposals) {
+        if (other.status === "pending") other.status = "rejected";
+      }
+    } else {
+      proposal.status = "rejected";
+    }
+
+    await writeClimbs(climbs);
+
+    res.json({ climb });
+  }
+);
 
 app.get("/api/archive", async (req, res) => {
   const climbs = await readClimbs();
@@ -909,7 +1064,7 @@ app.get("/api/archive", async (req, res) => {
   // loggable — same rule as the live list, just applied one level down.
   // Older cycles beyond that stay view-only.
   const loggableKeys = new Set(
-    currentClimbsOnly(archivedFlat).map((climb) => climbKey(climb.wallId, climb.name))
+    currentClimbsOnly(archivedFlat).map((climb) => climbKey(climb.wallId, climb.projectName))
   );
 
   // Run every archived climb through the same stats/comments merge as the
@@ -918,13 +1073,13 @@ app.get("/api/archive", async (req, res) => {
   const statsByKey = {};
   const merged = await withAscentStats(archivedFlat);
   merged.forEach((climb) => {
-    statsByKey[climbKey(climb.wallId, climb.name)] = climb;
+    statsByKey[climbKey(climb.wallId, climb.projectName)] = climb;
   });
 
   const wallsWithStats = walls.map((wall) => ({
     ...wall,
     climbs: wall.climbs.map((climb) => {
-      const key = climbKey(climb.wallId, climb.name);
+      const key = climbKey(climb.wallId, climb.projectName);
       return {
         ...(statsByKey[key] || climb),
         loggable: loggableKeys.has(key),
@@ -945,7 +1100,7 @@ app.post("/api/ascents", authenticate, async (req, res) => {
     logAttempts,
     attempts,
     attemptsThisSession,
-    ascentClaim,
+    nameProposal,
   } = req.body || {};
 
   if (!wallId || !climbName) {
@@ -980,17 +1135,27 @@ app.post("/api/ascents", authenticate, async (req, res) => {
 
   await writeUsers(users);
 
-  // Optional first/second/.../fifth-ascent claim offered alongside this log
-  // (see LogAscentSheet client-side) — recorded on the climb itself, one
-  // slot per ordinal, first come first served, capped at 5.
-  if (ascentClaim && (ascentClaim.name || ascentClaim.pass)) {
-    const climb = climbs.find((c) => c.wallId === Number(wallId) && c.name === climbName);
-    if (climb) {
-      if (!climb.ascentClaims) climb.ascentClaims = [];
-      if (climb.ascentClaims.length < 5) {
-        climb.ascentClaims.push({
-          name: (ascentClaim.name || "").trim(),
-          pass: Boolean(ascentClaim.pass),
+  // Optional name for the climb, offered alongside this log while the climb
+  // is still a project with slots left (see LogAscentSheet client-side).
+  // A proposed name lands as "pending" and shows up in the Approve tab; a
+  // pass resolves immediately. Either way it takes one of the five slots.
+  if (nameProposal && (nameProposal.name || nameProposal.pass)) {
+    const climb = climbs.find(
+      (c) => c.wallId === Number(wallId) && c.projectName === climbName
+    );
+    if (climb && canProposeName(climb)) {
+      const pass = Boolean(nameProposal.pass);
+      const proposed = (nameProposal.name || "").trim();
+      // A pass wins over a name if the client somehow sends both, matching
+      // the sheet where ticking Pass disables the text field.
+      if (pass || proposed) {
+        climb.nameProposals.push({
+          id: crypto.randomUUID(),
+          name: pass ? "" : proposed,
+          pass,
+          proposedBy: user.username,
+          proposedAt: new Date().toISOString(),
+          status: pass ? "passed" : "pending",
         });
         await writeClimbs(climbs);
       }
@@ -1066,7 +1231,7 @@ app.get("/api/users/:username/grade-counts", async (req, res) => {
   const climbs = await readClimbs();
   const bucketGradeByKey = {};
   climbs.forEach((climb) => {
-    bucketGradeByKey[climbKey(climb.wallId, climb.name)] = climbBucketGrade(climb);
+    bucketGradeByKey[climbKey(climb.wallId, climb.projectName)] = climbBucketGrade(climb);
   });
 
   const counts = Object.fromEntries(GRADE_BUCKETS.map((g) => [g, 0]));

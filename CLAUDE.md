@@ -102,9 +102,23 @@ Both readers do lazy schema backfills on load (e.g. adding `ascent.id`,
 persist the backfilled shape immediately — when adding a new field, prefer
 this same lazy-backfill-on-read pattern over a one-off migration script.
 
-- **Climbs have no id of their own.** `wallId` + `name` (unique within a
-  wall) is the key everything — ascents, comments, front-end lookups —
-  references a climb by.
+- **Climbs have no id of their own.** `wallId` + `projectName` (unique
+  within a wall) is the key everything — ascents, comments, front-end
+  lookups — references a climb by. `projectName` is what the setter typed
+  when the climb went up and never changes afterwards, precisely so the key
+  is stable.
+- **Climbs earn a name from their first ascents.** A climb goes up as a
+  project and its `displayName` stays `""` until someone names it. Each of
+  the first five ascents may propose one name (`nameProposals`, capped by
+  `NAME_PROPOSAL_LIMIT`); a proposal lands as `pending` and surfaces in the
+  Approve tab (`GET /api/climbs/needs-name`), where a moderator/setter
+  approves or rejects it (`POST /api/climbs/name-decision`). Approving sets
+  `displayName` and auto-rejects that climb's other pending proposals;
+  rejecting frees the next ascent to try but still spends a slot, so five
+  rejections leave the climb a project for good. Later ascents can queue a
+  name while an earlier one is still pending. Show climbs with
+  `climbLabel()` (`displayName || projectName`) — never use it to identify
+  one.
 - **Sets, not a flat climb list.** Each wall periodically gets a new "set" of
   climbs: a `reset` (every old climb comes down, replaced) or a `backfill`
   (new climbs added, nothing removed). Every climb tracks `setId`,

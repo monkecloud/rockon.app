@@ -188,29 +188,29 @@ describe("climbKey", () => {
 describe("currentClimbsOnly", () => {
   it("includes everything when no wall has a reset on record", () => {
     const climbs = [
-      { wallId: 1, name: "A", setType: "backfill", setDate: "2026-01-01" },
-      { wallId: 1, name: "B", setType: "backfill", setDate: "2026-01-02" },
+      { wallId: 1, projectName: "A", setType: "backfill", setDate: "2026-01-01" },
+      { wallId: 1, projectName: "B", setType: "backfill", setDate: "2026-01-02" },
     ];
     expect(currentClimbsOnly(climbs)).toHaveLength(2);
   });
 
   it("excludes climbs before the latest reset on that wall", () => {
     const climbs = [
-      { wallId: 1, name: "Old", setType: "reset", setDate: "2026-01-01" },
-      { wallId: 1, name: "New", setType: "reset", setDate: "2026-02-01" },
+      { wallId: 1, projectName: "Old", setType: "reset", setDate: "2026-01-01" },
+      { wallId: 1, projectName: "New", setType: "reset", setDate: "2026-02-01" },
     ];
     const result = currentClimbsOnly(climbs);
-    expect(result.map((c) => c.name)).toEqual(["New"]);
+    expect(result.map((c) => c.projectName)).toEqual(["New"]);
   });
 
   it("includes backfills on/after the latest reset", () => {
     const climbs = [
-      { wallId: 1, name: "Reset", setType: "reset", setDate: "2026-02-01" },
-      { wallId: 1, name: "Backfill-same-day", setType: "backfill", setDate: "2026-02-01" },
-      { wallId: 1, name: "Backfill-later", setType: "backfill", setDate: "2026-02-15" },
-      { wallId: 1, name: "Old-backfill", setType: "backfill", setDate: "2026-01-15" },
+      { wallId: 1, projectName: "Reset", setType: "reset", setDate: "2026-02-01" },
+      { wallId: 1, projectName: "Backfill-same-day", setType: "backfill", setDate: "2026-02-01" },
+      { wallId: 1, projectName: "Backfill-later", setType: "backfill", setDate: "2026-02-15" },
+      { wallId: 1, projectName: "Old-backfill", setType: "backfill", setDate: "2026-01-15" },
     ];
-    const names = currentClimbsOnly(climbs).map((c) => c.name);
+    const names = currentClimbsOnly(climbs).map((c) => c.projectName);
     expect(names).toEqual(
       expect.arrayContaining(["Reset", "Backfill-same-day", "Backfill-later"])
     );
@@ -219,11 +219,11 @@ describe("currentClimbsOnly", () => {
 
   it("treats each wall independently", () => {
     const climbs = [
-      { wallId: 1, name: "W1-reset", setType: "reset", setDate: "2026-01-01" },
-      { wallId: 2, name: "W2-old", setType: "reset", setDate: "2025-01-01" },
-      { wallId: 2, name: "W2-new", setType: "reset", setDate: "2026-01-01" },
+      { wallId: 1, projectName: "W1-reset", setType: "reset", setDate: "2026-01-01" },
+      { wallId: 2, projectName: "W2-old", setType: "reset", setDate: "2025-01-01" },
+      { wallId: 2, projectName: "W2-new", setType: "reset", setDate: "2026-01-01" },
     ];
-    const names = currentClimbsOnly(climbs).map((c) => c.name);
+    const names = currentClimbsOnly(climbs).map((c) => c.projectName);
     expect(names).toEqual(expect.arrayContaining(["W1-reset", "W2-new"]));
     expect(names).not.toContain("W2-old");
   });
@@ -235,60 +235,60 @@ describe("currentClimbsOnly", () => {
 
 describe("groupIntoCycles", () => {
   it("returns nothing for a wall that has never had a reset", () => {
-    const climbs = [{ wallId: 1, name: "A", setType: "backfill", setDate: "2026-01-01" }];
+    const climbs = [{ wallId: 1, projectName: "A", setType: "backfill", setDate: "2026-01-01" }];
     expect(groupIntoCycles(climbs)).toEqual([]);
   });
 
   it("groups a reset with its later backfills into one cycle", () => {
     const climbs = [
-      { wallId: 1, name: "R", setType: "reset", setDate: "2026-01-01", setId: "set-1" },
-      { wallId: 1, name: "B", setType: "backfill", setDate: "2026-01-10", setId: "b-1" },
+      { wallId: 1, projectName: "R", setType: "reset", setDate: "2026-01-01", setId: "set-1" },
+      { wallId: 1, projectName: "B", setType: "backfill", setDate: "2026-01-10", setId: "b-1" },
     ];
     const cycles = groupIntoCycles(climbs);
     expect(cycles).toHaveLength(1);
     expect(cycles[0].setId).toBe("set-1");
-    expect(cycles[0].climbs.map((c) => c.name)).toEqual(expect.arrayContaining(["R", "B"]));
+    expect(cycles[0].climbs.map((c) => c.projectName)).toEqual(expect.arrayContaining(["R", "B"]));
   });
 
   it("splits climbs between two resets on the same wall by date", () => {
     const climbs = [
-      { wallId: 1, name: "R1", setType: "reset", setDate: "2026-01-01", setId: "set-1" },
-      { wallId: 1, name: "B1", setType: "backfill", setDate: "2026-01-15", setId: "b-1" },
-      { wallId: 1, name: "R2", setType: "reset", setDate: "2026-02-01", setId: "set-2" },
-      { wallId: 1, name: "B2", setType: "backfill", setDate: "2026-02-15", setId: "b-2" },
+      { wallId: 1, projectName: "R1", setType: "reset", setDate: "2026-01-01", setId: "set-1" },
+      { wallId: 1, projectName: "B1", setType: "backfill", setDate: "2026-01-15", setId: "b-1" },
+      { wallId: 1, projectName: "R2", setType: "reset", setDate: "2026-02-01", setId: "set-2" },
+      { wallId: 1, projectName: "B2", setType: "backfill", setDate: "2026-02-15", setId: "b-2" },
     ];
     const cycles = groupIntoCycles(climbs);
     expect(cycles).toHaveLength(2);
     // newest first
     expect(cycles[0].setId).toBe("set-2");
-    expect(cycles[0].climbs.map((c) => c.name).sort()).toEqual(["B2", "R2"]);
+    expect(cycles[0].climbs.map((c) => c.projectName).sort()).toEqual(["B2", "R2"]);
     expect(cycles[1].setId).toBe("set-1");
-    expect(cycles[1].climbs.map((c) => c.name).sort()).toEqual(["B1", "R1"]);
+    expect(cycles[1].climbs.map((c) => c.projectName).sort()).toEqual(["B1", "R1"]);
   });
 });
 
 describe("archivedClimbsByWall", () => {
   it("returns nothing when a wall only has one cycle", () => {
-    const climbs = [{ wallId: 1, name: "R", setType: "reset", setDate: "2026-01-01", setId: "set-1" }];
+    const climbs = [{ wallId: 1, projectName: "R", setType: "reset", setDate: "2026-01-01", setId: "set-1" }];
     expect(archivedClimbsByWall(climbs)).toEqual([]);
   });
 
   it("returns older cycles, excluding the current one, per wall", () => {
     const climbs = [
-      { wallId: 1, name: "R1", setType: "reset", setDate: "2026-01-01", setId: "set-1" },
-      { wallId: 1, name: "R2", setType: "reset", setDate: "2026-02-01", setId: "set-2" },
+      { wallId: 1, projectName: "R1", setType: "reset", setDate: "2026-01-01", setId: "set-1" },
+      { wallId: 1, projectName: "R2", setType: "reset", setDate: "2026-02-01", setId: "set-2" },
     ];
     const archived = archivedClimbsByWall(climbs);
     expect(archived).toHaveLength(1);
     expect(archived[0].wallId).toBe(1);
-    expect(archived[0].climbs.map((c) => c.name)).toEqual(["R1"]);
+    expect(archived[0].climbs.map((c) => c.projectName)).toEqual(["R1"]);
   });
 
   it("omits walls that have no archived climbs even if others do", () => {
     const climbs = [
-      { wallId: 1, name: "R1", setType: "reset", setDate: "2026-01-01", setId: "set-1" },
-      { wallId: 1, name: "R2", setType: "reset", setDate: "2026-02-01", setId: "set-2" },
-      { wallId: 2, name: "OnlyReset", setType: "reset", setDate: "2026-01-01", setId: "set-3" },
+      { wallId: 1, projectName: "R1", setType: "reset", setDate: "2026-01-01", setId: "set-1" },
+      { wallId: 1, projectName: "R2", setType: "reset", setDate: "2026-02-01", setId: "set-2" },
+      { wallId: 2, projectName: "OnlyReset", setType: "reset", setDate: "2026-01-01", setId: "set-3" },
     ];
     const archived = archivedClimbsByWall(climbs);
     expect(archived.map((w) => w.wallId)).toEqual([1]);
@@ -369,8 +369,8 @@ describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEnt
 
 describe("computeAscentCount", () => {
   const climbs = [
-    { wallId: 1, name: "Current", setType: "reset", setDate: "2026-02-01" },
-    { wallId: 1, name: "Archived", setType: "reset", setDate: "2026-01-01" },
+    { wallId: 1, projectName: "Current", setType: "reset", setDate: "2026-02-01" },
+    { wallId: 1, projectName: "Archived", setType: "reset", setDate: "2026-01-01" },
   ];
 
   it("counts only ascents against currently-active climbs", () => {
@@ -568,7 +568,7 @@ describe("readUsers / writeUsers", () => {
   });
 
   it("backfills ascentCount using climbs.json when missing, only reading climbs if needed", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    seedClimbs([{ wallId: 1, projectName: "X", setType: "reset", setDate: "2026-01-01" }]);
     seedUsers([{ username: "a", ascents: [{ id: "1", wallId: 1, climbName: "X" }] }]);
     const users = await readUsers();
     expect(users[0].ascentCount).toBe(1);
@@ -588,20 +588,68 @@ describe("readClimbs / writeClimbs", () => {
   });
 
   it("round-trips via writeClimbs", async () => {
-    await writeClimbs([{ wallId: 1, name: "X" }]);
-    expect(await readClimbs()).toEqual([{ wallId: 1, name: "X" }]);
+    const climb = { wallId: 1, projectName: "X", displayName: "", nameProposals: [] };
+    await writeClimbs([climb]);
+    expect(await readClimbs()).toEqual([climb]);
   });
 
   it("backfills legacy `difficulty` into setterGrade/grade and persists", async () => {
-    seedClimbs([{ wallId: 1, name: "X", difficulty: "V4" }]);
+    seedClimbs([{ wallId: 1, projectName: "X", difficulty: "V4" }]);
     const climbs = await readClimbs();
-    expect(climbs[0]).toEqual({ wallId: 1, name: "X", setterGrade: "V4", grade: "V4" });
+    expect(climbs[0]).toMatchObject({
+      wallId: 1,
+      projectName: "X",
+      setterGrade: "V4",
+      grade: "V4",
+    });
     expect(climbs[0].difficulty).toBeUndefined();
     expect(JSON.parse(store.get(CLIMBS_PATH))[0].setterGrade).toBe("V4");
   });
 
+  it("renames a legacy `name` to projectName and leaves the climb unnamed", async () => {
+    seedClimbs([{ wallId: 1, name: "Crimpy", setterGrade: "V4", grade: "" }]);
+    const climbs = await readClimbs();
+    expect(climbs[0].projectName).toBe("Crimpy");
+    expect(climbs[0].name).toBeUndefined();
+    expect(climbs[0].displayName).toBe("");
+    expect(JSON.parse(store.get(CLIMBS_PATH))[0].projectName).toBe("Crimpy");
+  });
+
+  it("migrates legacy ascentClaims into pending name proposals", async () => {
+    seedClimbs([
+      {
+        wallId: 1,
+        projectName: "X",
+        setterGrade: "V4",
+        grade: "",
+        displayName: "",
+        ascentClaims: [
+          { name: "Good Name", pass: false },
+          { name: "", pass: true },
+        ],
+      },
+    ]);
+    const climbs = await readClimbs();
+    // Nobody reviewed these, so they queue up rather than naming the climb.
+    expect(climbs[0].displayName).toBe("");
+    expect(climbs[0].ascentClaims).toBeUndefined();
+    expect(climbs[0].nameProposals).toMatchObject([
+      { name: "Good Name", pass: false, status: "pending" },
+      { name: "", pass: true, status: "passed" },
+    ]);
+  });
+
   it("does not touch already-migrated climbs", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setterGrade: "V4", grade: "" }]);
+    seedClimbs([
+      {
+        wallId: 1,
+        projectName: "X",
+        setterGrade: "V4",
+        grade: "",
+        displayName: "",
+        nameProposals: [],
+      },
+    ]);
     await readClimbs();
     expect(fsPromises.writeFile).not.toHaveBeenCalled();
   });
@@ -624,7 +672,7 @@ describe("withAscentStats", () => {
   it("adds zeroed stats and seeded comments when nobody has climbed it", async () => {
     seedUsers([]);
     const [climb] = await withAscentStats([
-      { wallId: 1, name: "X", comments: [{ id: "seed-1", text: "hi" }] },
+      { wallId: 1, projectName: "X", comments: [{ id: "seed-1", text: "hi" }] },
     ]);
     expect(climb.ascentCount).toBe(0);
     expect(climb.averageStars).toBe(0);
@@ -642,7 +690,7 @@ describe("withAscentStats", () => {
         ],
       },
     ]);
-    const [climb] = await withAscentStats([{ wallId: 1, name: "X" }]);
+    const [climb] = await withAscentStats([{ wallId: 1, projectName: "X" }]);
     expect(climb.ascentCount).toBe(3);
     expect(climb.averageStars).toBe(4);
   });
@@ -657,7 +705,7 @@ describe("withAscentStats", () => {
         ],
       },
     ]);
-    const [climb] = await withAscentStats([{ wallId: 1, name: "X", comments: [] }]);
+    const [climb] = await withAscentStats([{ wallId: 1, projectName: "X", comments: [] }]);
     expect(climb.comments).toEqual([
       { id: "ascent-1", ascentId: "1", author: "a", text: "great climb" },
     ]);
@@ -968,11 +1016,11 @@ describe("POST /api/users/:username/reset-password", () => {
 describe("GET /api/climbs", () => {
   it("returns only current climbs with stats merged in", async () => {
     seedClimbs([
-      { wallId: 1, name: "Old", setType: "reset", setDate: "2026-01-01", comments: [] },
-      { wallId: 1, name: "New", setType: "reset", setDate: "2026-02-01", comments: [] },
+      { wallId: 1, projectName: "Old", setType: "reset", setDate: "2026-01-01", comments: [] },
+      { wallId: 1, projectName: "New", setType: "reset", setDate: "2026-02-01", comments: [] },
     ]);
     const res = await request(app).get("/api/climbs");
-    expect(res.body.climbs.map((c) => c.name)).toEqual(["New"]);
+    expect(res.body.climbs.map((c) => c.projectName)).toEqual(["New"]);
     expect(res.body.climbs[0]).toEqual(expect.objectContaining({ ascentCount: 0, averageStars: 0 }));
   });
 });
@@ -987,7 +1035,7 @@ describe("POST /api/climbs", () => {
   }
 
   it("401s without auth", async () => {
-    const res = await request(app).post("/api/climbs").send({ wallId: 1, name: "X", setterGrade: "V4", setter: "a" });
+    const res = await request(app).post("/api/climbs").send({ wallId: 1, projectName: "X", setterGrade: "V4", setter: "a" });
     expect(res.status).toBe(401);
   });
 
@@ -996,7 +1044,7 @@ describe("POST /api/climbs", () => {
     const res = await request(app)
       .post("/api/climbs")
       .set("Cookie", cookie)
-      .send({ wallId: 1, name: "X", setterGrade: "V4", setter: "a" });
+      .send({ wallId: 1, projectName: "X", setterGrade: "V4", setter: "a" });
     expect(res.status).toBe(403);
   });
 
@@ -1008,11 +1056,11 @@ describe("POST /api/climbs", () => {
 
   it("409s a duplicate name on the same wall (case-insensitive)", async () => {
     const cookie = await setterCookie();
-    seedClimbs([{ wallId: 1, name: "Crimpy", setType: "reset", setDate: "2026-01-01" }]);
+    seedClimbs([{ wallId: 1, projectName: "Crimpy", setType: "reset", setDate: "2026-01-01" }]);
     const res = await request(app)
       .post("/api/climbs")
       .set("Cookie", cookie)
-      .send({ wallId: 1, name: "crimpy", setterGrade: "V4", setter: "a" });
+      .send({ wallId: 1, projectName: "crimpy", setterGrade: "V4", setter: "a" });
     expect(res.status).toBe(409);
   });
 
@@ -1023,10 +1071,10 @@ describe("POST /api/climbs", () => {
     const res = await request(app)
       .post("/api/climbs")
       .set("Cookie", cookie)
-      .send({ wallId: 1, name: "New Climb", setterGrade: "V4", setter: "someone" });
+      .send({ wallId: 1, projectName: "New Climb", setterGrade: "V4", setter: "someone" });
     expect(res.status).toBe(200);
     expect(res.body.climb).toEqual(
-      expect.objectContaining({ wallId: 1, name: "New Climb", setType: "backfill", grade: "" })
+      expect.objectContaining({ wallId: 1, projectName: "New Climb", setType: "backfill", grade: "" })
     );
     expect(send).toHaveBeenCalledWith({ type: "climbs-updated" });
     delete process.send;
@@ -1054,30 +1102,30 @@ describe("POST /api/climbs/grade", () => {
     const res = await request(app)
       .post("/api/climbs/grade")
       .set("Cookie", cookie)
-      .send({ wallId: 1, name: "Ghost", grade: "V4" });
+      .send({ wallId: 1, projectName: "Ghost", grade: "V4" });
     expect(res.status).toBe(404);
   });
 
   it("409s a climb that's still current", async () => {
     const cookie = await setterCookie();
-    seedClimbs([{ wallId: 1, name: "Current", setType: "reset", setDate: "2026-01-01" }]);
+    seedClimbs([{ wallId: 1, projectName: "Current", setType: "reset", setDate: "2026-01-01" }]);
     const res = await request(app)
       .post("/api/climbs/grade")
       .set("Cookie", cookie)
-      .send({ wallId: 1, name: "Current", grade: "V4" });
+      .send({ wallId: 1, projectName: "Current", grade: "V4" });
     expect(res.status).toBe(409);
   });
 
   it("sets the grade on an archived climb", async () => {
     const cookie = await setterCookie();
     seedClimbs([
-      { wallId: 1, name: "Old", setType: "reset", setDate: "2026-01-01" },
-      { wallId: 1, name: "New", setType: "reset", setDate: "2026-02-01" },
+      { wallId: 1, projectName: "Old", setType: "reset", setDate: "2026-01-01" },
+      { wallId: 1, projectName: "New", setType: "reset", setDate: "2026-02-01" },
     ]);
     const res = await request(app)
       .post("/api/climbs/grade")
       .set("Cookie", cookie)
-      .send({ wallId: 1, name: "Old", grade: "V4" });
+      .send({ wallId: 1, projectName: "Old", grade: "V4" });
     expect(res.status).toBe(200);
     expect(res.body.climb.grade).toBe("V4");
   });
@@ -1086,26 +1134,195 @@ describe("POST /api/climbs/grade", () => {
 describe("GET /api/climbs/needs-grade", () => {
   it("lists ungraded archived climbs, newest first", async () => {
     seedClimbs([
-      { wallId: 1, name: "OldUngraded", setType: "reset", setDate: "2026-01-01", grade: "" },
-      { wallId: 1, name: "MidUngraded", setType: "reset", setDate: "2026-01-15", grade: "" },
-      { wallId: 1, name: "Current", setType: "reset", setDate: "2026-02-01", grade: "" },
-      { wallId: 1, name: "AlreadyGraded", setType: "reset", setDate: "2026-01-01", grade: "V4" },
+      { wallId: 1, projectName: "OldUngraded", setType: "reset", setDate: "2026-01-01", grade: "" },
+      { wallId: 1, projectName: "MidUngraded", setType: "reset", setDate: "2026-01-15", grade: "" },
+      { wallId: 1, projectName: "Current", setType: "reset", setDate: "2026-02-01", grade: "" },
+      { wallId: 1, projectName: "AlreadyGraded", setType: "reset", setDate: "2026-01-01", grade: "V4" },
     ]);
     const res = await request(app).get("/api/climbs/needs-grade");
-    expect(res.body.climbs.map((c) => c.name)).toEqual(["MidUngraded", "OldUngraded"]);
+    expect(res.body.climbs.map((c) => c.projectName)).toEqual(["MidUngraded", "OldUngraded"]);
+  });
+});
+
+describe("climb naming approval", () => {
+  async function setterCookie(username = "setter-user") {
+    const { cookie } = await signup(username);
+    const users = currentUsers();
+    users[users.length - 1].isSetter = true;
+    seedUsers(users);
+    return cookie;
+  }
+
+  function seedPending(proposals, extra = {}) {
+    seedClimbs([
+      {
+        wallId: 1,
+        projectName: "Project 1",
+        setType: "reset",
+        setDate: "2026-01-01",
+        setter: "someone",
+        setterGrade: "V4",
+        grade: "",
+        displayName: "",
+        nameProposals: proposals,
+        ...extra,
+      },
+    ]);
+  }
+
+  const pending = (id, name, at) => ({
+    id,
+    name,
+    pass: false,
+    proposedBy: "climber",
+    proposedAt: at,
+    status: "pending",
+  });
+
+  describe("GET /api/climbs/needs-name", () => {
+    it("401s an anonymous request", async () => {
+      seedPending([pending("p1", "A", "2026-02-01T00:00:00.000Z")]);
+      expect((await request(app).get("/api/climbs/needs-name")).status).toBe(401);
+    });
+
+    it("403s a plain member", async () => {
+      const { cookie } = await signup("member");
+      seedPending([pending("p1", "A", "2026-02-01T00:00:00.000Z")]);
+      const res = await request(app).get("/api/climbs/needs-name").set("Cookie", cookie);
+      expect(res.status).toBe(403);
+    });
+
+    it("lists only pending proposals, oldest first", async () => {
+      const cookie = await setterCookie();
+      seedPending([
+        pending("p2", "Second", "2026-02-02T00:00:00.000Z"),
+        pending("p1", "First", "2026-02-01T00:00:00.000Z"),
+        { id: "p0", name: "Done", pass: false, status: "rejected", proposedAt: "2026-01-01" },
+      ]);
+      const res = await request(app).get("/api/climbs/needs-name").set("Cookie", cookie);
+      expect(res.body.proposals.map((p) => p.name)).toEqual(["First", "Second"]);
+      expect(res.body.proposals[0].projectName).toBe("Project 1");
+    });
+
+    it("skips climbs that already have a name", async () => {
+      const cookie = await setterCookie();
+      seedPending([pending("p1", "A", "2026-02-01T00:00:00.000Z")], {
+        displayName: "Already Named",
+      });
+      const res = await request(app).get("/api/climbs/needs-name").set("Cookie", cookie);
+      expect(res.body.proposals).toEqual([]);
+    });
+  });
+
+  describe("POST /api/climbs/name-decision", () => {
+    const decide = (cookie, body) =>
+      request(app).post("/api/climbs/name-decision").set("Cookie", cookie).send({
+        wallId: 1,
+        projectName: "Project 1",
+        ...body,
+      });
+
+    it("403s a plain member", async () => {
+      const { cookie } = await signup("member");
+      seedPending([pending("p1", "A", "2026-02-01T00:00:00.000Z")]);
+      expect((await decide(cookie, { proposalId: "p1", approve: true })).status).toBe(403);
+    });
+
+    it("approving names the climb and clears its other pending proposals", async () => {
+      const cookie = await setterCookie();
+      seedPending([
+        pending("p1", "Loser", "2026-02-01T00:00:00.000Z"),
+        pending("p2", "Winner", "2026-02-02T00:00:00.000Z"),
+      ]);
+      const res = await decide(cookie, { proposalId: "p2", approve: true });
+      expect(res.status).toBe(200);
+      expect(res.body.climb.displayName).toBe("Winner");
+      // The key never moves, so ascents logged against it still resolve.
+      expect(res.body.climb.projectName).toBe("Project 1");
+      expect(res.body.climb.nameProposals.map((p) => p.status)).toEqual([
+        "rejected",
+        "approved",
+      ]);
+    });
+
+    it("rejecting leaves the climb unnamed but spends the slot", async () => {
+      const cookie = await setterCookie();
+      seedPending([pending("p1", "Nope", "2026-02-01T00:00:00.000Z")]);
+      const res = await decide(cookie, { proposalId: "p1", approve: false });
+      expect(res.status).toBe(200);
+      expect(res.body.climb.displayName).toBe("");
+      expect(res.body.climb.nameProposals).toHaveLength(1);
+      expect(res.body.climb.nameProposals[0].status).toBe("rejected");
+    });
+
+    it("409s a proposal that was already decided", async () => {
+      const cookie = await setterCookie();
+      seedPending([
+        { id: "p1", name: "A", pass: false, status: "rejected", proposedAt: "2026-01-01" },
+      ]);
+      expect((await decide(cookie, { proposalId: "p1", approve: true })).status).toBe(409);
+    });
+
+    it("409s once the climb has been named by someone else", async () => {
+      const cookie = await setterCookie();
+      seedPending([pending("p1", "A", "2026-02-01T00:00:00.000Z")], {
+        displayName: "Named Already",
+      });
+      expect((await decide(cookie, { proposalId: "p1", approve: true })).status).toBe(409);
+    });
+
+    it("404s an unknown proposal", async () => {
+      const cookie = await setterCookie();
+      seedPending([pending("p1", "A", "2026-02-01T00:00:00.000Z")]);
+      expect((await decide(cookie, { proposalId: "nope", approve: true })).status).toBe(404);
+    });
+
+    it("400s on missing fields", async () => {
+      const cookie = await setterCookie();
+      seedPending([pending("p1", "A", "2026-02-01T00:00:00.000Z")]);
+      const res = await request(app)
+        .post("/api/climbs/name-decision")
+        .set("Cookie", cookie)
+        .send({ wallId: 1 });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  it("a rejected name frees the next ascent to propose another", async () => {
+    const setter = await setterCookie();
+    seedPending([pending("p1", "Bad Name", "2026-02-01T00:00:00.000Z")]);
+    await request(app)
+      .post("/api/climbs/name-decision")
+      .set("Cookie", setter)
+      .send({ wallId: 1, projectName: "Project 1", proposalId: "p1", approve: false });
+
+    const { cookie } = await signup("next-climber");
+    await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({
+        wallId: 1,
+        climbName: "Project 1",
+        nameProposal: { name: "Better Name", pass: false },
+      });
+
+    const res = await request(app).get("/api/climbs/needs-name").set("Cookie", setter);
+    expect(res.body.proposals.map((p) => p.name)).toEqual(["Better Name"]);
   });
 });
 
 describe("GET /api/archive", () => {
   it("groups archived climbs by wall and flags the most recent archived cycle as loggable", async () => {
     seedClimbs([
-      { wallId: 1, name: "Oldest", setType: "reset", setDate: "2026-01-01", comments: [] },
-      { wallId: 1, name: "Middle", setType: "reset", setDate: "2026-02-01", comments: [] },
-      { wallId: 1, name: "Current", setType: "reset", setDate: "2026-03-01", comments: [] },
+      { wallId: 1, projectName: "Oldest", setType: "reset", setDate: "2026-01-01", comments: [] },
+      { wallId: 1, projectName: "Middle", setType: "reset", setDate: "2026-02-01", comments: [] },
+      { wallId: 1, projectName: "Current", setType: "reset", setDate: "2026-03-01", comments: [] },
     ]);
     const res = await request(app).get("/api/archive");
     expect(res.body.walls).toHaveLength(1);
-    const climbsByName = Object.fromEntries(res.body.walls[0].climbs.map((c) => [c.name, c]));
+    const climbsByName = Object.fromEntries(
+      res.body.walls[0].climbs.map((c) => [c.projectName, c])
+    );
     expect(climbsByName.Middle.loggable).toBe(true);
     expect(climbsByName.Oldest.loggable).toBe(false);
   });
@@ -1124,7 +1341,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("logs an ascent and recomputes ascentCount", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    seedClimbs([{ wallId: 1, projectName: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube");
     const res = await request(app)
       .post("/api/ascents")
@@ -1135,54 +1352,98 @@ describe("POST /api/ascents", () => {
     expect(res.body.ascents[0]).toEqual(expect.objectContaining({ wallId: 1, climbName: "X", starRating: 4 }));
   });
 
-  it("records an ascent claim on the target climb", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01", ascentClaims: [] }]);
+  it("queues a proposed name as pending, credited to the logged-in user", async () => {
+    seedClimbs([
+      { wallId: 1, projectName: "X", setType: "reset", setDate: "2026-01-01", nameProposals: [] },
+    ]);
     const { cookie } = await signup("cube");
     await request(app)
       .post("/api/ascents")
       .set("Cookie", cookie)
-      .send({ wallId: 1, climbName: "X", ascentClaim: { name: "First Ascender", pass: false } });
+      .send({ wallId: 1, climbName: "X", nameProposal: { name: "Crimp Fiction", pass: false } });
 
     const climbsRes = await request(app).get("/api/climbs");
-    expect(climbsRes.body.climbs[0].ascentClaims).toEqual([{ name: "First Ascender", pass: false }]);
+    expect(climbsRes.body.climbs[0].displayName).toBe("");
+    expect(climbsRes.body.climbs[0].nameProposals).toMatchObject([
+      { name: "Crimp Fiction", pass: false, proposedBy: "cube", status: "pending" },
+    ]);
   });
 
-  it("caps ascent claims at 5 and silently drops further ones", async () => {
+  it("records a pass as an already-resolved slot", async () => {
+    seedClimbs([
+      { wallId: 1, projectName: "X", setType: "reset", setDate: "2026-01-01", nameProposals: [] },
+    ]);
+    const { cookie } = await signup("cube");
+    await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "X", nameProposal: { name: "ignored", pass: true } });
+
+    const climbsRes = await request(app).get("/api/climbs");
+    expect(climbsRes.body.climbs[0].nameProposals).toMatchObject([
+      { name: "", pass: true, status: "passed" },
+    ]);
+  });
+
+  it("caps naming at 5 slots and silently drops further proposals", async () => {
     seedClimbs([
       {
         wallId: 1,
-        name: "X",
+        projectName: "X",
         setType: "reset",
         setDate: "2026-01-01",
-        ascentClaims: [
-          { name: "1", pass: false },
-          { name: "2", pass: false },
-          { name: "3", pass: false },
-          { name: "4", pass: false },
-          { name: "5", pass: false },
-        ],
+        displayName: "",
+        nameProposals: [1, 2, 3, 4, 5].map((n) => ({
+          id: `p${n}`,
+          name: `${n}`,
+          pass: false,
+          status: "rejected",
+        })),
       },
     ]);
     const { cookie } = await signup("cube");
     await request(app)
       .post("/api/ascents")
       .set("Cookie", cookie)
-      .send({ wallId: 1, climbName: "X", ascentClaim: { name: "6th", pass: false } });
+      .send({ wallId: 1, climbName: "X", nameProposal: { name: "6th", pass: false } });
 
     const climbsRes = await request(app).get("/api/climbs");
-    expect(climbsRes.body.climbs[0].ascentClaims).toHaveLength(5);
+    expect(climbsRes.body.climbs[0].nameProposals).toHaveLength(5);
   });
 
-  it("ignores an ascentClaim with neither a name nor pass", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01", ascentClaims: [] }]);
+  it("ignores a proposal on a climb that already has a name", async () => {
+    seedClimbs([
+      {
+        wallId: 1,
+        projectName: "X",
+        setType: "reset",
+        setDate: "2026-01-01",
+        displayName: "Already Named",
+        nameProposals: [],
+      },
+    ]);
     const { cookie } = await signup("cube");
     await request(app)
       .post("/api/ascents")
       .set("Cookie", cookie)
-      .send({ wallId: 1, climbName: "X", ascentClaim: { name: "", pass: false } });
+      .send({ wallId: 1, climbName: "X", nameProposal: { name: "Too Late", pass: false } });
 
     const climbsRes = await request(app).get("/api/climbs");
-    expect(climbsRes.body.climbs[0].ascentClaims).toEqual([]);
+    expect(climbsRes.body.climbs[0].nameProposals).toEqual([]);
+  });
+
+  it("ignores a nameProposal with neither a name nor pass", async () => {
+    seedClimbs([
+      { wallId: 1, projectName: "X", setType: "reset", setDate: "2026-01-01", nameProposals: [] },
+    ]);
+    const { cookie } = await signup("cube");
+    await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "X", nameProposal: { name: "", pass: false } });
+
+    const climbsRes = await request(app).get("/api/climbs");
+    expect(climbsRes.body.climbs[0].nameProposals).toEqual([]);
   });
 });
 
@@ -1201,7 +1462,7 @@ describe("DELETE /api/users/:username/ascents/:ascentId/comment", () => {
   });
 
   it("clears only the comment, keeping the rest of the ascent", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    seedClimbs([{ wallId: 1, projectName: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube");
     const logRes = await request(app)
       .post("/api/ascents")
@@ -1228,7 +1489,7 @@ describe("GET /api/users/:username/grade-counts", () => {
   });
 
   it("prefers the ascent's own grade, falling back to the climb's bucket grade", async () => {
-    seedClimbs([{ wallId: 1, name: "NoGradeOnAscent", setterGrade: "V2-4", grade: "" }]);
+    seedClimbs([{ wallId: 1, projectName: "NoGradeOnAscent", setterGrade: "V2-4", grade: "" }]);
     seedUsers([
       {
         username: "cube",
@@ -1248,8 +1509,8 @@ describe("GET /api/users/:username/grade-counts", () => {
 describe("GET /api/climbs/grade-counts", () => {
   it("buckets only currently-active climbs", async () => {
     seedClimbs([
-      { wallId: 1, name: "Old", setType: "reset", setDate: "2026-01-01", grade: "V9" },
-      { wallId: 1, name: "New", setType: "reset", setDate: "2026-02-01", grade: "V3" },
+      { wallId: 1, projectName: "Old", setType: "reset", setDate: "2026-01-01", grade: "V9" },
+      { wallId: 1, projectName: "New", setType: "reset", setDate: "2026-02-01", grade: "V3" },
     ]);
     const res = await request(app).get("/api/climbs/grade-counts");
     const byGrade = Object.fromEntries(res.body.counts.map((c) => [c.grade, c.count]));

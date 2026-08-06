@@ -1,7 +1,6 @@
 [
   {
     "wallId": 4,
-    "name": "Wild Ledge",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "47c503be-18fe-46b9-8d83-7b238ac42ee9",
@@ -9,11 +8,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-1",
-    "grade": "V1"
+    "grade": "V1",
+    "projectName": "Wild Ledge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Copper Nose",
     "setter": "tester",
     "comments": [],
     "setId": "47c503be-18fe-46b9-8d83-7b238ac42ee9",
@@ -21,11 +22,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": "V6"
+    "grade": "V6",
+    "projectName": "Copper Nose",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Cracked Dyno",
     "setter": "tiff",
     "comments": [],
     "setId": "47c503be-18fe-46b9-8d83-7b238ac42ee9",
@@ -33,11 +36,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": "V9"
+    "grade": "V9",
+    "projectName": "Cracked Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Quiet Seam",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "47c503be-18fe-46b9-8d83-7b238ac42ee9",
@@ -45,11 +50,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7-8",
-    "grade": "V8"
+    "grade": "V8",
+    "projectName": "Quiet Seam",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Neon Chimney",
     "setter": "tester",
     "comments": [],
     "setId": "47c503be-18fe-46b9-8d83-7b238ac42ee9",
@@ -57,11 +64,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "projectName": "Neon Chimney",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Hollow Highball",
     "setter": "tester",
     "comments": [],
     "setId": "47c503be-18fe-46b9-8d83-7b238ac42ee9",
@@ -69,11 +78,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": ""
+    "grade": "",
+    "projectName": "Hollow Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Jagged Dyno",
     "setter": "tiff",
     "comments": [],
     "setId": "47c503be-18fe-46b9-8d83-7b238ac42ee9",
@@ -81,11 +92,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Jagged Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Quiet Roof",
     "setter": "tester",
     "comments": [],
     "setId": "47c503be-18fe-46b9-8d83-7b238ac42ee9",
@@ -93,11 +106,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7-9",
-    "grade": "V9"
+    "grade": "V9",
+    "projectName": "Quiet Roof",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Sunken Corner",
     "setter": "grisha",
     "comments": [],
     "setId": "47c503be-18fe-46b9-8d83-7b238ac42ee9",
@@ -105,11 +120,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-5",
-    "grade": "V5"
+    "grade": "V5",
+    "projectName": "Sunken Corner",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Hollow Nose",
     "setter": "grisha",
     "comments": [],
     "setId": "47c503be-18fe-46b9-8d83-7b238ac42ee9",
@@ -117,11 +134,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Hollow Nose",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Stormy Pinch",
     "setter": "tiff",
     "comments": [],
     "setId": "47c503be-18fe-46b9-8d83-7b238ac42ee9",
@@ -129,11 +148,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": "V3"
+    "grade": "V3",
+    "projectName": "Stormy Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Golden Roof",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "47c503be-18fe-46b9-8d83-7b238ac42ee9",
@@ -141,11 +162,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1",
-    "grade": ""
+    "grade": "",
+    "projectName": "Golden Roof",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Silent Ridge",
     "setter": "grisha",
     "comments": [],
     "setId": "47c503be-18fe-46b9-8d83-7b238ac42ee9",
@@ -153,11 +176,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3",
-    "grade": ""
+    "grade": "",
+    "projectName": "Silent Ridge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Windy Pinch",
     "setter": "tester",
     "comments": [],
     "setId": "47c503be-18fe-46b9-8d83-7b238ac42ee9",
@@ -165,11 +190,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": "V6"
+    "grade": "V6",
+    "projectName": "Windy Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Jagged Traverse",
     "setter": "tester",
     "comments": [],
     "setId": "47c503be-18fe-46b9-8d83-7b238ac42ee9",
@@ -177,11 +204,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3",
-    "grade": "V3"
+    "grade": "V3",
+    "projectName": "Jagged Traverse",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Windy Nose",
     "setter": "grisha",
     "comments": [],
     "setId": "00b320d2-8170-4849-82cd-e5170c192edc",
@@ -189,11 +218,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": "V8"
+    "grade": "V8",
+    "projectName": "Windy Nose",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Crimson Overhang",
     "setter": "grisha",
     "comments": [],
     "setId": "00b320d2-8170-4849-82cd-e5170c192edc",
@@ -201,11 +232,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V1",
-    "grade": "V1"
+    "grade": "V1",
+    "projectName": "Crimson Overhang",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Neon Pinch",
     "setter": "tester",
     "comments": [],
     "setId": "00b320d2-8170-4849-82cd-e5170c192edc",
@@ -213,11 +246,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": ""
+    "grade": "",
+    "projectName": "Neon Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Electric Rail",
     "setter": "tiff",
     "comments": [],
     "setId": "00b320d2-8170-4849-82cd-e5170c192edc",
@@ -225,11 +260,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": ""
+    "grade": "",
+    "projectName": "Electric Rail",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Jagged Mantle",
     "setter": "tester",
     "comments": [],
     "setId": "e54d3963-6a1e-4353-aa27-376c8a6f15a1",
@@ -237,11 +274,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "projectName": "Jagged Mantle",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Copper Traverse",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "e54d3963-6a1e-4353-aa27-376c8a6f15a1",
@@ -249,11 +288,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": "V3"
+    "grade": "V3",
+    "projectName": "Copper Traverse",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Iron Traverse",
     "setter": "tiff",
     "comments": [],
     "setId": "e54d3963-6a1e-4353-aa27-376c8a6f15a1",
@@ -261,11 +302,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": ""
+    "grade": "",
+    "projectName": "Iron Traverse",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Golden Groove",
     "setter": "tester",
     "comments": [],
     "setId": "e54d3963-6a1e-4353-aa27-376c8a6f15a1",
@@ -273,11 +316,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "projectName": "Golden Groove",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Wild Corner",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "e54d3963-6a1e-4353-aa27-376c8a6f15a1",
@@ -285,11 +330,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": "V2"
+    "grade": "V2",
+    "projectName": "Wild Corner",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Faded Traverse",
     "setter": "grisha",
     "comments": [],
     "setId": "e54d3963-6a1e-4353-aa27-376c8a6f15a1",
@@ -297,11 +344,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Faded Traverse",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Wild Traverse",
     "setter": "tiff",
     "comments": [],
     "setId": "e54d3963-6a1e-4353-aa27-376c8a6f15a1",
@@ -309,11 +358,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-5",
-    "grade": "V5"
+    "grade": "V5",
+    "projectName": "Wild Traverse",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Velvet Gaston",
     "setter": "tester",
     "comments": [],
     "setId": "e54d3963-6a1e-4353-aa27-376c8a6f15a1",
@@ -321,11 +372,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": ""
+    "grade": "",
+    "projectName": "Velvet Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Silent Chimney",
     "setter": "grisha",
     "comments": [],
     "setId": "e54d3963-6a1e-4353-aa27-376c8a6f15a1",
@@ -333,11 +386,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "projectName": "Silent Chimney",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Stormy Highball",
     "setter": "tester",
     "comments": [],
     "setId": "e54d3963-6a1e-4353-aa27-376c8a6f15a1",
@@ -345,11 +400,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": ""
+    "grade": "",
+    "projectName": "Stormy Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Amber Groove",
     "setter": "tester",
     "comments": [],
     "setId": "e54d3963-6a1e-4353-aa27-376c8a6f15a1",
@@ -357,11 +414,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-4",
-    "grade": "V4"
+    "grade": "V4",
+    "projectName": "Amber Groove",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Faded Groove",
     "setter": "tiff",
     "comments": [],
     "setId": "e54d3963-6a1e-4353-aa27-376c8a6f15a1",
@@ -369,11 +428,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": "V9"
+    "grade": "V9",
+    "projectName": "Faded Groove",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Sunken Crimper",
     "setter": "tester",
     "comments": [],
     "setId": "e54d3963-6a1e-4353-aa27-376c8a6f15a1",
@@ -381,11 +442,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": "V9"
+    "grade": "V9",
+    "projectName": "Sunken Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Stormy Nose",
     "setter": "tiff",
     "comments": [],
     "setId": "e54d3963-6a1e-4353-aa27-376c8a6f15a1",
@@ -393,11 +456,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1",
-    "grade": "V1"
+    "grade": "V1",
+    "projectName": "Stormy Nose",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Wild Crack",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "e54d3963-6a1e-4353-aa27-376c8a6f15a1",
@@ -405,11 +470,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6",
-    "grade": "V6"
+    "grade": "V6",
+    "projectName": "Wild Crack",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Stormy Sloper",
     "setter": "tiff",
     "comments": [],
     "setId": "35f9201f-cf95-47db-9284-a80039bad732",
@@ -417,11 +484,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": ""
+    "grade": "",
+    "projectName": "Stormy Sloper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Hollow Sloper",
     "setter": "grisha",
     "comments": [],
     "setId": "35f9201f-cf95-47db-9284-a80039bad732",
@@ -429,11 +498,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "projectName": "Hollow Sloper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Jagged Highball",
     "setter": "grisha",
     "comments": [],
     "setId": "35f9201f-cf95-47db-9284-a80039bad732",
@@ -441,11 +512,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "projectName": "Jagged Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Wild Pinch",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "35f9201f-cf95-47db-9284-a80039bad732",
@@ -453,29 +526,36 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "VB-1",
-    "grade": ""
+    "grade": "",
+    "projectName": "Wild Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Iron Crack",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "0a60d967-240b-45e8-871a-8354ce8a3a13",
     "setDate": "2026-05-29",
     "setType": "reset",
     "archived": false,
-    "ascentClaims": [
+    "setterGrade": "V6-8",
+    "grade": "",
+    "projectName": "Iron Crack",
+    "displayName": "",
+    "nameProposals": [
       {
+        "id": "353a0c38-a9c1-46c0-bb78-a69289231e1f",
         "name": "l;kljb",
-        "pass": false
+        "pass": false,
+        "proposedBy": "",
+        "proposedAt": "",
+        "status": "pending"
       }
-    ],
-    "setterGrade": "V6-8",
-    "grade": ""
+    ]
   },
   {
     "wallId": 4,
-    "name": "Windy Highball",
     "setter": "grisha",
     "comments": [],
     "setId": "0a60d967-240b-45e8-871a-8354ce8a3a13",
@@ -483,11 +563,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": ""
+    "grade": "",
+    "projectName": "Windy Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Copper Seam",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "0a60d967-240b-45e8-871a-8354ce8a3a13",
@@ -495,11 +577,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-3",
-    "grade": ""
+    "grade": "",
+    "projectName": "Copper Seam",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Amber Arête",
     "setter": "tiff",
     "comments": [],
     "setId": "0a60d967-240b-45e8-871a-8354ce8a3a13",
@@ -507,11 +591,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": ""
+    "grade": "",
+    "projectName": "Amber Arête",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Electric Ridge",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "0a60d967-240b-45e8-871a-8354ce8a3a13",
@@ -519,11 +605,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Electric Ridge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Ghost Mantle",
     "setter": "grisha",
     "comments": [],
     "setId": "0a60d967-240b-45e8-871a-8354ce8a3a13",
@@ -531,11 +619,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1",
-    "grade": ""
+    "grade": "",
+    "projectName": "Ghost Mantle",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Electric Gaston",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "0a60d967-240b-45e8-871a-8354ce8a3a13",
@@ -543,11 +633,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4",
-    "grade": ""
+    "grade": "",
+    "projectName": "Electric Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Jagged Ledge",
     "setter": "grisha",
     "comments": [],
     "setId": "0a60d967-240b-45e8-871a-8354ce8a3a13",
@@ -555,11 +647,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "projectName": "Jagged Ledge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Velvet Pinch",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "0a60d967-240b-45e8-871a-8354ce8a3a13",
@@ -567,11 +661,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Velvet Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Windy Overhang",
     "setter": "tiff",
     "comments": [],
     "setId": "0a60d967-240b-45e8-871a-8354ce8a3a13",
@@ -579,11 +675,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Windy Overhang",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Neon Seam",
     "setter": "tiff",
     "comments": [],
     "setId": "0a60d967-240b-45e8-871a-8354ce8a3a13",
@@ -591,11 +689,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "projectName": "Neon Seam",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Amber Seam",
     "setter": "grisha",
     "comments": [],
     "setId": "0a60d967-240b-45e8-871a-8354ce8a3a13",
@@ -603,11 +703,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": ""
+    "grade": "",
+    "projectName": "Amber Seam",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Ghost Chimney",
     "setter": "grisha",
     "comments": [],
     "setId": "0a60d967-240b-45e8-871a-8354ce8a3a13",
@@ -615,11 +717,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1",
-    "grade": ""
+    "grade": "",
+    "projectName": "Ghost Chimney",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Copper Sloper",
     "setter": "grisha",
     "comments": [],
     "setId": "0a60d967-240b-45e8-871a-8354ce8a3a13",
@@ -627,11 +731,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": ""
+    "grade": "",
+    "projectName": "Copper Sloper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Rusty Mantle",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "0a60d967-240b-45e8-871a-8354ce8a3a13",
@@ -639,11 +745,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-5",
-    "grade": ""
+    "grade": "",
+    "projectName": "Rusty Mantle",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Cracked Sloper",
     "setter": "tester",
     "comments": [],
     "setId": "eb222f5b-0800-4342-a2c0-0bbff74e6b8a",
@@ -651,11 +759,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V6",
-    "grade": ""
+    "grade": "",
+    "projectName": "Cracked Sloper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Hollow Dyno",
     "setter": "tester",
     "comments": [],
     "setId": "eb222f5b-0800-4342-a2c0-0bbff74e6b8a",
@@ -663,11 +773,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": ""
+    "grade": "",
+    "projectName": "Hollow Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Jagged Crack",
     "setter": "tester",
     "comments": [],
     "setId": "eb222f5b-0800-4342-a2c0-0bbff74e6b8a",
@@ -675,11 +787,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Jagged Crack",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 4,
-    "name": "Amber Dyno",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "eb222f5b-0800-4342-a2c0-0bbff74e6b8a",
@@ -687,11 +801,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V7-9",
-    "grade": ""
+    "grade": "",
+    "projectName": "Amber Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Faded Highball",
     "setter": "grisha",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -699,11 +815,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": "V8"
+    "grade": "V8",
+    "projectName": "Faded Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Copper Arête",
     "setter": "tester",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -711,11 +829,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": "V8"
+    "grade": "V8",
+    "projectName": "Copper Arête",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Wild Mantle",
     "setter": "tiff",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -723,11 +843,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "projectName": "Wild Mantle",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Copper Crack",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -735,11 +857,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0-2",
-    "grade": "V2"
+    "grade": "V2",
+    "projectName": "Copper Crack",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Sunken Rail",
     "setter": "grisha",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -747,11 +871,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-6",
-    "grade": ""
+    "grade": "",
+    "projectName": "Sunken Rail",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Sunken Overhang",
     "setter": "tiff",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -759,11 +885,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": "V5"
+    "grade": "V5",
+    "projectName": "Sunken Overhang",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Sunken Seam",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -771,11 +899,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": "V9"
+    "grade": "V9",
+    "projectName": "Sunken Seam",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Crimson Mantle",
     "setter": "tester",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -783,11 +913,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-3",
-    "grade": "V3"
+    "grade": "V3",
+    "projectName": "Crimson Mantle",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Stormy Traverse",
     "setter": "tiff",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -795,11 +927,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "projectName": "Stormy Traverse",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Ghost Traverse",
     "setter": "grisha",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -807,11 +941,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-1",
-    "grade": "V1"
+    "grade": "V1",
+    "projectName": "Ghost Traverse",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Velvet Highball",
     "setter": "tester",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -819,11 +955,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6",
-    "grade": "V6"
+    "grade": "V6",
+    "projectName": "Velvet Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Iron Groove",
     "setter": "tiff",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -831,11 +969,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-7",
-    "grade": "V7"
+    "grade": "V7",
+    "projectName": "Iron Groove",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Amber Pinch",
     "setter": "tester",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -843,11 +983,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-4",
-    "grade": "V4"
+    "grade": "V4",
+    "projectName": "Amber Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Rusty Arête",
     "setter": "tiff",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -855,11 +997,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Rusty Arête",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Ghost Dyno",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -867,11 +1011,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "projectName": "Ghost Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Golden Gaston",
     "setter": "grisha",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -879,11 +1025,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-5",
-    "grade": "V5"
+    "grade": "V5",
+    "projectName": "Golden Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Sunken Chimney",
     "setter": "grisha",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -891,11 +1039,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": "V7"
+    "grade": "V7",
+    "projectName": "Sunken Chimney",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Hollow Pinch",
     "setter": "tester",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -903,11 +1053,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": "V9"
+    "grade": "V9",
+    "projectName": "Hollow Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Wild Dyno",
     "setter": "tester",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -915,11 +1067,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "projectName": "Wild Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Golden Arête",
     "setter": "tiff",
     "comments": [],
     "setId": "a11c4d7f-579a-448c-afe1-bebc588691d5",
@@ -927,11 +1081,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-3",
-    "grade": "V3"
+    "grade": "V3",
+    "projectName": "Golden Arête",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Golden Highball",
     "setter": "grisha",
     "comments": [],
     "setId": "2f47c732-118d-4bd8-9ca3-686a6447c7ab",
@@ -939,11 +1095,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": ""
+    "grade": "",
+    "projectName": "Golden Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Cracked Overhang",
     "setter": "tiff",
     "comments": [],
     "setId": "2f47c732-118d-4bd8-9ca3-686a6447c7ab",
@@ -951,11 +1109,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": "V3"
+    "grade": "V3",
+    "projectName": "Cracked Overhang",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Electric Dyno",
     "setter": "tiff",
     "comments": [],
     "setId": "2f47c732-118d-4bd8-9ca3-686a6447c7ab",
@@ -963,11 +1123,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V1",
-    "grade": ""
+    "grade": "",
+    "projectName": "Electric Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Golden Ridge",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "2f47c732-118d-4bd8-9ca3-686a6447c7ab",
@@ -975,11 +1137,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V0-1",
-    "grade": "V1"
+    "grade": "V1",
+    "projectName": "Golden Ridge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Crimson Roof",
     "setter": "grisha",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -987,11 +1151,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6",
-    "grade": "V6"
+    "grade": "V6",
+    "projectName": "Crimson Roof",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Wild Overhang",
     "setter": "grisha",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -999,11 +1165,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": ""
+    "grade": "",
+    "projectName": "Wild Overhang",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Faded Pinch",
     "setter": "grisha",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1011,11 +1179,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "projectName": "Faded Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Quiet Ledge",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1023,11 +1193,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6",
-    "grade": ""
+    "grade": "",
+    "projectName": "Quiet Ledge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Ghost Corner",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1035,11 +1207,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": "V0"
+    "grade": "V0",
+    "projectName": "Ghost Corner",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Crimson Pinch",
     "setter": "tester",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1047,11 +1221,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "projectName": "Crimson Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Copper Gaston",
     "setter": "tester",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1059,11 +1235,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": "V8"
+    "grade": "V8",
+    "projectName": "Copper Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Golden Seam",
     "setter": "tester",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1071,11 +1249,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": "V9"
+    "grade": "V9",
+    "projectName": "Golden Seam",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Ghost Crimper",
     "setter": "tester",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1083,11 +1263,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "projectName": "Ghost Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Cracked Pinch",
     "setter": "tiff",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1095,11 +1277,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": "V9"
+    "grade": "V9",
+    "projectName": "Cracked Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Cracked Traverse",
     "setter": "tiff",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1107,11 +1291,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7-9",
-    "grade": "V9"
+    "grade": "V9",
+    "projectName": "Cracked Traverse",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Velvet Overhang",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1119,11 +1305,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "projectName": "Velvet Overhang",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Electric Corner",
     "setter": "tester",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1131,11 +1319,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": ""
+    "grade": "",
+    "projectName": "Electric Corner",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Crimson Highball",
     "setter": "tester",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1143,11 +1333,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "projectName": "Crimson Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Iron Chimney",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1155,11 +1347,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "projectName": "Iron Chimney",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Amber Roof",
     "setter": "tiff",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1167,11 +1361,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "projectName": "Amber Roof",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Electric Crimper",
     "setter": "tiff",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1179,11 +1375,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "projectName": "Electric Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Windy Sloper",
     "setter": "grisha",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1191,11 +1389,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": "V0"
+    "grade": "V0",
+    "projectName": "Windy Sloper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Cracked Crack",
     "setter": "grisha",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1203,11 +1403,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": "V0"
+    "grade": "V0",
+    "projectName": "Cracked Crack",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Amber Gaston",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "13f7c920-caaf-4ab4-bfd8-0e7c43f7c3d6",
@@ -1215,11 +1417,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": "V7"
+    "grade": "V7",
+    "projectName": "Amber Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Copper Overhang",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "d8dfb31a-d43d-4a88-96f1-5bf0873aa9f0",
@@ -1227,11 +1431,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": ""
+    "grade": "",
+    "projectName": "Copper Overhang",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Neon Sloper",
     "setter": "tester",
     "comments": [],
     "setId": "d8dfb31a-d43d-4a88-96f1-5bf0873aa9f0",
@@ -1239,11 +1445,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": ""
+    "grade": "",
+    "projectName": "Neon Sloper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Rusty Ledge",
     "setter": "tester",
     "comments": [],
     "setId": "d8dfb31a-d43d-4a88-96f1-5bf0873aa9f0",
@@ -1251,11 +1459,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "projectName": "Rusty Ledge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Golden Nose",
     "setter": "grisha",
     "comments": [],
     "setId": "d8dfb31a-d43d-4a88-96f1-5bf0873aa9f0",
@@ -1263,11 +1473,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": ""
+    "grade": "",
+    "projectName": "Golden Nose",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Amber Highball",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1275,11 +1487,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": ""
+    "grade": "",
+    "projectName": "Amber Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Sunken Roof",
     "setter": "tiff",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1287,11 +1501,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": ""
+    "grade": "",
+    "projectName": "Sunken Roof",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Velvet Crack",
     "setter": "grisha",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1299,11 +1515,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": ""
+    "grade": "",
+    "projectName": "Velvet Crack",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Quiet Overhang",
     "setter": "tester",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1311,11 +1529,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3",
-    "grade": ""
+    "grade": "",
+    "projectName": "Quiet Overhang",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Faded Overhang",
     "setter": "tiff",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1323,11 +1543,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": ""
+    "grade": "",
+    "projectName": "Faded Overhang",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Electric Crack",
     "setter": "tester",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1335,11 +1557,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Electric Crack",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Cracked Mantle",
     "setter": "tiff",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1347,11 +1571,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Cracked Mantle",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Crimson Crimper",
     "setter": "tester",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1359,11 +1585,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-1",
-    "grade": ""
+    "grade": "",
+    "projectName": "Crimson Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Silent Pinch",
     "setter": "tiff",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1371,11 +1599,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-3",
-    "grade": ""
+    "grade": "",
+    "projectName": "Silent Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Sunken Mantle",
     "setter": "grisha",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1383,11 +1613,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Sunken Mantle",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Jagged Pinch",
     "setter": "tiff",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1395,11 +1627,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": ""
+    "grade": "",
+    "projectName": "Jagged Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Quiet Gaston",
     "setter": "tester",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1407,11 +1641,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3",
-    "grade": ""
+    "grade": "",
+    "projectName": "Quiet Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Crimson Chimney",
     "setter": "tester",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1419,11 +1655,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "projectName": "Crimson Chimney",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Hollow Overhang",
     "setter": "grisha",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1431,11 +1669,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-4",
-    "grade": ""
+    "grade": "",
+    "projectName": "Hollow Overhang",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Stormy Crack",
     "setter": "grisha",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1443,11 +1683,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Stormy Crack",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Faded Seam",
     "setter": "grisha",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1455,11 +1697,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": ""
+    "grade": "",
+    "projectName": "Faded Seam",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Golden Pinch",
     "setter": "tester",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1467,11 +1711,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": ""
+    "grade": "",
+    "projectName": "Golden Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Crimson Nose",
     "setter": "grisha",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1479,11 +1725,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Crimson Nose",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Rusty Traverse",
     "setter": "grisha",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1491,11 +1739,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3",
-    "grade": ""
+    "grade": "",
+    "projectName": "Rusty Traverse",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Quiet Groove",
     "setter": "tester",
     "comments": [],
     "setId": "8e122462-ca86-4119-9cae-5474371c935b",
@@ -1503,11 +1753,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Quiet Groove",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Rusty Gaston",
     "setter": "tester",
     "comments": [],
     "setId": "3a79d90f-df53-4065-bb8f-d7256dec0b68",
@@ -1515,11 +1767,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V0-2",
-    "grade": ""
+    "grade": "",
+    "projectName": "Rusty Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Neon Corner",
     "setter": "tiff",
     "comments": [],
     "setId": "3a79d90f-df53-4065-bb8f-d7256dec0b68",
@@ -1527,11 +1781,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V7-8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Neon Corner",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Windy Arête",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "3a79d90f-df53-4065-bb8f-d7256dec0b68",
@@ -1539,11 +1795,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": ""
+    "grade": "",
+    "projectName": "Windy Arête",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 3,
-    "name": "Silent Roof",
     "setter": "tiff",
     "comments": [],
     "setId": "3a79d90f-df53-4065-bb8f-d7256dec0b68",
@@ -1551,11 +1809,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V4-5",
-    "grade": ""
+    "grade": "",
+    "projectName": "Silent Roof",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Faded Dyno",
     "setter": "tester",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1563,11 +1823,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4",
-    "grade": "V4"
+    "grade": "V4",
+    "projectName": "Faded Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Stormy Corner",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1575,11 +1837,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "projectName": "Stormy Corner",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Stormy Seam",
     "setter": "tester",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1587,11 +1851,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": "V9"
+    "grade": "V9",
+    "projectName": "Stormy Seam",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Neon Ledge",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1599,11 +1865,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": "V6"
+    "grade": "V6",
+    "projectName": "Neon Ledge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Silent Crimper",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1611,11 +1879,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": "V9"
+    "grade": "V9",
+    "projectName": "Silent Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Crimson Dyno",
     "setter": "tester",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1623,11 +1893,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": "V5"
+    "grade": "V5",
+    "projectName": "Crimson Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Iron Ledge",
     "setter": "tiff",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1635,11 +1907,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "projectName": "Iron Ledge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Quiet Chimney",
     "setter": "tiff",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1647,11 +1921,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0-2",
-    "grade": "V2"
+    "grade": "V2",
+    "projectName": "Quiet Chimney",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Ghost Overhang",
     "setter": "tiff",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1659,11 +1935,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Ghost Overhang",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Wild Crimper",
     "setter": "tester",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1671,11 +1949,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "projectName": "Wild Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Velvet Sloper",
     "setter": "grisha",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1683,11 +1963,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": "V3"
+    "grade": "V3",
+    "projectName": "Velvet Sloper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Stormy Ridge",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1695,11 +1977,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Stormy Ridge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Electric Roof",
     "setter": "tiff",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1707,11 +1991,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-3",
-    "grade": "V3"
+    "grade": "V3",
+    "projectName": "Electric Roof",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Hollow Arête",
     "setter": "tester",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1719,11 +2005,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7-8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Hollow Arête",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Iron Dyno",
     "setter": "tester",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1731,11 +2019,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-4",
-    "grade": "V4"
+    "grade": "V4",
+    "projectName": "Iron Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Quiet Arête",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1743,11 +2033,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0-2",
-    "grade": "V2"
+    "grade": "V2",
+    "projectName": "Quiet Arête",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Ghost Ridge",
     "setter": "tiff",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1755,11 +2047,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-3",
-    "grade": ""
+    "grade": "",
+    "projectName": "Ghost Ridge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Stormy Overhang",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "5409503c-5f0a-42f4-9a62-39bc0eaa8e80",
@@ -1767,11 +2061,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Stormy Overhang",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Iron Pinch",
     "setter": "tester",
     "comments": [],
     "setId": "081aaf94-9726-49cf-a7f3-11f34264793c",
@@ -1779,11 +2075,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "projectName": "Iron Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Electric Highball",
     "setter": "tiff",
     "comments": [],
     "setId": "081aaf94-9726-49cf-a7f3-11f34264793c",
@@ -1791,11 +2089,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "projectName": "Electric Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Copper Roof",
     "setter": "grisha",
     "comments": [],
     "setId": "081aaf94-9726-49cf-a7f3-11f34264793c",
@@ -1803,11 +2103,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "projectName": "Copper Roof",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Velvet Roof",
     "setter": "tiff",
     "comments": [],
     "setId": "081aaf94-9726-49cf-a7f3-11f34264793c",
@@ -1815,11 +2117,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V0-1",
-    "grade": ""
+    "grade": "",
+    "projectName": "Velvet Roof",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Crimson Crack",
     "setter": "tester",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -1827,11 +2131,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "projectName": "Crimson Crack",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Iron Gaston",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -1839,11 +2145,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "projectName": "Iron Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Ghost Highball",
     "setter": "tester",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -1851,11 +2159,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1",
-    "grade": "V1"
+    "grade": "V1",
+    "projectName": "Ghost Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Velvet Seam",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -1863,11 +2173,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-5",
-    "grade": ""
+    "grade": "",
+    "projectName": "Velvet Seam",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Crimson Gaston",
     "setter": "tester",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -1875,11 +2187,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "projectName": "Crimson Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Iron Arête",
     "setter": "tester",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -1887,11 +2201,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": "V7"
+    "grade": "V7",
+    "projectName": "Iron Arête",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Iron Roof",
     "setter": "tester",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -1899,11 +2215,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "projectName": "Iron Roof",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Faded Arête",
     "setter": "grisha",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -1911,11 +2229,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "projectName": "Faded Arête",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Neon Ridge",
     "setter": "grisha",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -1923,11 +2243,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "projectName": "Neon Ridge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Ghost Gaston",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -1935,11 +2257,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0-2",
-    "grade": ""
+    "grade": "",
+    "projectName": "Ghost Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Jagged Overhang",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -1947,11 +2271,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": "V9"
+    "grade": "V9",
+    "projectName": "Jagged Overhang",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Electric Seam",
     "setter": "grisha",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -1959,11 +2285,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "projectName": "Electric Seam",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Golden Corner",
     "setter": "tiff",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -1971,11 +2299,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": "V8"
+    "grade": "V8",
+    "projectName": "Golden Corner",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Stormy Ledge",
     "setter": "tiff",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -1983,11 +2313,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": ""
+    "grade": "",
+    "projectName": "Stormy Ledge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Neon Roof",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -1995,11 +2327,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": ""
+    "grade": "",
+    "projectName": "Neon Roof",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Velvet Traverse",
     "setter": "tester",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -2007,11 +2341,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Velvet Traverse",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Stormy Arête",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -2019,11 +2355,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Stormy Arête",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Copper Highball",
     "setter": "tester",
     "comments": [],
     "setId": "2a6a145b-77b0-4834-89f4-a63b0c50f143",
@@ -2031,11 +2369,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-7",
-    "grade": "V7"
+    "grade": "V7",
+    "projectName": "Copper Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Silent Highball",
     "setter": "tiff",
     "comments": [],
     "setId": "48798a79-5968-483a-8c17-143773a4e277",
@@ -2043,11 +2383,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": "V0"
+    "grade": "V0",
+    "projectName": "Silent Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Hollow Gaston",
     "setter": "grisha",
     "comments": [],
     "setId": "48798a79-5968-483a-8c17-143773a4e277",
@@ -2055,11 +2397,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V2",
-    "grade": ""
+    "grade": "",
+    "projectName": "Hollow Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Amber Mantle",
     "setter": "grisha",
     "comments": [],
     "setId": "48798a79-5968-483a-8c17-143773a4e277",
@@ -2067,11 +2411,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": "V4"
+    "grade": "V4",
+    "projectName": "Amber Mantle",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Windy Roof",
     "setter": "tiff",
     "comments": [],
     "setId": "48798a79-5968-483a-8c17-143773a4e277",
@@ -2079,11 +2425,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V4",
-    "grade": ""
+    "grade": "",
+    "projectName": "Windy Roof",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Cracked Gaston",
     "setter": "tester",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2091,11 +2439,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": ""
+    "grade": "",
+    "projectName": "Cracked Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Copper Groove",
     "setter": "tiff",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2103,11 +2453,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-6",
-    "grade": ""
+    "grade": "",
+    "projectName": "Copper Groove",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Electric Sloper",
     "setter": "grisha",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2115,11 +2467,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Electric Sloper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Wild Ridge",
     "setter": "tester",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2127,11 +2481,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": ""
+    "grade": "",
+    "projectName": "Wild Ridge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Wild Gaston",
     "setter": "tiff",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2139,11 +2495,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1",
-    "grade": ""
+    "grade": "",
+    "projectName": "Wild Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Golden Dyno",
     "setter": "tester",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2151,11 +2509,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4",
-    "grade": ""
+    "grade": "",
+    "projectName": "Golden Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Wild Sloper",
     "setter": "tester",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2163,11 +2523,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-6",
-    "grade": ""
+    "grade": "",
+    "projectName": "Wild Sloper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Stormy Mantle",
     "setter": "grisha",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2175,11 +2537,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": ""
+    "grade": "",
+    "projectName": "Stormy Mantle",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Neon Overhang",
     "setter": "tiff",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2187,11 +2551,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": ""
+    "grade": "",
+    "projectName": "Neon Overhang",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Crimson Sloper",
     "setter": "tiff",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2199,11 +2565,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0-1",
-    "grade": ""
+    "grade": "",
+    "projectName": "Crimson Sloper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Golden Crimper",
     "setter": "tester",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2211,11 +2579,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": ""
+    "grade": "",
+    "projectName": "Golden Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Rusty Pinch",
     "setter": "tiff",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2223,11 +2593,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": ""
+    "grade": "",
+    "projectName": "Rusty Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Rusty Roof",
     "setter": "grisha",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2235,11 +2607,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": ""
+    "grade": "",
+    "projectName": "Rusty Roof",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Sunken Ledge",
     "setter": "grisha",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2247,11 +2621,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Sunken Ledge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Neon Dyno",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2259,11 +2635,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Neon Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Sunken Pinch",
     "setter": "tester",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2271,11 +2649,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-4",
-    "grade": ""
+    "grade": "",
+    "projectName": "Sunken Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Silent Rail",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2283,11 +2663,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-4",
-    "grade": ""
+    "grade": "",
+    "projectName": "Silent Rail",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Jagged Corner",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "59122df1-0c9c-4c66-be32-5b0350485ce7",
@@ -2295,11 +2677,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": ""
+    "grade": "",
+    "projectName": "Jagged Corner",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Rusty Sloper",
     "setter": "tiff",
     "comments": [],
     "setId": "2317b45a-6a17-4861-8e4c-dd9c80d7b81a",
@@ -2307,11 +2691,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V9",
-    "grade": ""
+    "grade": "",
+    "projectName": "Rusty Sloper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Ghost Pinch",
     "setter": "tester",
     "comments": [],
     "setId": "2317b45a-6a17-4861-8e4c-dd9c80d7b81a",
@@ -2319,11 +2705,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "projectName": "Ghost Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Velvet Crimper",
     "setter": "tiff",
     "comments": [],
     "setId": "2317b45a-6a17-4861-8e4c-dd9c80d7b81a",
@@ -2331,11 +2719,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V7-8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Velvet Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "Silent Mantle",
     "setter": "tester",
     "comments": [],
     "setId": "2317b45a-6a17-4861-8e4c-dd9c80d7b81a",
@@ -2343,11 +2733,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": ""
+    "grade": "",
+    "projectName": "Silent Mantle",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Iron Corner",
     "setter": "grisha",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2355,11 +2747,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": "V0"
+    "grade": "V0",
+    "projectName": "Iron Corner",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Quiet Crimper",
     "setter": "tester",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2367,11 +2761,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "projectName": "Quiet Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Faded Nose",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2379,11 +2775,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": "V9"
+    "grade": "V9",
+    "projectName": "Faded Nose",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Crimson Corner",
     "setter": "tester",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2391,11 +2789,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7-9",
-    "grade": "V9"
+    "grade": "V9",
+    "projectName": "Crimson Corner",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Quiet Highball",
     "setter": "tiff",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2403,11 +2803,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-6",
-    "grade": "V6"
+    "grade": "V6",
+    "projectName": "Quiet Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Windy Groove",
     "setter": "tester",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2415,11 +2817,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Windy Groove",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Rusty Crack",
     "setter": "tiff",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2427,11 +2831,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0-2",
-    "grade": "V2"
+    "grade": "V2",
+    "projectName": "Rusty Crack",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Rusty Corner",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2439,11 +2845,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": "V9"
+    "grade": "V9",
+    "projectName": "Rusty Corner",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Jagged Chimney",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2451,11 +2859,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7-8",
-    "grade": "V8"
+    "grade": "V8",
+    "projectName": "Jagged Chimney",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Sunken Groove",
     "setter": "tester",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2463,11 +2873,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Sunken Groove",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Cracked Highball",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2475,11 +2887,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "projectName": "Cracked Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Amber Ridge",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2487,11 +2901,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": "V7"
+    "grade": "V7",
+    "projectName": "Amber Ridge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Iron Overhang",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2499,11 +2915,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Iron Overhang",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Windy Crimper",
     "setter": "grisha",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2511,11 +2929,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "projectName": "Windy Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Neon Traverse",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2523,11 +2943,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": ""
+    "grade": "",
+    "projectName": "Neon Traverse",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Jagged Sloper",
     "setter": "grisha",
     "comments": [],
     "setId": "fe0a4a69-02ab-4fdf-b52d-bf1d7243d4a6",
@@ -2535,11 +2957,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "projectName": "Jagged Sloper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Amber Crack",
     "setter": "tester",
     "comments": [],
     "setId": "f3429a04-b9d2-47d8-99fa-5b9d9ff559ab",
@@ -2547,11 +2971,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V5-7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Amber Crack",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Copper Ridge",
     "setter": "grisha",
     "comments": [],
     "setId": "f3429a04-b9d2-47d8-99fa-5b9d9ff559ab",
@@ -2559,11 +2985,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": "V7"
+    "grade": "V7",
+    "projectName": "Copper Ridge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Sunken Gaston",
     "setter": "tester",
     "comments": [],
     "setId": "f3429a04-b9d2-47d8-99fa-5b9d9ff559ab",
@@ -2571,11 +2999,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "projectName": "Sunken Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Copper Corner",
     "setter": "grisha",
     "comments": [],
     "setId": "f3429a04-b9d2-47d8-99fa-5b9d9ff559ab",
@@ -2583,11 +3013,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": "V2"
+    "grade": "V2",
+    "projectName": "Copper Corner",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Windy Dyno",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2595,11 +3027,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": "V0"
+    "grade": "V0",
+    "projectName": "Windy Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Stormy Chimney",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2607,11 +3041,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "projectName": "Stormy Chimney",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Neon Gaston",
     "setter": "grisha",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2619,11 +3055,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": "V5"
+    "grade": "V5",
+    "projectName": "Neon Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Copper Crimper",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2631,11 +3069,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": "V4"
+    "grade": "V4",
+    "projectName": "Copper Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Cracked Ridge",
     "setter": "tester",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2643,11 +3083,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "projectName": "Cracked Ridge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Faded Ledge",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2655,11 +3097,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "projectName": "Faded Ledge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Rusty Dyno",
     "setter": "tester",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2667,11 +3111,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": "V8"
+    "grade": "V8",
+    "projectName": "Rusty Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Neon Mantle",
     "setter": "grisha",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2679,11 +3125,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "projectName": "Neon Mantle",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Golden Mantle",
     "setter": "tiff",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2691,11 +3139,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6",
-    "grade": ""
+    "grade": "",
+    "projectName": "Golden Mantle",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Ghost Arête",
     "setter": "tester",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2703,11 +3153,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": "V4"
+    "grade": "V4",
+    "projectName": "Ghost Arête",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Windy Mantle",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2715,11 +3167,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "projectName": "Windy Mantle",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Hollow Crimper",
     "setter": "grisha",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2727,11 +3181,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": ""
+    "grade": "",
+    "projectName": "Hollow Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Jagged Crimper",
     "setter": "tester",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2739,11 +3195,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": "V8"
+    "grade": "V8",
+    "projectName": "Jagged Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Faded Corner",
     "setter": "tiff",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2751,11 +3209,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": "V2"
+    "grade": "V2",
+    "projectName": "Faded Corner",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Cracked Ledge",
     "setter": "grisha",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2763,11 +3223,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3",
-    "grade": "V3"
+    "grade": "V3",
+    "projectName": "Cracked Ledge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Faded Chimney",
     "setter": "grisha",
     "comments": [],
     "setId": "36abcfd6-8c46-497e-b944-5b8fa3eefc28",
@@ -2775,11 +3237,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1",
-    "grade": "V1"
+    "grade": "V1",
+    "projectName": "Faded Chimney",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Rusty Groove",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "e717737a-52a1-4b16-8b69-4e6255d7bc70",
@@ -2787,11 +3251,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": "V7"
+    "grade": "V7",
+    "projectName": "Rusty Groove",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Iron Sloper",
     "setter": "tiff",
     "comments": [],
     "setId": "e717737a-52a1-4b16-8b69-4e6255d7bc70",
@@ -2799,11 +3265,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V4-6",
-    "grade": "V6"
+    "grade": "V6",
+    "projectName": "Iron Sloper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Wild Chimney",
     "setter": "tester",
     "comments": [],
     "setId": "e717737a-52a1-4b16-8b69-4e6255d7bc70",
@@ -2811,11 +3279,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V7",
-    "grade": "V7"
+    "grade": "V7",
+    "projectName": "Wild Chimney",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Quiet Nose",
     "setter": "tiff",
     "comments": [],
     "setId": "e717737a-52a1-4b16-8b69-4e6255d7bc70",
@@ -2823,11 +3293,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V2-3",
-    "grade": "V3"
+    "grade": "V3",
+    "projectName": "Quiet Nose",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Amber Sloper",
     "setter": "tester",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -2836,16 +3308,21 @@
     "archived": false,
     "setterGrade": "V8-9",
     "grade": "",
-    "ascentClaims": [
+    "projectName": "Amber Sloper",
+    "displayName": "",
+    "nameProposals": [
       {
+        "id": "092136a4-3b47-42d3-b81d-e91ee31c7f5b",
         "name": "fatest",
-        "pass": false
+        "pass": false,
+        "proposedBy": "",
+        "proposedAt": "",
+        "status": "pending"
       }
     ]
   },
   {
     "wallId": 1,
-    "name": "Faded Ridge",
     "setter": "grisha",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -2853,11 +3330,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Faded Ridge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Cracked Crimper",
     "setter": "tiff",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -2865,11 +3344,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": ""
+    "grade": "",
+    "projectName": "Cracked Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Windy Ridge",
     "setter": "tiff",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -2877,11 +3358,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": ""
+    "grade": "",
+    "projectName": "Windy Ridge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Copper Pinch",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -2889,11 +3372,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "projectName": "Copper Pinch",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Jagged Gaston",
     "setter": "tester",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -2901,11 +3386,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "projectName": "Jagged Gaston",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Neon Highball",
     "setter": "tiff",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -2913,11 +3400,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": ""
+    "grade": "",
+    "projectName": "Neon Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Iron Ridge",
     "setter": "grisha",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -2925,11 +3414,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0-1",
-    "grade": ""
+    "grade": "",
+    "projectName": "Iron Ridge",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Quiet Dyno",
     "setter": "tiff",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -2937,11 +3428,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": ""
+    "grade": "",
+    "projectName": "Quiet Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Hollow Mantle",
     "setter": "tester",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -2949,11 +3442,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": ""
+    "grade": "",
+    "projectName": "Hollow Mantle",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Faded Crack",
     "setter": "tiff",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -2961,11 +3456,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-1",
-    "grade": ""
+    "grade": "",
+    "projectName": "Faded Crack",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Quiet Sloper",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -2973,11 +3470,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7-8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Quiet Sloper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Velvet Dyno",
     "setter": "tiff",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -2985,11 +3484,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": ""
+    "grade": "",
+    "projectName": "Velvet Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Velvet Nose",
     "setter": "tester",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -2997,11 +3498,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "projectName": "Velvet Nose",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Iron Highball",
     "setter": "tester",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -3009,11 +3512,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": ""
+    "grade": "",
+    "projectName": "Iron Highball",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Stormy Crimper",
     "setter": "tester",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -3021,11 +3526,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-4",
-    "grade": ""
+    "grade": "",
+    "projectName": "Stormy Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Silent Dyno",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "4a429d35-da56-4c60-b803-c384b3f694f4",
@@ -3033,11 +3540,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V5",
-    "grade": ""
+    "grade": "",
+    "projectName": "Silent Dyno",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Silent Groove",
     "setter": "tiff",
     "comments": [],
     "setId": "4a429d35-da56-4c60-b803-c384b3f694f4",
@@ -3045,11 +3554,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V3",
-    "grade": ""
+    "grade": "",
+    "projectName": "Silent Groove",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Iron Traverse II",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "4a429d35-da56-4c60-b803-c384b3f694f4",
@@ -3057,11 +3568,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V0",
-    "grade": ""
+    "grade": "",
+    "projectName": "Iron Traverse II",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "Neon Crimper",
     "setter": "Cubesnail",
     "comments": [],
     "setId": "4a429d35-da56-4c60-b803-c384b3f694f4",
@@ -3069,11 +3582,13 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": ""
+    "grade": "",
+    "projectName": "Neon Crimper",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "TEst",
     "setterGrade": "VB",
     "grade": "",
     "setter": "Cubesnail",
@@ -3082,11 +3597,12 @@
     "setDate": "2026-08-06",
     "setType": "backfill",
     "archived": false,
-    "ascentClaims": []
+    "projectName": "TEst",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "testvbagain",
     "setterGrade": "VB",
     "grade": "",
     "setter": "tester",
@@ -3095,11 +3611,12 @@
     "setDate": "2026-10-02",
     "setType": "backfill",
     "archived": false,
-    "ascentClaims": []
+    "projectName": "testvbagain",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "phototest",
     "setterGrade": "VB",
     "grade": "",
     "setter": "tester",
@@ -3108,11 +3625,12 @@
     "setDate": "2026-10-02",
     "setType": "backfill",
     "archived": false,
-    "ascentClaims": []
+    "projectName": "phototest",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 2,
-    "name": "bingbiong",
     "setterGrade": "VB",
     "grade": "",
     "setter": "Cubesnail",
@@ -3122,11 +3640,12 @@
     "setDate": "2026-08-21",
     "setType": "backfill",
     "archived": false,
-    "ascentClaims": []
+    "projectName": "bingbiong",
+    "displayName": "",
+    "nameProposals": []
   },
   {
     "wallId": 1,
-    "name": "picturetest",
     "setterGrade": "VB",
     "grade": "",
     "setter": "tester",
@@ -3136,6 +3655,8 @@
     "setDate": "2026-10-02",
     "setType": "backfill",
     "archived": false,
-    "ascentClaims": []
+    "projectName": "picturetest",
+    "displayName": "",
+    "nameProposals": []
   }
 ]

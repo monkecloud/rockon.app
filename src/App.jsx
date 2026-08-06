@@ -18,6 +18,7 @@ import {
   Filter,
   Shield,
   Check,
+  X,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -336,7 +337,9 @@ function ListScreen({
   const [climbSearch, setClimbSearch] = useState("");
 
   if (selectedItem && selectedSubItem) {
-    const climb = (climbsByWall[selectedItem.id] || []).find((c) => c.name === selectedSubItem);
+    const climb = (climbsByWall[selectedItem.id] || []).find(
+      (c) => c.projectName === selectedSubItem
+    );
     const title = climb ? climbTitleNode(climb) : "Loading…";
     const subtitle = climb ? `Set by ${climb.setter}` : undefined;
 
@@ -345,8 +348,9 @@ function ListScreen({
 
   if (selectedItem) {
     const climbs = climbsByWall[selectedItem.id] || [];
+    const climbQuery = climbSearch.trim().toLowerCase();
     const filteredClimbs = climbs.filter((climb) =>
-      climb.name.toLowerCase().includes(climbSearch.trim().toLowerCase())
+      climbMatchesQuery(climb, climbQuery)
     );
 
     return (
@@ -377,9 +381,9 @@ function ListScreen({
           <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
             {filteredClimbs.map((climb) => (
               <button
-                key={`${climb.setId}::${climb.name}`}
+                key={`${climb.setId}::${climb.projectName}`}
                 style={styles.climbRow}
-                onClick={() => onSelectSubItem(climb.name)}
+                onClick={() => onSelectSubItem(climb.projectName)}
               >
                 <div style={styles.climbRowLeft}>
                   <span style={styles.climbDifficulty}>{climbDisplayGrade(climb)}</span>
@@ -392,7 +396,7 @@ function ListScreen({
                   <span style={styles.climbAscents}>{climb.ascentCount ?? 0} ascents</span>
                 </div>
                 <div style={styles.climbRowRight}>
-                  <span style={styles.climbTitle}>{climb.name}</span>
+                  <span style={styles.climbTitle}>{climbLabel(climb)}</span>
                   <span style={styles.climbSetter}>{climb.setter}</span>
                 </div>
               </button>
@@ -493,7 +497,7 @@ function ArchiveWallScreen({ wall, onSelectClimb }) {
       <div style={{ ...styles.list, marginTop: 16, gap: 0, marginLeft: -20, marginRight: -20 }}>
         {wall.climbs.map((climb) => (
           <button
-            key={`${climb.name}-${climb.setDate}`}
+            key={`${climb.projectName}-${climb.setDate}`}
             style={styles.climbRow}
             onClick={() => onSelectClimb(climb)}
           >
@@ -508,7 +512,7 @@ function ArchiveWallScreen({ wall, onSelectClimb }) {
               <span style={styles.climbAscents}>{climb.ascentCount ?? 0} ascents</span>
             </div>
             <div style={styles.climbRowRight}>
-              <span style={styles.climbTitle}>{climb.name}</span>
+              <span style={styles.climbTitle}>{climbLabel(climb)}</span>
               <span style={styles.climbSetter}>{climb.setter}</span>
             </div>
           </button>
@@ -548,8 +552,7 @@ function SearchScreen({
     if (!trimmedQuery) return [];
     const q = trimmedQuery.toLowerCase();
     return climbs.filter(
-      (climb) =>
-        climb.name.toLowerCase().includes(q) || (climb.setter || "").toLowerCase().includes(q)
+      (climb) => climbMatchesQuery(climb, q) || (climb.setter || "").toLowerCase().includes(q)
     );
   }, [climbs, trimmedQuery]);
 
@@ -614,7 +617,7 @@ function SearchScreen({
             {mode === "climbs"
               ? results.map((climb) => (
                   <button
-                    key={`${climb.wallId}::${climb.name}`}
+                    key={`${climb.wallId}::${climb.projectName}`}
                     style={styles.climbRow}
                     onClick={() => onSelectClimb(climb)}
                   >
@@ -623,7 +626,7 @@ function SearchScreen({
                       <span style={styles.climbAscents}>{climb.ascentCount ?? 0} ascents</span>
                     </div>
                     <div style={styles.climbRowRight}>
-                      <span style={styles.climbTitle}>{climb.name}</span>
+                      <span style={styles.climbTitle}>{climbLabel(climb)}</span>
                       <span style={styles.climbSetter}>{climb.setter}</span>
                     </div>
                   </button>
@@ -749,7 +752,7 @@ function composeSetterGrade(bottom, top) {
 // starting a wall's next "reset" rather than adding to its current set.
 function NewClimbForm({ wallId, resetDate, onSave }) {
   const [photo, setPhoto] = useState("");
-  const [name, setName] = useState("");
+  const [projectName, setProjectName] = useState("");
   const [gradeBottom, setGradeBottom] = useState("VB");
   const [gradeTop, setGradeTop] = useState("VB");
   const [setter, setSetter] = useState("");
@@ -779,8 +782,8 @@ function NewClimbForm({ wallId, resetDate, onSave }) {
     e.preventDefault();
     if (saving) return;
 
-    if (!name.trim() || !setter.trim()) {
-      setError("Climb name and setter are required.");
+    if (!projectName.trim() || !setter.trim()) {
+      setError("Project name and setter are required.");
       return;
     }
     if (GRADE_OPTIONS.indexOf(gradeBottom) > GRADE_OPTIONS.indexOf(gradeTop)) {
@@ -792,7 +795,7 @@ function NewClimbForm({ wallId, resetDate, onSave }) {
     setSaving(true);
     const result = await onSave({
       wallId,
-      name: name.trim(),
+      projectName: projectName.trim(),
       setterGrade: composeSetterGrade(gradeBottom, gradeTop),
       setter: setter.trim(),
       setDate: isBackfill ? backfillDate : resetDate,
@@ -826,13 +829,13 @@ function NewClimbForm({ wallId, resetDate, onSave }) {
         </label>
 
         <label style={styles.label}>
-          Climb name
+          Project name
           <input
             style={styles.input}
             type="text"
             placeholder="e.g. Golden Overhang"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            value={projectName}
+            onChange={(e) => setProjectName(e.target.value)}
           />
         </label>
         <label style={styles.label}>
@@ -907,7 +910,7 @@ function NewClimbForm({ wallId, resetDate, onSave }) {
 // land in one cycle together.
 function NewWallForm({ walls, onSave }) {
   const [photo, setPhoto] = useState("");
-  const [name, setName] = useState("");
+  const [projectName, setProjectName] = useState("");
   const [gradeBottom, setGradeBottom] = useState("VB");
   const [gradeTop, setGradeTop] = useState("VB");
   const [setter, setSetter] = useState("");
@@ -937,8 +940,8 @@ function NewWallForm({ walls, onSave }) {
     e.preventDefault();
     if (saving) return;
 
-    if (!name.trim() || !setter.trim()) {
-      setError("Climb name and setter are required.");
+    if (!projectName.trim() || !setter.trim()) {
+      setError("Project name and setter are required.");
       return;
     }
     if (GRADE_OPTIONS.indexOf(gradeBottom) > GRADE_OPTIONS.indexOf(gradeTop)) {
@@ -950,7 +953,7 @@ function NewWallForm({ walls, onSave }) {
     setSaving(true);
     const result = await onSave({
       wallId: selectedWallId,
-      name: name.trim(),
+      projectName: projectName.trim(),
       setterGrade: composeSetterGrade(gradeBottom, gradeTop),
       setter: setter.trim(),
       setDate,
@@ -999,13 +1002,13 @@ function NewWallForm({ walls, onSave }) {
           </select>
         </label>
         <label style={styles.label}>
-          Climb name
+          Project name
           <input
             style={styles.input}
             type="text"
             placeholder="e.g. Golden Overhang"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            value={projectName}
+            onChange={(e) => setProjectName(e.target.value)}
           />
         </label>
         <label style={styles.label}>
@@ -1095,6 +1098,18 @@ function climbBucketGrade(climb) {
 // setterGrade range/guess as-is (e.g. "V2-4", not collapsed to one end).
 const climbDisplayGrade = (climb) => climb.grade || climb.setterGrade;
 
+// What a climb is called on screen: the name it earned once a moderator
+// approved one, otherwise the setter's project name. projectName stays the
+// key everything is looked up by either way, so never use this to identify
+// a climb — only to show it.
+const climbLabel = (climb) => climb.displayName || climb.projectName;
+
+// Search matches either name, so a climb people still call by its project
+// name stays findable after it's been christened something else.
+const climbMatchesQuery = (climb, query) =>
+  climb.projectName.toLowerCase().includes(query) ||
+  (climb.displayName || "").toLowerCase().includes(query);
+
 // The colored grade shown in a climb's title (see climbTitleNode below) —
 // gray for a setter's still-unconfirmed guess, white once a setter/
 // moderator has locked in the final grade (see the Approve tab).
@@ -1115,7 +1130,7 @@ function climbTitleNode(climb) {
   return (
     <>
       <ClimbGradeLabel climb={climb} />
-      {` · ${climb.name}`}
+      {` · ${climbLabel(climb)}`}
     </>
   );
 }
@@ -1853,14 +1868,22 @@ function ManageRolesScreen() {
   );
 }
 
-// Opened from the Approve tab (moderators/setters only). Lists every climb
-// that's been superseded by a newer reset on its wall (see currentClimbsOnly
-// server-side) but doesn't have a confirmed grade yet — i.e. exactly the
-// climbs a setter/moderator is now allowed to lock in a final grade for,
-// per the gate on POST /api/climbs/grade. Picking a grade and tapping the
-// checkmark confirms it and drops the row from this list.
+// Opened from the Approve tab (moderators/setters only), with two queues.
+//
+// Names: every name a climber suggested while logging an ascent that's
+// still waiting on a decision (GET /api/climbs/needs-name). Approving one
+// makes it the climb's displayName and clears that climb's other
+// suggestions; rejecting frees the next ascent to try, though the rejected
+// attempt still costs one of the climb's five slots. Both go through POST
+// /api/climbs/name-decision.
+//
+// Grades: every climb superseded by a newer reset on its wall (see
+// currentClimbsOnly server-side) without a confirmed grade yet — exactly
+// the climbs POST /api/climbs/grade will accept a grade for. Picking a
+// grade and tapping the checkmark confirms it and drops the row.
 function ApproveClimbsScreen() {
   const [climbs, setClimbs] = useState(null);
+  const [proposals, setProposals] = useState(null);
   const [error, setError] = useState("");
   const [gradeByKey, setGradeByKey] = useState({});
   const [savingKey, setSavingKey] = useState(null);
@@ -1873,7 +1896,51 @@ function ApproveClimbsScreen() {
         console.error("Failed to load /api/climbs/needs-grade:", err);
         setError("Couldn't reach the server. Is it running?");
       });
+
+    fetch("/api/climbs/needs-name")
+      .then((res) => res.json())
+      .then((data) => setProposals(data.proposals || []))
+      .catch((err) => {
+        console.error("Failed to load /api/climbs/needs-name:", err);
+        setError("Couldn't reach the server. Is it running?");
+      });
   }, []);
+
+  const handleNameDecision = async (proposal, approve) => {
+    setSavingKey(proposal.id);
+    setError("");
+    try {
+      const res = await fetch("/api/climbs/name-decision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wallId: proposal.wallId,
+          projectName: proposal.projectName,
+          proposalId: proposal.id,
+          approve,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Couldn't save that decision.");
+        return;
+      }
+      // Approving names the climb, so the server drops its other pending
+      // suggestions too — mirror that here rather than refetching.
+      setProposals((prev) =>
+        prev.filter((p) =>
+          approve
+            ? p.wallId !== proposal.wallId || p.projectName !== proposal.projectName
+            : p.id !== proposal.id
+        )
+      );
+    } catch (err) {
+      console.error("Failed to decide on name:", err);
+      setError("Couldn't reach the server. Is it running?");
+    } finally {
+      setSavingKey(null);
+    }
+  };
 
   const handleConfirmGrade = async (climb, key, grade) => {
     setSavingKey(key);
@@ -1882,14 +1949,20 @@ function ApproveClimbsScreen() {
       const res = await fetch("/api/climbs/grade", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallId: climb.wallId, name: climb.name, grade }),
+        body: JSON.stringify({
+          wallId: climb.wallId,
+          projectName: climb.projectName,
+          grade,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Couldn't set that grade.");
         return;
       }
-      setClimbs((prev) => prev.filter((c) => c.wallId !== climb.wallId || c.name !== climb.name));
+      setClimbs((prev) =>
+        prev.filter((c) => c.wallId !== climb.wallId || c.projectName !== climb.projectName)
+      );
     } catch (err) {
       console.error("Failed to set grade:", err);
       setError("Couldn't reach the server. Is it running?");
@@ -1901,13 +1974,57 @@ function ApproveClimbsScreen() {
   return (
     <div style={styles.screen}>
       {error && <p style={styles.formError}>{error}</p>}
+
+      <h2 style={styles.approveSectionTitle}>Names</h2>
+      {proposals === null && !error && <p style={styles.placeholderText}>Loading…</p>}
+      {proposals !== null && proposals.length === 0 && (
+        <p style={styles.placeholderText}>No names waiting on approval.</p>
+      )}
+      <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
+        {(proposals || []).map((proposal) => (
+          <div key={proposal.id} style={styles.climbRow}>
+            <div style={styles.climbRowLeft}>
+              <span style={styles.climbTitle}>{proposal.name}</span>
+              <span style={styles.climbSetter}>
+                {WALL_NAME_BY_ID[proposal.wallId] ?? `Wall ${proposal.wallId}`} ·{" "}
+                {proposal.projectName}
+              </span>
+              <span style={styles.climbSetter}>
+                Suggested by {proposal.proposedBy || "an earlier ascent"}
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                type="button"
+                style={styles.commentDeleteButton}
+                disabled={savingKey === proposal.id}
+                aria-label={`Reject the name ${proposal.name}`}
+                onClick={() => handleNameDecision(proposal, false)}
+              >
+                <X size={20} />
+              </button>
+              <button
+                type="button"
+                style={styles.commentDeleteButton}
+                disabled={savingKey === proposal.id}
+                aria-label={`Approve the name ${proposal.name}`}
+                onClick={() => handleNameDecision(proposal, true)}
+              >
+                <Check size={20} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <h2 style={styles.approveSectionTitle}>Grades</h2>
       {climbs === null && !error && <p style={styles.placeholderText}>Loading…</p>}
       {climbs !== null && climbs.length === 0 && (
         <p style={styles.placeholderText}>No climbs waiting on a final grade.</p>
       )}
       <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
         {(climbs || []).map((climb) => {
-          const key = `${climb.wallId}::${climb.name}`;
+          const key = `${climb.wallId}::${climb.projectName}`;
           // A reasonable starting point for the dropdown: the bottom end of
           // the setter's original guess (e.g. "V2" out of "V2-4").
           const grade = gradeByKey[key] ?? climb.setterGrade.split("-")[0];
@@ -1915,7 +2032,7 @@ function ApproveClimbsScreen() {
           return (
             <div key={key} style={styles.climbRow}>
               <div style={styles.climbRowLeft}>
-                <span style={styles.climbTitle}>{climb.name}</span>
+                <span style={styles.climbTitle}>{climbLabel(climb)}</span>
                 <span style={styles.climbSetter}>
                   {WALL_NAME_BY_ID[climb.wallId] ?? `Wall ${climb.wallId}`} · Set by {climb.setter}
                 </span>
@@ -1940,7 +2057,7 @@ function ApproveClimbsScreen() {
                   type="button"
                   style={styles.commentDeleteButton}
                   disabled={savingKey === key}
-                  aria-label={`Confirm grade for ${climb.name}`}
+                  aria-label={`Confirm grade for ${climbLabel(climb)}`}
                   onClick={() => handleConfirmGrade(climb, key, grade)}
                 >
                   <Check size={20} />
@@ -2096,18 +2213,20 @@ function StarRatingInput({ value, onChange, invalid }) {
 // in what gets saved, via POST /api/ascents (see App's handleSubmitAscent).
 const GRADE_OPTIONS = ["VB", ...Array.from({ length: 12 }, (_, n) => `V${n}`)];
 
-// Up to 5 ascentClaims live on the climb itself (see server/index.js), one
-// slot per ordinal. Whoever logs an ascent while a slot is still open gets
-// offered it — a name to credit (defaults to blank, e.g. crediting someone
-// else) or a "Pass" to leave it unclaimed. Filling in neither during a
-// given ascent just leaves that slot open for the next person to log one.
+// A climb goes up as a project and earns its name from the first five
+// people to climb it: each of those ascents may suggest one, and a
+// moderator approves or rejects it from the Approve tab (see
+// NAME_PROPOSAL_LIMIT server-side). The slot is spent either way, so this
+// offer disappears after five tries whether or not anything stuck.
+const NAME_PROPOSAL_LIMIT = 5;
 const ASCENT_ORDINALS = ["First", "Second", "Third", "Fourth", "Fifth"];
 
 function LogAscentSheet({
   open,
   attemptsThisSession,
   currentGrade,
-  ascentClaims,
+  displayName,
+  nameProposals,
   onClose,
   onSubmit,
 }) {
@@ -2116,8 +2235,8 @@ function LogAscentSheet({
   const [grade, setGrade] = useState(currentGrade || "VB");
   const [comment, setComment] = useState("");
   const [showValidation, setShowValidation] = useState(false);
-  const [ascentClaimName, setAscentClaimName] = useState("");
-  const [ascentClaimPass, setAscentClaimPass] = useState(false);
+  const [proposedName, setProposedName] = useState("");
+  const [namePass, setNamePass] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -2126,13 +2245,16 @@ function LogAscentSheet({
       setGrade(currentGrade || "VB");
       setComment("");
       setShowValidation(false);
-      setAscentClaimName("");
-      setAscentClaimPass(false);
+      setProposedName("");
+      setNamePass(false);
     }
   }, [open, attemptsThisSession, currentGrade]);
 
-  const claimedCount = ascentClaims?.length ?? 0;
-  const showAscentClaim = claimedCount < 5;
+  const usedSlots = nameProposals?.length ?? 0;
+  // Still offered while an earlier suggestion sits in the mod queue — the
+  // climb isn't named until one is actually approved.
+  const canProposeName = !displayName && usedSlots < NAME_PROPOSAL_LIMIT;
+  const pendingCount = (nameProposals || []).filter((p) => p.status === "pending").length;
 
   const attemptsValue = Number(attempts) || 0;
   const ratingInvalid = showValidation && starRating < 0.5;
@@ -2154,9 +2276,9 @@ function LogAscentSheet({
       logAttempts: true,
       attempts: attemptsValue,
       attemptsThisSession,
-      ascentClaim:
-        showAscentClaim && (ascentClaimName.trim() || ascentClaimPass)
-          ? { name: ascentClaimName.trim(), pass: ascentClaimPass }
+      nameProposal:
+        canProposeName && (proposedName.trim() || namePass)
+          ? { name: proposedName.trim(), pass: namePass }
           : null,
     });
   };
@@ -2220,27 +2342,30 @@ function LogAscentSheet({
             />
           </label>
 
-          {showAscentClaim && (
+          {canProposeName && (
             <>
               <label style={styles.label}>
-                {ASCENT_ORDINALS[claimedCount]} ascent
+                Name this climb ({ASCENT_ORDINALS[usedSlots]} ascent)
                 <input
-                  style={
-                    ascentClaimPass ? { ...styles.input, ...styles.inputDisabled } : styles.input
-                  }
+                  style={namePass ? { ...styles.input, ...styles.inputDisabled } : styles.input}
                   type="text"
                   placeholder="name"
-                  value={ascentClaimName}
-                  disabled={ascentClaimPass}
-                  onChange={(e) => setAscentClaimName(e.target.value)}
+                  value={proposedName}
+                  disabled={namePass}
+                  onChange={(e) => setProposedName(e.target.value)}
                 />
               </label>
+              <p style={styles.fieldHint}>
+                {pendingCount > 0
+                  ? `${pendingCount} name${pendingCount === 1 ? "" : "s"} already waiting on a moderator — yours joins the queue.`
+                  : "A moderator reviews the name before it sticks."}
+              </p>
               <label style={styles.checkboxRow}>
                 <input
                   style={styles.checkboxInput}
                   type="checkbox"
-                  checked={ascentClaimPass}
-                  onChange={(e) => setAscentClaimPass(e.target.checked)}
+                  checked={namePass}
+                  onChange={(e) => setNamePass(e.target.checked)}
                 />
                 Pass
               </label>
@@ -2323,7 +2448,7 @@ export default function App() {
 
   const selectedClimb =
     selectedListItem && selectedSubItem
-      ? (climbsByWall[selectedListItem.id] || []).find((c) => c.name === selectedSubItem)
+      ? (climbsByWall[selectedListItem.id] || []).find((c) => c.projectName === selectedSubItem)
       : null;
 
   // Whichever climb the Climb-detail UI (image, comments, action bar) is
@@ -2460,7 +2585,7 @@ export default function App() {
   const handleSelectSearchClimb = (climb) => {
     setActiveTab("list");
     setSelectedListItem({ id: climb.wallId, title: WALL_NAME_BY_ID[climb.wallId] ?? "" });
-    setSelectedSubItem(climb.name);
+    setSelectedSubItem(climb.projectName);
     setShowComments(false);
     setCreatingClimb(false);
     setFilteringClimbs(false);
@@ -2544,7 +2669,7 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           wallId: activeClimb.wallId,
-          climbName: activeClimb.name,
+          climbName: activeClimb.projectName,
           ...fields,
         }),
       });
@@ -2844,7 +2969,8 @@ export default function App() {
           open={showLogAscentSheet}
           attemptsThisSession={attempts}
           currentGrade={activeClimb?.grade}
-          ascentClaims={activeClimb?.ascentClaims}
+          displayName={activeClimb?.displayName}
+          nameProposals={activeClimb?.nameProposals}
           onClose={() => setShowLogAscentSheet(false)}
           onSubmit={handleSubmitAscent}
         />
@@ -3135,6 +3261,20 @@ const styles = {
   climbSetter: {
     fontSize: 12,
     color: "var(--color-text-tertiary)",
+  },
+  fieldHint: {
+    fontSize: 12,
+    color: "var(--color-text-tertiary)",
+    marginTop: -8,
+  },
+  approveSectionTitle: {
+    fontSize: 13,
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    color: "var(--color-text-tertiary)",
+    marginTop: 20,
+    marginBottom: 8,
   },
   commentHeader: {
     display: "flex",

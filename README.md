@@ -101,13 +101,14 @@ Wi-Fi.
 ## Notes
 
 - **Climbs are stored server-side** in `server/climbs.json` — each has a
-  `wallId`, `name` (unique within a wall — climbs have **no id of their
-  own**, so `wallId` + `name` is the key ascents/comments/front-end lookups
-  reference a climb by), `setterGrade` (the setter's rough guess, given at
+  `wallId`, `projectName` (unique within a wall — climbs have **no id of
+  their own**, so `wallId` + `projectName` is the key ascents/comments/
+  front-end lookups reference a climb by; it's set when the climb goes up
+  and never changes), `displayName` (the name the climb earned, blank until
+  one is approved), `setterGrade` (the setter's rough guess, given at
   creation, immutable after), `grade` (the confirmed final grade, blank
-  until a moderator/setter sets it), `setter`, `ascentClaims` (up to 5,
-  first/second/.../fifth-ascent credit), and a `comments` array of seeded
-  sample comments. `GET /api/climbs` merges those seeded comments with any
+  until a moderator/setter sets it), `setter`, `nameProposals` (up to 5 —
+  see naming below), and a `comments` array of seeded sample comments. `GET /api/climbs` merges those seeded comments with any
   comments users have left while logging an ascent (see below), so the
   Comments page shows both. Each climb also tracks which "set" put it up:
   `setId` (shared by every climb put up on the same wall in the same
@@ -119,10 +120,22 @@ Wi-Fi.
   top of it — via `currentClimbsOnly()` in `server/worker.js`; older resets
   are left out of that list but visible on the Archive tab
   (`GET /api/archive`).
+- **Climbs earn their name from their first ascents.** A climb goes up as a
+  project, named only by its `projectName`. Each of the first five ascents
+  logged on it may suggest a real name (or "pass") from the Log Ascent
+  sheet. A suggestion goes into the Approve tab's naming queue
+  (`GET /api/climbs/needs-name`), where a moderator or setter approves or
+  rejects it (`POST /api/climbs/name-decision`). Approving sets the climb's
+  `displayName` and drops that climb's other queued suggestions; rejecting
+  leaves it a project and lets the next ascent try, but the rejected
+  attempt still uses one of the five slots — so a climb whose five
+  suggestions all get rejected keeps its project name for good. Later
+  ascents can queue a suggestion while an earlier one is still pending.
 - **Moderator/setter/admin tooling**: a moderator or setter can add a new
   climb (`POST /api/climbs` — always stored as a `"backfill"`; there's
-  still no UI for a full wall `"reset"`, that stays hand/script-edited) and
-  confirm a climb's final grade once it's no longer current
+  still no UI for a full wall `"reset"`, that stays hand/script-edited),
+  decide on proposed climb names (above), and confirm a climb's final grade
+  once it's no longer current
   (`POST /api/climbs/grade`, listed via `GET /api/climbs/needs-grade`). An
   admin can additionally list every user and change their role
   (`GET /api/users`, `POST /api/users/:username/role` — one of `member`,
