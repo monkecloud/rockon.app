@@ -15,8 +15,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/site
+User=cubesnail
+WorkingDirectory=/home/cubesnail/app/site
 # Rebuilds dist/ on every (re)start, so a `git pull` + restart always picks
 # up the latest code without a separate manual `npm run build` step.
 ExecStartPre=/usr/bin/npm run build

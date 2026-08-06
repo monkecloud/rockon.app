@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     host: true, // listen on the local network, not just localhost
     proxy: {
-      "/api": "http://localhost:30210",
+      "/api": "http://localhost:25100",
     },
   },
 });

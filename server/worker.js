@@ -1105,7 +1105,7 @@ app.use((req, res, next) => {
 // unit tests doesn't bind a real socket or register a real process-level
 // message listener — tests exercise `app` directly (e.g. via supertest).
 if (process.env.NODE_ENV !== "test") {
-  // Port 0 = let the OS pick a free one. The real PORT (30210 by default) is
+  // Port 0 = let the OS pick a free one. The real PORT (25100 by default) is
   // owned by the primary process's proxy in index.js; this worker just needs
   // *a* port to listen on, then reports it back over IPC so the primary can
   // route traffic here.
