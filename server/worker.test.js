@@ -145,15 +145,10 @@ describe("getCookie", () => {
 });
 
 describe("setSessionCookie", () => {
-  const originalEnv = process.env.NODE_ENV;
-  afterEach(() => {
-    process.env.NODE_ENV = originalEnv;
-  });
-
-  it("sets an httpOnly cookie with the expected options outside production", () => {
-    process.env.NODE_ENV = "test";
+  it("sets an httpOnly cookie with the expected options for a plain-HTTP request", () => {
+    const req = { secure: false };
     const res = mockRes();
-    setSessionCookie(res, "tok123");
+    setSessionCookie(req, res, "tok123");
     expect(res.cookie).toHaveBeenCalledWith(
       "session",
       "tok123",
@@ -167,10 +162,10 @@ describe("setSessionCookie", () => {
     );
   });
 
-  it("marks the cookie secure in production", () => {
-    process.env.NODE_ENV = "production";
+  it("marks the cookie secure when the request came in over HTTPS (directly or via a trusted proxy)", () => {
+    const req = { secure: true };
     const res = mockRes();
-    setSessionCookie(res, "tok123");
+    setSessionCookie(req, res, "tok123");
     expect(res.cookie).toHaveBeenCalledWith("session", "tok123", expect.objectContaining({ secure: true }));
   });
 });

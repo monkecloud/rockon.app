@@ -467,5 +467,25 @@
     "isSetter": true,
     "isAdmin": false,
     "ascentCount": 0
+  },
+  {
+    "username": "lantest",
+    "passwordHash": "$2b$10$ual68MQNEZta3a0uOMz74ufMC3d/u/Ct9nzBDf5TtMxGDilSUYInO",
+    "sessionToken": "479e06c5956febf15e850abafa8b9f33672261cc31399e1d2b4df7d266377331",
+    "name": "",
+    "followers": [],
+    "following": [],
+    "ascents": [],
+    "ascentCount": 0
+  },
+  {
+    "username": "httpstest",
+    "passwordHash": "$2b$10$lvYbEvSPFjYos/whLLQItOriJHDAEJUQDunfzvukoxAbtfH0Br.qC",
+    "sessionToken": "e89c7c30d1f27ab3ffae589c2f35cbfd2de241c006ba5505b34f5c5e5c0d7aca",
+    "name": "",
+    "followers": [],
+    "following": [],
+    "ascents": [],
+    "ascentCount": 0
   }
 ]

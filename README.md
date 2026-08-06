@@ -48,11 +48,21 @@ same port, same process, via the primary/worker proxy in `server/index.js`.
 Only one port (`30210` by default, override with `PORT`) needs to be reachable
 now, instead of both `5173` and `30210`.
 
-**Don't set `NODE_ENV=production`** unless you've also put this behind HTTPS.
-`setSessionCookie` in `server/worker.js` marks the session cookie `secure`
-when `NODE_ENV === "production"`, and browsers silently drop `secure`
-cookies sent over plain HTTP — which would break login on a LAN deploy with
-no TLS in front of it. Leave `NODE_ENV` unset for a plain-HTTP LAN server.
+**Session cookies adapt automatically to how each request arrived** — no
+`NODE_ENV` flag needed. `setSessionCookie` in `server/worker.js` marks the
+cookie `secure` based on `req.secure`, which is only `true` for a request
+that actually came in over HTTPS. This supports serving the same app both
+ways at once — e.g. plain HTTP on the LAN (`http://<lan-ip>:30210`) *and*
+HTTPS through a reverse proxy on a real domain — from the same process,
+without breaking login on either path.
+
+If you're fronting this with a reverse proxy that terminates TLS (Caddy,
+nginx, ...), it must be running **on the same machine** and proxy to
+`localhost:30210` — `app.set("trust proxy", "loopback")` in
+`server/worker.js` only trusts the `X-Forwarded-Proto` header from a proxy
+connecting via loopback, specifically so a LAN client hitting port 30210
+directly can't spoof that header and get a `secure` cookie set over an
+actually-insecure connection.
 
 To survive reboots/logouts, run it as a systemd service (or equivalent)
 rather than in a terminal you might close. `deploy/climbing-app.service` is
