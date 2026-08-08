@@ -38,8 +38,10 @@ import {
 //   to add/edit climbs). The Climb detail page has a full-height
 //   zoomable/pannable placeholder image (pinch, scroll-wheel, and drag all
 //   work), with a secondary bar pinned below the persistent top bar
-//   showing the climb's grade and name. A message-circle icon in the
-//   top-right of the persistent top bar opens that climb's Comments page.
+//   showing the climb's grade and name. An info icon in the top-right of
+//   the persistent top bar opens that climb's Info page — a grade
+//   distribution chart of what climbers logged its grade as, followed by
+//   comments left when logging an ascent.
 // - Profile tab: sign up / log in against a small Express server that
 //   stores users in server/users.json — shared across everyone hitting
 //   this server, not just the local browser (plaintext, no real auth —
@@ -109,10 +111,75 @@ function saveToStorage(key, value) {
 
 const RECENT_ACTIVITY_PLACEHOLDERS = [1, 2, 3, 4, 5];
 
-function HomeScreen() {
+// Podium block heights, tallest in the middle (1st place) — left-to-right
+// display order is 2nd/1st/3rd, the standard podium arrangement.
+const PODIUM_HEIGHTS = { 1: 64, 2: 44, 3: 30 };
+
+// Top ascenders, from GET /api/users/leaderboard (ranked by ascentCount
+// descending, zero-ascent users excluded server-side). onSelectUser opens
+// that user's profile the same way tapping a Search result does.
+function Leaderboard({ onSelectUser }) {
+  const [users, setUsers] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/users/leaderboard")
+      .then((res) => res.json())
+      .then((data) => setUsers(data.users || []))
+      .catch((err) => console.error("Failed to load /api/users/leaderboard:", err));
+  }, []);
+
+  // Nothing to show yet (still loading) or nobody's logged an ascent yet —
+  // no placeholder podium, just omit the section entirely.
+  if (!users || users.length === 0) return null;
+
+  // Display order is 2nd/1st/3rd; skip a slot entirely if fewer than 3
+  // people have logged ascents yet, rather than padding with anything fake.
+  const podiumRanks = [2, 1, 3].filter((rank) => rank <= users.length);
+
+  return (
+    <div style={styles.gradeChartWrapper}>
+      <p style={styles.gradeChartTitle}>Leaderboard</p>
+      <div style={styles.leaderboardRow}>
+        {podiumRanks.map((rank) => {
+          const user = users[rank - 1];
+          const initials = user.username.slice(0, 2).toUpperCase();
+          return (
+            <button
+              key={user.username}
+              type="button"
+              style={styles.leaderboardColumn}
+              onClick={() => onSelectUser(user)}
+            >
+              {user.avatarUrl ? (
+                <img src={user.avatarUrl} alt="" style={styles.avatarImage} />
+              ) : (
+                <div style={styles.avatar}>{initials}</div>
+              )}
+              <p style={styles.leaderboardUsername}>{user.username}</p>
+              {user.name && <p style={styles.leaderboardName}>{user.name}</p>}
+              <p style={styles.leaderboardAscents}>{user.ascentCount} ascents</p>
+              <div
+                style={{
+                  ...styles.leaderboardPodiumBlock,
+                  height: PODIUM_HEIGHTS[rank],
+                  background: rank === 1 ? "var(--color-accent)" : "var(--color-surface-5)",
+                }}
+              >
+                <span style={styles.leaderboardPodiumRank}>{rank}</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function HomeScreen({ onSelectUser }) {
   return (
     <div style={styles.screen}>
       <GradeBarChart title="Climbs on the wall" endpoint="/api/climbs/grade-counts" />
+      <Leaderboard onSelectUser={onSelectUser} />
       <div style={{ marginLeft: -20, marginRight: -20 }}>
         <div style={styles.archiveBar}>
           <p style={{ margin: 0 }}>Recent Activity</p>
@@ -131,7 +198,7 @@ function HomeScreen() {
 // (zoom out / percentage / zoom in / reset) that stays pinned just below
 // the persistent top bar. Uses the Pointer Events API so mouse drag,
 // touch drag, and two-finger pinch all go through the same code path.
-function ZoomableImageViewer({ title, subtitle }) {
+function ZoomableImageViewer({ title, subtitle, photoUrl }) {
   const imageRef = useRef(null);
   // Mutable, not React state: on mobile, calling setState on every single
   // pointermove event was enough to make pinch/drag feel glitchy, since
@@ -215,19 +282,31 @@ function ZoomableImageViewer({ title, subtitle }) {
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
       >
-        <div ref={imageRef} style={styles.imagePlaceholder}>
-          <ImageIcon size={56} color="var(--color-text-faint)" strokeWidth={1.5} />
-        </div>
+        {photoUrl ? (
+          <img ref={imageRef} src={photoUrl} alt="" style={styles.climbPhoto} />
+        ) : (
+          <div ref={imageRef} style={styles.imagePlaceholder}>
+            <ImageIcon size={56} color="var(--color-text-faint)" strokeWidth={1.5} />
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function CommentsScreen({ climb, currentUser, onDeleteComment }) {
+function ClimbInfoScreen({ climb, currentUser, onDeleteComment }) {
   const comments = climb?.comments ?? [];
 
   return (
     <div style={styles.screen}>
+      {climb && (
+        <GradeBarChart
+          title="Logged grades"
+          endpoint={`/api/climbs/grade-distribution?wallId=${climb.wallId}&name=${encodeURIComponent(
+            climb.name
+          )}`}
+        />
+      )}
       {comments.length === 0 ? (
         <p style={styles.placeholderText}>No comments yet.</p>
       ) : (
@@ -285,7 +364,7 @@ function ListScreen({
     const title = climb ? climbTitleNode(climb) : "Loading…";
     const subtitle = climb ? `Set by ${climb.setter}` : undefined;
 
-    return <ZoomableImageViewer title={title} subtitle={subtitle} />;
+    return <ZoomableImageViewer title={title} subtitle={subtitle} photoUrl={climb?.photoUrl} />;
   }
 
   if (selectedItem) {
@@ -593,11 +672,15 @@ function SearchScreen({
 }
 
 // Read-only view of someone else's profile, opened by tapping a user in
-// Search results. Same header layout as ProfileScreen's logged-in view
-// (avatar, name, follower/following counts, grade pyramid) minus anything
-// only the account owner should see or do (Settings, Logbook).
-function UserProfileScreen({ user }) {
+// Search results (or in a followers/following list — see FollowListScreen).
+// Same header layout as ProfileScreen's logged-in view (avatar, name,
+// follower/following counts, grade pyramid) minus anything only the account
+// owner should see or do (Settings, Logbook) — but with a Follow/Unfollow
+// button in Settings' spot, and the follower/following counts tappable to
+// drill into that list, neither of which make sense on your own profile.
+function UserProfileScreen({ user, currentUser, onFollow, onUnfollow, onViewFollowers, onViewFollowing }) {
   const initials = user.username.slice(0, 2).toUpperCase();
+  const isSelf = currentUser?.username === user.username;
 
   return (
     <div style={styles.screen}>
@@ -613,21 +696,77 @@ function UserProfileScreen({ user }) {
         </div>
         <div style={styles.profileRight}>
           <div style={styles.profileStatsRow}>
-            <div style={styles.profileStat}>
+            <button type="button" style={styles.profileStatButton} onClick={onViewFollowers}>
               <span style={styles.profileStatNumber}>{user.followersCount ?? 0}</span>
               <span style={styles.profileStatLabel}>followers</span>
-            </div>
-            <div style={styles.profileStat}>
+            </button>
+            <button type="button" style={styles.profileStatButton} onClick={onViewFollowing}>
               <span style={styles.profileStatNumber}>{user.followingCount ?? 0}</span>
               <span style={styles.profileStatLabel}>following</span>
-            </div>
+            </button>
           </div>
+          {currentUser && !isSelf && (
+            <button
+              type="button"
+              style={user.isFollowing ? styles.settingsButton : styles.followButton}
+              onClick={user.isFollowing ? onUnfollow : onFollow}
+            >
+              {user.isFollowing ? "Unfollow" : "Follow"}
+            </button>
+          )}
         </div>
       </div>
       <GradeBarChart
         title={`${user.username}'s ascents`}
         endpoint={`/api/users/${encodeURIComponent(user.username)}/grade-counts`}
       />
+    </div>
+  );
+}
+
+// Backs the follower/following list screens opened from UserProfileScreen's
+// tappable counts. Same row shape/style as SearchScreen's "Users" results —
+// tapping a row opens that person's own UserProfileScreen in turn.
+function FollowListScreen({ username, type, onSelectUser }) {
+  const [users, setUsers] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setUsers(null);
+    fetch(`/api/users/${encodeURIComponent(username)}/${type}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setUsers(data.users || []);
+      })
+      .catch((err) => console.error(`Failed to load ${type}:`, err));
+    return () => {
+      cancelled = true;
+    };
+  }, [username, type]);
+
+  if (users === null) return null;
+
+  if (users.length === 0) {
+    return (
+      <div style={styles.screen}>
+        <p style={styles.placeholderText}>No {type} yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.screen}>
+      <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
+        {users.map((u) => (
+          <button key={u.username} style={styles.wallRow} onClick={() => onSelectUser(u)}>
+            <div>
+              <p style={styles.listTitle}>{u.username}</p>
+              {u.name && <p style={styles.listMeta}>{u.name}</p>}
+            </div>
+            <ChevronRight size={18} color="var(--color-text-muted)" />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -685,12 +824,14 @@ function composeSetterGrade(bottom, top) {
 }
 
 // Opened from the "+" button on a wall's Climbs page (moderators/setters
-// only) — wallId/resetDate are fixed and no wall picker is shown. Also
-// opened from the "+" button on the Walls root list, where there's no
-// wall already selected: pass `walls` (+ `climbsByWall`, to derive each
-// wall's current resetDate) instead of `wallId`/`resetDate` and a Wall
-// dropdown appears in their place.
-function NewClimbForm({ wallId, resetDate, walls, climbsByWall, onSave }) {
+// only) — wallId/resetDate are fixed, no wall picker. Every climb saved
+// here is stored server-side as a "backfill" (see POST /api/climbs) — the
+// Backfill checkbox only decides which date it's dated: today's/the
+// current reset's date, or a picked date in the past for logging a climb
+// that's been up for a while already. Compare with NewWallForm below,
+// opened from the Walls root list's "+" instead — similar fields, but for
+// starting a wall's next "reset" rather than adding to its current set.
+function NewClimbForm({ wallId, resetDate, onSave }) {
   const [photo, setPhoto] = useState("");
   const [name, setName] = useState("");
   const [gradeBottom, setGradeBottom] = useState("VB");
@@ -699,7 +840,8 @@ function NewClimbForm({ wallId, resetDate, walls, climbsByWall, onSave }) {
   const [setters, setSetters] = useState([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [selectedWallId, setSelectedWallId] = useState(wallId ?? walls?.[0]?.id ?? "");
+  const [isBackfill, setIsBackfill] = useState(false);
+  const [backfillDate, setBackfillDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
     fetch("/api/users/setters")
@@ -707,19 +849,6 @@ function NewClimbForm({ wallId, resetDate, walls, climbsByWall, onSave }) {
       .then((data) => setSetters(data.setters || []))
       .catch((err) => console.error("Failed to load /api/users/setters:", err));
   }, []);
-
-  const effectiveWallId = wallId ?? selectedWallId;
-  // Every current climb on a wall shares the same setDate for its "reset"
-  // entry, so the first one found is enough — see the identical comment
-  // this used to live next to in App(), before the wall picker moved that
-  // computation in here.
-  const effectiveResetDate =
-    wallId != null
-      ? resetDate
-      : (() => {
-          const wallClimbs = (climbsByWall && climbsByWall[selectedWallId]) || [];
-          return wallClimbs.find((c) => c.setType === "reset")?.setDate ?? wallClimbs[0]?.setDate ?? "";
-        })();
 
   const handlePhotoChange = (e) => {
     const file = e.target.files?.[0];
@@ -746,11 +875,12 @@ function NewClimbForm({ wallId, resetDate, walls, climbsByWall, onSave }) {
     setError("");
     setSaving(true);
     const result = await onSave({
-      wallId: effectiveWallId,
+      wallId,
       name: name.trim(),
       setterGrade: composeSetterGrade(gradeBottom, gradeTop),
       setter: setter.trim(),
-      setDate: effectiveResetDate,
+      setDate: isBackfill ? backfillDate : resetDate,
+      photoUrl: photo,
     });
     setSaving(false);
 
@@ -779,22 +909,179 @@ function NewClimbForm({ wallId, resetDate, walls, climbsByWall, onSave }) {
           />
         </label>
 
-        {wallId == null && walls && (
-          <label style={styles.label}>
-            Wall
-            <select
-              style={styles.input}
-              value={selectedWallId}
-              onChange={(e) => setSelectedWallId(Number(e.target.value))}
-            >
-              {walls.map((wall) => (
-                <option key={wall.id} value={wall.id}>
-                  {wall.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        <label style={styles.label}>
+          Climb name
+          <input
+            style={styles.input}
+            type="text"
+            placeholder="e.g. Golden Overhang"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+        <label style={styles.label}>
+          Bottom grade
+          <select style={styles.input} value={gradeBottom} onChange={(e) => setGradeBottom(e.target.value)}>
+            {GRADE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={styles.label}>
+          Top grade
+          <select style={styles.input} value={gradeTop} onChange={(e) => setGradeTop(e.target.value)}>
+            {GRADE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={styles.label}>
+          Setter
+          <select style={styles.input} value={setter} onChange={(e) => setSetter(e.target.value)}>
+            <option value="">Select a setter</option>
+            {setters.map((s) => (
+              <option key={s.username} value={s.username}>
+                {s.name ? `${s.name} (${s.username})` : s.username}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={styles.checkboxRow}>
+          <input
+            style={styles.checkboxInput}
+            type="checkbox"
+            checked={isBackfill}
+            onChange={(e) => setIsBackfill(e.target.checked)}
+          />
+          Backfill (pick a past date)
+        </label>
+        <label style={styles.label}>
+          Date
+          <input
+            style={isBackfill ? styles.input : { ...styles.input, ...styles.inputDisabled }}
+            type="date"
+            value={isBackfill ? backfillDate : resetDate || ""}
+            onChange={(e) => setBackfillDate(e.target.value)}
+            disabled={!isBackfill}
+          />
+        </label>
+        {error && <p style={styles.formError}>{error}</p>}
+        <button type="submit" style={styles.button} disabled={saving}>
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// Opened from the "+" button on the Walls root list (moderators/setters
+// only), where no wall is selected yet — always shows a Wall dropdown.
+// Unlike NewClimbForm, this always saves as setType "reset": adding a
+// climb here starts (or adds to) a wall's next cycle, which — per
+// currentClimbsOnly — supersedes every older climb on that wall as soon as
+// it's saved, without anything needing to be deleted from climbs.json.
+// There's no Backfill checkbox, since every save here already is the new
+// current set; the Date field is plain and always editable (rather than
+// locked/toggle-based like NewClimbForm's) so a setter adding several
+// climbs to the same new set can give them all the same date and have them
+// land in one cycle together.
+function NewWallForm({ walls, onSave }) {
+  const [photo, setPhoto] = useState("");
+  const [name, setName] = useState("");
+  const [gradeBottom, setGradeBottom] = useState("VB");
+  const [gradeTop, setGradeTop] = useState("VB");
+  const [setter, setSetter] = useState("");
+  const [setters, setSetters] = useState([]);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [selectedWallId, setSelectedWallId] = useState(walls?.[0]?.id ?? "");
+  const [setDate, setSetDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  useEffect(() => {
+    fetch("/api/users/setters")
+      .then((res) => res.json())
+      .then((data) => setSetters(data.setters || []))
+      .catch((err) => console.error("Failed to load /api/users/setters:", err));
+  }, []);
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => setPhoto(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (saving) return;
+
+    if (!name.trim() || !setter.trim()) {
+      setError("Climb name and setter are required.");
+      return;
+    }
+    if (GRADE_OPTIONS.indexOf(gradeBottom) > GRADE_OPTIONS.indexOf(gradeTop)) {
+      setError("Bottom grade must be the same as or easier than top grade.");
+      return;
+    }
+
+    setError("");
+    setSaving(true);
+    const result = await onSave({
+      wallId: selectedWallId,
+      name: name.trim(),
+      setterGrade: composeSetterGrade(gradeBottom, gradeTop),
+      setter: setter.trim(),
+      setDate,
+      photoUrl: photo,
+      setType: "reset",
+    });
+    setSaving(false);
+
+    if (!result.success) {
+      setError(result.error || "Something went wrong.");
+    }
+  };
+
+  return (
+    <div style={styles.screen}>
+      <form style={styles.form} onSubmit={handleSubmit}>
+        {photo ? (
+          <img src={photo} alt="" style={styles.avatarPreview} />
+        ) : (
+          <div style={styles.avatarPreviewPlaceholder}>
+            <Camera size={28} color="var(--color-text-faint)" strokeWidth={1.5} />
+          </div>
         )}
+        <label style={styles.pickImageButton}>
+          Choose photo
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handlePhotoChange}
+            style={{ display: "none" }}
+          />
+        </label>
+
+        <label style={styles.label}>
+          Wall
+          <select
+            style={styles.input}
+            value={selectedWallId}
+            onChange={(e) => setSelectedWallId(Number(e.target.value))}
+          >
+            {walls.map((wall) => (
+              <option key={wall.id} value={wall.id}>
+                {wall.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <label style={styles.label}>
           Climb name
           <input
@@ -839,10 +1126,10 @@ function NewClimbForm({ wallId, resetDate, walls, climbsByWall, onSave }) {
         <label style={styles.label}>
           Date
           <input
-            style={{ ...styles.input, ...styles.inputDisabled }}
+            style={styles.input}
             type="date"
-            value={effectiveResetDate || ""}
-            disabled
+            value={setDate}
+            onChange={(e) => setSetDate(e.target.value)}
           />
         </label>
         {error && <p style={styles.formError}>{error}</p>}
@@ -1755,8 +2042,8 @@ function TopBar({
   title,
   showBack,
   onBack,
-  showCommentsButton,
-  onShowComments,
+  showInfoButton,
+  onShowInfo,
   showAddButton,
   onAdd,
 }) {
@@ -1770,8 +2057,8 @@ function TopBar({
         <div style={styles.topBarSpacer} />
       )}
       <h1 style={styles.topBarTitle}>{title}</h1>
-      {showCommentsButton ? (
-        <button style={styles.topBarBackButton} onClick={onShowComments}>
+      {showInfoButton ? (
+        <button style={styles.topBarBackButton} onClick={onShowInfo}>
           <Info size={20} />
         </button>
       ) : showAddButton ? (
@@ -2057,7 +2344,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("home");
   const [selectedListItem, setSelectedListItem] = useState(null);
   const [selectedSubItem, setSelectedSubItem] = useState(null);
-  const [showComments, setShowComments] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const [viewingArchivedClimb, setViewingArchivedClimb] = useState(null);
   // Lifted out of ArchiveSection so it survives that component unmounting
   // (tab switches, drilling into a wall/climb and back) instead of
@@ -2076,10 +2363,23 @@ export default function App() {
   const [showLogAscentSheet, setShowLogAscentSheet] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOption, setSettingsOption] = useState(null);
-  // The user (search-result shape: username/name/avatarUrl/counts) whose
-  // read-only profile is currently open, if any — set by tapping a user in
-  // the Search tab's results (see UserProfileScreen).
-  const [viewingSearchUser, setViewingSearchUser] = useState(null);
+  // Stack of screens drilled into from the Search tab — a profile
+  // ({ kind: "profile", user }, user in search-result shape: username/
+  // name/avatarUrl/counts) or a followers/following list
+  // ({ kind: "list", username, listType }). The last entry is what's
+  // currently shown. A real stack, rather than one slot per screen type,
+  // so profile -> followers list -> another profile -> back -> back
+  // retraces each step instead of popping straight to Search results —
+  // a follow/following list can lead to viewing yet another profile on
+  // top of the one you were already on.
+  const [searchStack, setSearchStack] = useState([]);
+  // Set only when the search stack's bottom entry came from the Leaderboard
+  // (see handleSelectLeaderboardUser) rather than the Search tab itself, so
+  // backing out of it returns to the tab it was opened from instead of
+  // landing on an empty Search tab.
+  const [leaderboardReturnTab, setLeaderboardReturnTab] = useState(null);
+  const topSearchEntry = searchStack[searchStack.length - 1] ?? null;
+  const viewingSearchUser = topSearchEntry?.kind === "profile" ? topSearchEntry.user : null;
   // Search tab's query/mode/results, lifted out of SearchScreen so they
   // survive that component unmounting — e.g. opening a user's profile from
   // a result and hitting back — instead of resetting, same reasoning as
@@ -2245,7 +2545,7 @@ export default function App() {
   const handleSelectListItem = (item) => {
     setSelectedListItem(item);
     setSelectedSubItem(null);
-    setShowComments(false);
+    setShowInfo(false);
     setCreatingClimb(false);
     setFilteringClimbs(false);
   };
@@ -2258,7 +2558,7 @@ export default function App() {
     setActiveTab("list");
     setSelectedListItem({ id: climb.wallId, title: WALL_NAME_BY_ID[climb.wallId] ?? "" });
     setSelectedSubItem(climb.name);
-    setShowComments(false);
+    setShowInfo(false);
     setCreatingClimb(false);
     setFilteringClimbs(false);
     setViewingArchivedClimb(null);
@@ -2267,11 +2567,83 @@ export default function App() {
     setShowLogAscentSheet(false);
   };
 
-  const handleSelectSearchUser = (user) => setViewingSearchUser(user);
+  // Starts a fresh Search-tab navigation stack from a Search result — any
+  // previously drilled-into profiles/lists are discarded, same as picking
+  // a new destination rather than continuing down the same path. A fresh
+  // pick from Search always means "back" should land on an empty Search
+  // tab, so this cancels any pending Leaderboard return.
+  const handleSelectSearchUser = (user) => {
+    setLeaderboardReturnTab(null);
+    setSearchStack([{ kind: "profile", user }]);
+  };
+
+  // Opened from the Home tab's Leaderboard — same destination as tapping a
+  // Search result, just also switches to the Search tab to get there since
+  // the podium lives on Home. Remembers the tab it was opened from so
+  // backing all the way out returns there instead of stranding the user on
+  // an empty Search tab.
+  const handleSelectLeaderboardUser = (user) => {
+    const originTab = activeTab;
+    handleSelectSearchUser(user);
+    setLeaderboardReturnTab(originTab);
+    setActiveTab("search");
+  };
+
+  // Opened from a followers/following list row (see FollowListScreen) —
+  // pushes onto the stack rather than replacing it, so back retraces
+  // through each screen visited rather than popping straight to Search.
+  const handlePushProfile = (user) => setSearchStack((prev) => [...prev, { kind: "profile", user }]);
+
+  // Opened from UserProfileScreen's tappable follower/following counts.
+  const handlePushFollowList = (username, listType) =>
+    setSearchStack((prev) => [...prev, { kind: "list", username, listType }]);
+
+  // Popping the last entry off a stack that was opened from the Leaderboard
+  // returns to the tab it was opened from rather than landing on an empty
+  // Search tab (see handleSelectLeaderboardUser).
+  const handlePopSearchStack = () => {
+    setSearchStack((prev) => {
+      const next = prev.slice(0, -1);
+      if (next.length === 0 && leaderboardReturnTab) {
+        setActiveTab(leaderboardReturnTab);
+        setLeaderboardReturnTab(null);
+      }
+      return next;
+    });
+  };
+
+  // Shared by UserProfileScreen's Follow/Unfollow button — hits whichever
+  // endpoint matches the requested direction, then patches every stacked
+  // profile entry for that user (there's no single "get this user's
+  // profile" endpoint; the stack entry is the same search-result-shaped
+  // object this patches) rather than refetching.
+  const handleFollowToggle = async (targetUsername, follow) => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch(
+        `/api/users/${encodeURIComponent(targetUsername)}/${follow ? "follow" : "unfollow"}`,
+        { method: "POST" }
+      );
+      const data = await res.json();
+      if (!res.ok) return;
+      setSearchStack((prev) =>
+        prev.map((entry) =>
+          entry.kind === "profile" && entry.user.username === targetUsername
+            ? {
+                ...entry,
+                user: { ...entry.user, isFollowing: data.isFollowing, followersCount: data.followersCount },
+              }
+            : entry
+        )
+      );
+    } catch (err) {
+      console.error(`Failed to ${follow ? "follow" : "unfollow"} ${targetUsername}:`, err);
+    }
+  };
 
   const handleViewArchivedClimb = (climb) => {
     setViewingArchivedClimb(climb);
-    setShowComments(false);
+    setShowInfo(false);
     setAttempts(0);
     setShowLogAscentSheet(false);
   };
@@ -2293,7 +2665,7 @@ export default function App() {
     if (tabId === activeTab && tabId === "list") {
       setSelectedListItem(null);
       setSelectedSubItem(null);
-      setShowComments(false);
+      setShowInfo(false);
       setShowLogAscentSheet(false);
       setViewingArchivedClimb(null);
       setViewingArchiveWallId(null);
@@ -2307,7 +2679,8 @@ export default function App() {
       return;
     }
     if (tabId === activeTab && tabId === "search") {
-      setViewingSearchUser(null);
+      setSearchStack([]);
+      setLeaderboardReturnTab(null);
       return;
     }
     setActiveTab(tabId);
@@ -2315,7 +2688,7 @@ export default function App() {
 
   const handleSelectSubItem = (climbName) => {
     setSelectedSubItem(climbName);
-    setShowComments(false);
+    setShowInfo(false);
     setAttempts(0);
     setShowLogAscentSheet(false);
   };
@@ -2367,7 +2740,7 @@ export default function App() {
   const content = useMemo(() => {
     switch (activeTab) {
       case "home":
-        return <HomeScreen />;
+        return <HomeScreen onSelectUser={handleSelectLeaderboardUser} />;
       case "list": {
         if (creatingClimb) {
           if (selectedListItem) {
@@ -2388,21 +2761,16 @@ export default function App() {
             );
           }
           // Opened from the "+" on the Walls root list: no wall selected
-          // yet, so let NewClimbForm show its own Wall dropdown.
-          return (
-            <NewClimbForm
-              walls={WALLS}
-              climbsByWall={climbsByWall}
-              onSave={handleCreateClimb}
-            />
-          );
+          // yet, and this always starts a new "reset" cycle rather than
+          // adding to whatever's current — see NewWallForm.
+          return <NewWallForm walls={WALLS} onSave={handleCreateClimb} />;
         }
         if (filteringClimbs) {
           return <ClimbsFilterForm />;
         }
-        if (activeClimb && showComments) {
+        if (activeClimb && showInfo) {
           return (
-            <CommentsScreen
+            <ClimbInfoScreen
               climb={activeClimb}
               currentUser={currentUser}
               onDeleteComment={handleDeleteComment}
@@ -2412,7 +2780,13 @@ export default function App() {
         if (viewingArchivedClimb) {
           const title = climbTitleNode(viewingArchivedClimb);
           const subtitle = `Set by ${viewingArchivedClimb.setter}`;
-          return <ZoomableImageViewer title={title} subtitle={subtitle} />;
+          return (
+            <ZoomableImageViewer
+              title={title}
+              subtitle={subtitle}
+              photoUrl={viewingArchivedClimb.photoUrl}
+            />
+          );
         }
         if (viewingArchiveWallId) {
           const wall = (archiveWalls || []).find((w) => w.wallId === viewingArchiveWallId);
@@ -2434,8 +2808,26 @@ export default function App() {
         );
       }
       case "search":
+        if (topSearchEntry?.kind === "list") {
+          return (
+            <FollowListScreen
+              username={topSearchEntry.username}
+              type={topSearchEntry.listType}
+              onSelectUser={handlePushProfile}
+            />
+          );
+        }
         if (viewingSearchUser) {
-          return <UserProfileScreen user={viewingSearchUser} />;
+          return (
+            <UserProfileScreen
+              user={viewingSearchUser}
+              currentUser={currentUser}
+              onFollow={() => handleFollowToggle(viewingSearchUser.username, true)}
+              onUnfollow={() => handleFollowToggle(viewingSearchUser.username, false)}
+              onViewFollowers={() => handlePushFollowList(viewingSearchUser.username, "followers")}
+              onViewFollowing={() => handlePushFollowList(viewingSearchUser.username, "following")}
+            />
+          );
         }
         return (
           <SearchScreen
@@ -2490,7 +2882,7 @@ export default function App() {
     selectedListItem,
     selectedSubItem,
     climbsByWall,
-    showComments,
+    showInfo,
     showSettings,
     settingsOption,
     viewingArchivedClimb,
@@ -2500,7 +2892,7 @@ export default function App() {
     creatingClimb,
     filteringClimbs,
     climbs,
-    viewingSearchUser,
+    searchStack,
     searchQuery,
     searchMode,
     searchUserResults,
@@ -2519,17 +2911,17 @@ export default function App() {
   let handleBack = () => {};
 
   if (activeTab === "list" && creatingClimb) {
-    topBarTitle = "New Climb";
+    topBarTitle = selectedListItem ? "New Climb" : "New Wall";
     showBack = true;
     handleBack = () => setCreatingClimb(false);
   } else if (activeTab === "list" && filteringClimbs) {
     topBarTitle = "Filter";
     showBack = true;
     handleBack = () => setFilteringClimbs(false);
-  } else if (activeTab === "list" && activeClimb && showComments) {
-    topBarTitle = "Comments";
+  } else if (activeTab === "list" && activeClimb && showInfo) {
+    topBarTitle = "Info";
     showBack = true;
-    handleBack = () => setShowComments(false);
+    handleBack = () => setShowInfo(false);
   } else if (activeTab === "list" && viewingArchivedClimb) {
     topBarTitle = "Climb";
     showBack = true;
@@ -2546,10 +2938,14 @@ export default function App() {
     topBarTitle = selectedListItem.title;
     showBack = true;
     handleBack = () => setSelectedListItem(null);
+  } else if (activeTab === "search" && topSearchEntry?.kind === "list") {
+    topBarTitle = topSearchEntry.listType === "followers" ? "Followers" : "Following";
+    showBack = true;
+    handleBack = handlePopSearchStack;
   } else if (activeTab === "search" && viewingSearchUser) {
     topBarTitle = viewingSearchUser.username;
     showBack = true;
-    handleBack = () => setViewingSearchUser(null);
+    handleBack = handlePopSearchStack;
   } else if (activeTab === "profile" && showSettings && settingsOption) {
     topBarTitle = SETTINGS_OPTIONS.find((o) => o.id === settingsOption)?.label ?? "Settings";
     showBack = true;
@@ -2560,14 +2956,14 @@ export default function App() {
     handleBack = () => setShowSettings(false);
   }
 
-  const showCommentsButton = activeTab === "list" && Boolean(activeClimb) && !showComments;
+  const showInfoButton = activeTab === "list" && Boolean(activeClimb) && !showInfo;
 
-  const isClimbDetail = activeTab === "list" && Boolean(activeClimb) && !showComments;
+  const isClimbDetail = activeTab === "list" && Boolean(activeClimb) && !showInfo;
 
   // Root of the Walls tab: no wall/climb drilled into, not inside the
-  // Archive's own climb page. Only moderators get the add button here —
-  // it opens the same NewClimbForm as a wall's Climbs page, but with a
-  // Wall dropdown since none is selected yet.
+  // Archive's own climb page. Only moderators/setters get the add button
+  // here — it opens NewWallForm (a Wall dropdown, and always a new
+  // "reset" cycle) rather than NewClimbForm.
   const isWallsRoot =
     activeTab === "list" &&
     !selectedListItem &&
@@ -2589,8 +2985,8 @@ export default function App() {
         title={topBarTitle}
         showBack={showBack}
         onBack={handleBack}
-        showCommentsButton={showCommentsButton}
-        onShowComments={() => setShowComments(true)}
+        showInfoButton={showInfoButton}
+        onShowInfo={() => setShowInfo(true)}
         showAddButton={showAddButton}
         onAdd={() => {
           if (isClimbsList || isWallsRoot) setCreatingClimb(true);
@@ -2755,6 +3151,13 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
+    userSelect: "none",
+    willChange: "transform",
+  },
+  climbPhoto: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
     userSelect: "none",
     willChange: "transform",
   },
@@ -3067,11 +3470,35 @@ const styles = {
     cursor: "pointer",
     font: "inherit",
   },
+  followButton: {
+    width: "100%",
+    background: "none",
+    border: "none",
+    borderBottom: "1px solid var(--color-accent-bright)",
+    borderRadius: 0,
+    padding: "6px 0",
+    color: "var(--color-accent-bright)",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+    font: "inherit",
+  },
   profileStat: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     gap: 2,
+  },
+  profileStatButton: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 2,
+    background: "none",
+    border: "none",
+    padding: 0,
+    cursor: "pointer",
+    font: "inherit",
   },
   profileStatNumber: {
     fontSize: 18,
@@ -3098,6 +3525,53 @@ const styles = {
     alignItems: "flex-end",
     justifyContent: "space-between",
     gap: 2,
+  },
+  leaderboardRow: {
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "center",
+    gap: 12,
+  },
+  leaderboardColumn: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    flex: 1,
+    background: "none",
+    border: "none",
+    padding: 0,
+    cursor: "pointer",
+    font: "inherit",
+  },
+  leaderboardUsername: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "var(--color-text-primary)",
+    margin: 0,
+  },
+  leaderboardName: {
+    fontSize: 11,
+    color: "var(--color-text-tertiary)",
+    margin: 0,
+  },
+  leaderboardAscents: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: "var(--color-text-secondary)",
+    margin: "4px 0 8px",
+  },
+  leaderboardPodiumBlock: {
+    width: "100%",
+    borderRadius: "8px 8px 0 0",
+    border: "1px solid var(--color-border-strong)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  leaderboardPodiumRank: {
+    fontSize: 18,
+    fontWeight: 700,
+    color: "var(--color-text-primary)",
   },
   gradeBarColumn: {
     flex: 1,
