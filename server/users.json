@@ -1,7 +1,7 @@
 [
   {
     "username": "Derrick",
-    "passwordHash": "",
+    "passwordHash": "$2b$10$/agPMYN2fPSVcMva6U1VT.AUrfVY4JBkw4xhDLILBRslCK0ciyiOe",
     "isModerator": true,
     "isAdmin": true,
     "followers": [],
@@ -270,10 +270,32 @@
         "logAttempts": true,
         "attempts": 1,
         "attemptsThisSession": 0
+      },
+      {
+        "id": "7db75bcc-39ca-4ced-8565-bb08c202f691",
+        "wallId": 1,
+        "climbName": "Amber Sloper",
+        "starRating": 3.5,
+        "grade": "VB",
+        "comment": "test fa",
+        "logAttempts": true,
+        "attempts": 1,
+        "attemptsThisSession": 0
+      },
+      {
+        "id": "a5225da6-833c-4405-9fa0-47c403c25783",
+        "wallId": 2,
+        "climbName": "Wild Gaston",
+        "starRating": 3,
+        "grade": "V2",
+        "comment": "asdf",
+        "logAttempts": true,
+        "attempts": 2,
+        "attemptsThisSession": 0
       }
     ],
-    "sessionToken": "5a3d37e029456e72ce2fe8df9a20c2e26c2f65084a09f6d5bb3a91e8057e5c8e",
-    "ascentCount": 2
+    "sessionToken": "7e04873a3e135ed66ee981fe13160497012fed394576c5e07509c51b07f949b9",
+    "ascentCount": 4
   },
   {
     "username": "Cubesnail",
@@ -297,7 +319,7 @@
       }
     ],
     "isSetter": true,
-    "sessionToken": "",
+    "sessionToken": "68987cd2b139d284adcfce855d057ffcc4be2c145847fe4591f816ae70bd8a38",
     "ascentCount": 0
   },
   {

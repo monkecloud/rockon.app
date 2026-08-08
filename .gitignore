@@ -3,3 +3,4 @@ dist
 .DS_Store
 APP_SPEC.txt
 .claude/settings.local.json
+.claude/worktrees/

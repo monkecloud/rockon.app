@@ -350,7 +350,7 @@ describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEnt
     });
   });
 
-  it("toSearchResultEntry has no role info", () => {
+  it("toSearchResultEntry has no role info, and defaults isFollowing false with no viewer", () => {
     expect(toSearchResultEntry(fullUser)).toEqual({
       username: "cube",
       name: "Cube Snail",
@@ -358,7 +358,13 @@ describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEnt
       followersCount: 2,
       followingCount: 1,
       ascentCount: 5,
+      isFollowing: false,
     });
+  });
+
+  it("toSearchResultEntry reports isFollowing true when the viewer is in this user's followers", () => {
+    expect(toSearchResultEntry(fullUser, { username: "a" }).isFollowing).toBe(true);
+    expect(toSearchResultEntry(fullUser, { username: "someone-else" }).isFollowing).toBe(false);
   });
 
   it("toSetterListEntry only has username and name", () => {
@@ -898,6 +904,52 @@ describe("GET /api/users/search", () => {
   });
 });
 
+describe("GET /api/users/leaderboard", () => {
+  it("returns [] when nobody has any ascents", async () => {
+    await signup("zero-ascents");
+    const res = await request(app).get("/api/users/leaderboard");
+    expect(res.body.users).toEqual([]);
+  });
+
+  it("excludes zero-ascent users and ranks the rest by ascentCount descending", async () => {
+    await signup("low");
+    await signup("high");
+    await signup("mid");
+    await signup("none");
+    const users = currentUsers();
+    users.find((u) => u.username === "low").ascentCount = 3;
+    users.find((u) => u.username === "high").ascentCount = 20;
+    users.find((u) => u.username === "mid").ascentCount = 10;
+    seedUsers(users);
+
+    const res = await request(app).get("/api/users/leaderboard");
+    expect(res.body.users.map((u) => u.username)).toEqual(["high", "mid", "low"]);
+  });
+
+  it("breaks ties alphabetically by username", async () => {
+    await signup("zed");
+    await signup("amy");
+    const users = currentUsers();
+    users.forEach((u) => (u.ascentCount = 5));
+    seedUsers(users);
+
+    const res = await request(app).get("/api/users/leaderboard");
+    expect(res.body.users.map((u) => u.username)).toEqual(["amy", "zed"]);
+  });
+
+  it("respects a custom limit", async () => {
+    await signup("a");
+    await signup("b");
+    await signup("c");
+    const users = currentUsers();
+    users.forEach((u, i) => (u.ascentCount = 10 - i));
+    seedUsers(users);
+
+    const res = await request(app).get("/api/users/leaderboard").query({ limit: 2 });
+    expect(res.body.users).toHaveLength(2);
+  });
+});
+
 describe("GET /api/users/setters", () => {
   it("only returns setter-flagged accounts", async () => {
     await signup("setter-user");
@@ -908,6 +960,127 @@ describe("GET /api/users/setters", () => {
 
     const res = await request(app).get("/api/users/setters");
     expect(res.body.setters.map((s) => s.username)).toEqual(["setter-user"]);
+  });
+});
+
+describe("POST /api/users/:username/follow", () => {
+  it("401s without auth", async () => {
+    const res = await request(app).post("/api/users/bob/follow");
+    expect(res.status).toBe(401);
+  });
+
+  it("400s when following yourself", async () => {
+    const { cookie } = await signup("alice");
+    const res = await request(app).post("/api/users/alice/follow").set("Cookie", cookie);
+    expect(res.status).toBe(400);
+  });
+
+  it("404s an unknown target", async () => {
+    const { cookie } = await signup("alice");
+    const res = await request(app).post("/api/users/ghost/follow").set("Cookie", cookie);
+    expect(res.status).toBe(404);
+  });
+
+  it("adds the target to the caller's following and the caller to the target's followers", async () => {
+    const { cookie } = await signup("alice");
+    await signup("bob");
+
+    const res = await request(app).post("/api/users/bob/follow").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ isFollowing: true, followersCount: 1 });
+
+    const users = currentUsers();
+    expect(users.find((u) => u.username === "alice").following).toEqual(["bob"]);
+    expect(users.find((u) => u.username === "bob").followers).toEqual(["alice"]);
+  });
+
+  it("is idempotent when already following", async () => {
+    const { cookie } = await signup("alice");
+    await signup("bob");
+    await request(app).post("/api/users/bob/follow").set("Cookie", cookie);
+    const res = await request(app).post("/api/users/bob/follow").set("Cookie", cookie);
+
+    expect(res.body.followersCount).toBe(1);
+    const users = currentUsers();
+    expect(users.find((u) => u.username === "bob").followers).toEqual(["alice"]);
+  });
+});
+
+describe("POST /api/users/:username/unfollow", () => {
+  it("401s without auth", async () => {
+    const res = await request(app).post("/api/users/bob/unfollow");
+    expect(res.status).toBe(401);
+  });
+
+  it("404s an unknown target", async () => {
+    const { cookie } = await signup("alice");
+    const res = await request(app).post("/api/users/ghost/unfollow").set("Cookie", cookie);
+    expect(res.status).toBe(404);
+  });
+
+  it("removes both sides of the relationship", async () => {
+    const { cookie } = await signup("alice");
+    await signup("bob");
+    await request(app).post("/api/users/bob/follow").set("Cookie", cookie);
+
+    const res = await request(app).post("/api/users/bob/unfollow").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ isFollowing: false, followersCount: 0 });
+
+    const users = currentUsers();
+    expect(users.find((u) => u.username === "alice").following).toEqual([]);
+    expect(users.find((u) => u.username === "bob").followers).toEqual([]);
+  });
+
+  it("is idempotent when not following", async () => {
+    const { cookie } = await signup("alice");
+    await signup("bob");
+    const res = await request(app).post("/api/users/bob/unfollow").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ isFollowing: false, followersCount: 0 });
+  });
+});
+
+describe("GET /api/users/:username/followers and /following", () => {
+  it("404s an unknown user on both", async () => {
+    const followers = await request(app).get("/api/users/ghost/followers");
+    const following = await request(app).get("/api/users/ghost/following");
+    expect(followers.status).toBe(404);
+    expect(following.status).toBe(404);
+  });
+
+  it("lists followers/following in the same shape as search results", async () => {
+    const { cookie: aliceCookie } = await signup("alice");
+    await signup("bob");
+    await request(app).post("/api/users/bob/follow").set("Cookie", aliceCookie);
+
+    const followers = await request(app).get("/api/users/bob/followers");
+    expect(followers.body.users.map((u) => u.username)).toEqual(["alice"]);
+
+    const following = await request(app).get("/api/users/alice/following");
+    expect(following.body.users.map((u) => u.username)).toEqual(["bob"]);
+  });
+
+  it("reports isFollowing relative to the requesting viewer, not the profile owner", async () => {
+    await signup("alice");
+    const { cookie: bobCookie } = await signup("bob");
+    const { cookie: daveCookie } = await signup("dave");
+    // bob follows alice, so alice's followers list contains bob.
+    await request(app).post("/api/users/alice/follow").set("Cookie", bobCookie);
+    // dave follows bob — should show up as isFollowing:true when dave views alice's followers.
+    await request(app).post("/api/users/bob/follow").set("Cookie", daveCookie);
+
+    const asDave = await request(app)
+      .get("/api/users/alice/followers")
+      .set("Cookie", daveCookie);
+    expect(asDave.body.users).toEqual([
+      expect.objectContaining({ username: "bob", isFollowing: true }),
+    ]);
+
+    const anonymous = await request(app).get("/api/users/alice/followers");
+    expect(anonymous.body.users).toEqual([
+      expect.objectContaining({ username: "bob", isFollowing: false }),
+    ]);
   });
 });
 
@@ -1255,5 +1428,45 @@ describe("GET /api/climbs/grade-counts", () => {
     const byGrade = Object.fromEntries(res.body.counts.map((c) => [c.grade, c.count]));
     expect(byGrade.V3).toBe(1);
     expect(byGrade.V9).toBe(0);
+  });
+});
+
+describe("GET /api/climbs/grade-distribution", () => {
+  it("400s when wallId or name is missing", async () => {
+    const res = await request(app).get("/api/climbs/grade-distribution").query({ wallId: "1" });
+    expect(res.status).toBe(400);
+  });
+
+  it("counts only ascents against the named climb, using the ascent's own grade", async () => {
+    seedUsers([
+      {
+        username: "cube",
+        ascents: [
+          { id: "1", wallId: 1, climbName: "Target", grade: "V4" },
+          { id: "2", wallId: 1, climbName: "Target", grade: "V5" },
+          { id: "3", wallId: 1, climbName: "Other", grade: "V9" },
+          { id: "4", wallId: 2, climbName: "Target", grade: "V9" },
+        ],
+      },
+    ]);
+    const res = await request(app)
+      .get("/api/climbs/grade-distribution")
+      .query({ wallId: "1", name: "Target" });
+    const byGrade = Object.fromEntries(res.body.counts.map((c) => [c.grade, c.count]));
+    expect(byGrade.V4).toBe(1);
+    expect(byGrade.V5).toBe(1);
+    expect(byGrade.V9).toBe(0);
+  });
+
+  it("does not fall back to the climb's own grade when an ascent left it blank", async () => {
+    seedClimbs([{ wallId: 1, name: "Target", setterGrade: "V4-6", grade: "V5" }]);
+    seedUsers([
+      { username: "cube", ascents: [{ id: "1", wallId: 1, climbName: "Target", grade: "" }] },
+    ]);
+    const res = await request(app)
+      .get("/api/climbs/grade-distribution")
+      .query({ wallId: "1", name: "Target" });
+    const total = res.body.counts.reduce((sum, c) => sum + c.count, 0);
+    expect(total).toBe(0);
   });
 });

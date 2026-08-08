@@ -44,8 +44,10 @@ import bcrypt from "bcryptjs";
 //
 // Each user record also has an optional display `name` (set at signup,
 // separate from `username`), tracks `followers` and `following` (arrays of
-// usernames), `ascents` (a list of logged climbs), and `ascentCount` — all
-// empty/zero on signup. Ascents are appended via POST /api/ascents (see
+// usernames, kept in sync with each other by POST /api/users/:username/
+// follow and /unfollow below), `ascents` (a list of logged climbs), and
+// `ascentCount` — all empty/zero on signup. Ascents are appended via
+// POST /api/ascents (see
 // below), which the "Log ascent" bottom sheet in the app calls. Each entry
 // looks like:
 //   {
@@ -147,6 +149,16 @@ export async function authenticate(req, res, next) {
   next();
 }
 
+// Same cookie lookup as authenticate, but for routes that are public but
+// still want to know who (if anyone) is viewing — e.g. so a profile lookup
+// can report whether the viewer already follows this user — rather than
+// hard-failing the request when there's no session.
+export async function resolveSessionUser(req, users) {
+  const token = getCookie(req, SESSION_COOKIE);
+  if (!token) return null;
+  return users.find((u) => u.sessionToken && u.sessionToken === token) || null;
+}
+
 // For routes shaped as /api/users/:username/... that act on one account —
 // only that account's own (authenticated) session may call them.
 export function requireSelf(req, res, next) {
@@ -245,6 +257,10 @@ export async function writeUsers(users) {
 //                            // toSetterListEntry) — not just a display
 //                            // name, though it's never validated against
 //                            // an actual account server-side
+//     photoUrl: string,      // base64 data URL from the New Climb form's
+//                            // photo picker, stored inline same as user
+//                            // avatars — "" if no photo was chosen. Older
+//                            // seeded climbs won't have this field at all.
 //     comments: [...],       // seeded sample comments; see withAscentStats
 //     setId: string,         // uuid shared by every climb put up in the same event
 //     setDate: string,       // "YYYY-MM-DD", the day this set went up
@@ -261,9 +277,10 @@ export async function writeUsers(users) {
 //   }
 // Climbs have no id of their own: wallId + name is the key everything else
 // (ascents, comments) references them by, since name is unique within a
-// wall. There's no endpoint yet to create a new set or archive an old one —
-// that waits on moderator/setter accounts (a role this API doesn't have
-// yet).
+// wall. Both "backfill" and "reset" sets go up via POST /api/climbs below
+// (moderator/setter-only) — there's still no endpoint to explicitly archive
+// a climb; a reset archives everything older than it implicitly, via
+// currentClimbsOnly.
 export async function readClimbs() {
   let climbs;
   try {
@@ -428,8 +445,11 @@ export function toRoleListEntry(user) {
 
 // Shape of a user row in the public Search tab's "Users" results — just
 // enough to display a match and open a read-only profile view for them
-// (see UserProfileScreen client-side), nothing account-sensitive.
-export function toSearchResultEntry(user) {
+// (see UserProfileScreen client-side), nothing account-sensitive. Also
+// backs the followers/following list endpoints below. `viewer` is whoever
+// is making the request (see resolveSessionUser) — null when logged out,
+// in which case isFollowing is always false.
+export function toSearchResultEntry(user, viewer) {
   return {
     username: user.username,
     name: user.name || "",
@@ -437,6 +457,7 @@ export function toSearchResultEntry(user) {
     followersCount: (user.followers || []).length,
     followingCount: (user.following || []).length,
     ascentCount: user.ascentCount || 0,
+    isFollowing: Boolean(viewer && (user.followers || []).includes(viewer.username)),
   };
 }
 
@@ -655,11 +676,108 @@ app.get("/api/users/search", async (req, res) => {
   if (!q) return res.json({ users: [] });
 
   const users = await readUsers();
+  const viewer = await resolveSessionUser(req, users);
   const matches = users.filter(
     (u) => u.username.toLowerCase().includes(q) || (u.name || "").toLowerCase().includes(q)
   );
 
-  res.json({ users: matches.map(toSearchResultEntry) });
+  res.json({ users: matches.map((u) => toSearchResultEntry(u, viewer)) });
+});
+
+// Public "top ascenders" leaderboard — backs the Home tab's podium.
+// Ranked by ascentCount descending, ties broken alphabetically by username
+// so the order is stable across requests; users with zero ascents are
+// excluded so a brand-new gym doesn't show hollow "0 ascents" podium spots.
+// `limit` defaults to 3 (a podium) but is overridable, clamped to a sane
+// range.
+app.get("/api/users/leaderboard", async (req, res) => {
+  const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 3));
+
+  const users = await readUsers();
+  const viewer = await resolveSessionUser(req, users);
+  const ranked = users
+    .filter((u) => (u.ascentCount || 0) > 0)
+    .sort((a, b) => b.ascentCount - a.ascentCount || a.username.localeCompare(b.username))
+    .slice(0, limit);
+
+  res.json({ users: ranked.map((u) => toSearchResultEntry(u, viewer)) });
+});
+
+// Follow/unfollow — the acting user comes from the session cookie (see
+// authenticate), the target from :username in the URL. Both sides of the
+// relationship are kept in sync: A following B adds B to A.following and A
+// to B.followers. Idempotent, so double-clicking Follow/Unfollow (or two
+// tabs racing) can't leave the two arrays out of sync with each other.
+app.post("/api/users/:username/follow", authenticate, async (req, res) => {
+  const { username } = req.params;
+  if (username === req.user.username) {
+    return res.status(400).json({ error: "You can't follow yourself." });
+  }
+
+  const users = await readUsers();
+  const target = users.find((u) => u.username === username);
+  if (!target) {
+    return res.status(404).json({ error: "User not found." });
+  }
+  const actor = users.find((u) => u.username === req.user.username);
+
+  if (!target.followers) target.followers = [];
+  if (!actor.following) actor.following = [];
+  if (!target.followers.includes(actor.username)) target.followers.push(actor.username);
+  if (!actor.following.includes(target.username)) actor.following.push(target.username);
+
+  await writeUsers(users);
+  res.json({ isFollowing: true, followersCount: target.followers.length });
+});
+
+app.post("/api/users/:username/unfollow", authenticate, async (req, res) => {
+  const { username } = req.params;
+
+  const users = await readUsers();
+  const target = users.find((u) => u.username === username);
+  if (!target) {
+    return res.status(404).json({ error: "User not found." });
+  }
+  const actor = users.find((u) => u.username === req.user.username);
+
+  target.followers = (target.followers || []).filter((u) => u !== actor.username);
+  actor.following = (actor.following || []).filter((u) => u !== target.username);
+
+  await writeUsers(users);
+  res.json({ isFollowing: false, followersCount: target.followers.length });
+});
+
+// Public lists backing the tappable follower/following counts on a
+// profile — same row shape as GET /api/users/search, so tapping into one
+// of these results opens UserProfileScreen just like a search result does.
+app.get("/api/users/:username/followers", async (req, res) => {
+  const { username } = req.params;
+  const users = await readUsers();
+  const target = users.find((u) => u.username === username);
+  if (!target) {
+    return res.status(404).json({ error: "User not found." });
+  }
+
+  const viewer = await resolveSessionUser(req, users);
+  const followers = (target.followers || [])
+    .map((name) => users.find((u) => u.username === name))
+    .filter(Boolean);
+  res.json({ users: followers.map((u) => toSearchResultEntry(u, viewer)) });
+});
+
+app.get("/api/users/:username/following", async (req, res) => {
+  const { username } = req.params;
+  const users = await readUsers();
+  const target = users.find((u) => u.username === username);
+  if (!target) {
+    return res.status(404).json({ error: "User not found." });
+  }
+
+  const viewer = await resolveSessionUser(req, users);
+  const following = (target.following || [])
+    .map((name) => users.find((u) => u.username === name))
+    .filter(Boolean);
+  res.json({ users: following.map((u) => toSearchResultEntry(u, viewer)) });
 });
 
 // Public list of every setter-flagged account — backs the Setter dropdown
@@ -779,19 +897,23 @@ app.get("/api/climbs", async (req, res) => {
   res.json({ climbs: await withAscentStats(currentClimbsOnly(climbs)) });
 });
 
-// Adds a single climb — the "+" button on a wall's Climbs page. Moderators/
-// setters only, now enforced server-side via `requireModeratorOrSetter`
-// (previously this was only hidden client-side in NewClimbForm, so anyone
-// who could reach the endpoint directly could create climbs). Every climb
-// created here is stored as setType "backfill": it always goes up alongside
-// whatever's already on the wall rather than taking anything down, whether
-// its date is today's/the current reset's date or a picked-in-the-past date
-// (that distinction is just the form's "Backfill" checkbox choosing which
-// date to use). A true new "reset" — a whole wall's climbs coming down at
-// once — still has no UI behind it; climbs.json stays hand/script-edited
-// for that.
+// Adds a single climb. Moderators/setters only, enforced server-side via
+// `requireModeratorOrSetter` (previously this was only hidden client-side,
+// so anyone who could reach the endpoint directly could create climbs).
+// Two client forms hit this endpoint: the "+" on a wall's Climbs page
+// (NewClimbForm) always sends setType "backfill" — the climb goes up
+// alongside whatever's already on the wall, dated either today's/the
+// current reset's date or a picked-in-the-past date depending on its
+// "Backfill" checkbox. The "+" on the Walls root list (NewWallForm) always
+// sends setType "reset" — see currentClimbsOnly, which treats a wall's
+// latest "reset"-dated climb as wiping out every older climb's "current"
+// status, so submitting one of these effectively starts a new cycle on
+// that wall without anything needing to be deleted from climbs.json.
+// Submitting several "reset" climbs with the same setDate lands them all
+// in the same cycle (see groupIntoCycles, which groups by date rather than
+// by each climb's own setId).
 app.post("/api/climbs", authenticate, requireModeratorOrSetter, async (req, res) => {
-  const { wallId, name, setterGrade, setter, setDate } = req.body || {};
+  const { wallId, name, setterGrade, setter, setDate, photoUrl, setType } = req.body || {};
 
   const trimmedName = (name || "").trim();
   const trimmedSetterGrade = (setterGrade || "").trim();
@@ -821,10 +943,11 @@ app.post("/api/climbs", authenticate, requireModeratorOrSetter, async (req, res)
     // this climb is no longer current on its wall.
     grade: "",
     setter: trimmedSetter,
+    photoUrl: photoUrl || "",
     comments: [],
     setId: crypto.randomUUID(),
     setDate: setDate || new Date().toISOString().slice(0, 10),
-    setType: "backfill",
+    setType: setType === "reset" ? "reset" : "backfill",
     archived: false,
     // Nobody's climbed a brand-new climb yet — ascentClaims (first ascent,
     // second ascent, ...) only ever gets filled in via POST /api/ascents,
@@ -1068,6 +1191,35 @@ app.get("/api/users/:username/grade-counts", async (req, res) => {
       "";
     const bucket = gradeToBucket(grade);
     if (bucket) counts[bucket] += 1;
+  }
+
+  res.json({ counts: GRADE_BUCKETS.map((grade) => ({ grade, count: counts[grade] })) });
+});
+
+// A single climb's Info page: how many logged ascents put its grade as
+// each V-grade bucket — the community's own opinions on difficulty. Unlike
+// the two grade-count endpoints above, an ascent left blank just doesn't
+// count here rather than falling back to the climb's official setterGrade/
+// grade, since the point of this chart is what people actually typed.
+// Matched by wallId+name (see climbKey), since climbs have no id of their
+// own.
+app.get("/api/climbs/grade-distribution", async (req, res) => {
+  const numericWallId = Number(req.query.wallId);
+  const name = (req.query.name || "").toString();
+  if (!Number.isFinite(numericWallId) || !name) {
+    return res.status(400).json({ error: "Wall and climb name are required." });
+  }
+
+  const targetKey = climbKey(numericWallId, name);
+  const users = await readUsers();
+  const counts = Object.fromEntries(GRADE_BUCKETS.map((g) => [g, 0]));
+
+  for (const user of users) {
+    for (const ascent of user.ascents || []) {
+      if (climbKey(ascent.wallId, ascent.climbName) !== targetKey) continue;
+      const bucket = gradeToBucket(ascent.grade);
+      if (bucket) counts[bucket] += 1;
+    }
   }
 
   res.json({ counts: GRADE_BUCKETS.map((grade) => ({ grade, count: counts[grade] })) });
