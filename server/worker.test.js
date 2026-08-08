@@ -554,7 +554,8 @@ describe("readUsers / writeUsers", () => {
 
   it("round-trips via writeUsers", async () => {
     await writeUsers([{ username: "a" }]);
-    expect(await readUsers()).toEqual([{ username: "a" }]);
+    // readUsers backfills ascentCount on users that predate that field.
+    expect(await readUsers()).toEqual([{ username: "a", ascentCount: 0 }]);
   });
 
   it("backfills missing ascent ids and persists the change", async () => {
@@ -1267,9 +1268,9 @@ describe("GET /api/climbs/needs-grade", () => {
 describe("GET /api/archive", () => {
   it("groups archived climbs by wall and flags the most recent archived cycle as loggable", async () => {
     seedClimbs([
-      { wallId: 1, name: "Oldest", setType: "reset", setDate: "2026-01-01", comments: [] },
-      { wallId: 1, name: "Middle", setType: "reset", setDate: "2026-02-01", comments: [] },
-      { wallId: 1, name: "Current", setType: "reset", setDate: "2026-03-01", comments: [] },
+      { wallId: 1, name: "Oldest", setType: "reset", setId: "s1", setDate: "2026-01-01", comments: [] },
+      { wallId: 1, name: "Middle", setType: "reset", setId: "s2", setDate: "2026-02-01", comments: [] },
+      { wallId: 1, name: "Current", setType: "reset", setId: "s3", setDate: "2026-03-01", comments: [] },
     ]);
     const res = await request(app).get("/api/archive");
     expect(res.body.walls).toHaveLength(1);
