@@ -87,6 +87,16 @@ const CLIMBS_FILE = path.join(__dirname, "climbs.json");
 const DIST_DIR = path.join(__dirname, "..", "dist");
 
 export const app = express();
+// "loopback" trusts X-Forwarded-* headers only from a proxy connecting via
+// 127.0.0.1/::1 — i.e. a reverse proxy (Caddy, nginx, ...) running on this
+// same machine, which is the only supported topology here. This lets
+// req.secure (used by setSessionCookie below) correctly report "true" for
+// requests proxied in over HTTPS, while a LAN client hitting this server's
+// own port directly can't spoof X-Forwarded-Proto to fake that — their
+// connection isn't from loopback, so the header is ignored and req.secure
+// falls back to whether *this* connection is actually TLS (it never is;
+// this server only ever speaks plain HTTP, TLS is the proxy's job).
+app.set("trust proxy", "loopback");
 // credentials: true + reflecting the request origin (rather than "*") is
 // required for the session cookie to travel on cross-origin requests — e.g.
 // if the client ever isn't served through the Vite dev proxy that makes
@@ -115,14 +125,18 @@ export function getCookie(req, name) {
   return undefined;
 }
 
-export function setSessionCookie(res, token) {
+export function setSessionCookie(req, res, token) {
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    // Only demand HTTPS for the cookie once actually deployed that way —
-    // requiring `secure` in local dev (plain http://localhost) would make
-    // the browser silently drop it.
-    secure: process.env.NODE_ENV === "production",
+    // req.secure reflects the actual request — true when this came in over
+    // HTTPS via the trusted reverse proxy (see "trust proxy" above), false
+    // for a direct plain-HTTP LAN connection. A hardcoded NODE_ENV check
+    // can't do this: this server serves both a proxied HTTPS domain and
+    // direct plain-HTTP LAN access from the same process, and marking the
+    // cookie secure unconditionally would make browsers silently drop it on
+    // the LAN path.
+    secure: req.secure,
     maxAge: SESSION_MAX_AGE_MS,
     path: "/",
   });
@@ -496,7 +510,7 @@ app.post("/api/signup", async (req, res) => {
   users.push(user);
   await writeUsers(users);
 
-  setSessionCookie(res, sessionToken);
+  setSessionCookie(req, res, sessionToken);
   res.json({ user: toClientUser(user) });
 });
 
@@ -518,7 +532,7 @@ app.post("/api/login", async (req, res) => {
   if (user && !user.passwordHash) {
     user.sessionToken = generateSessionToken();
     await writeUsers(users);
-    setSessionCookie(res, user.sessionToken);
+    setSessionCookie(req, res, user.sessionToken);
     return res.json({ user: toClientUser(user), needsPasswordReset: true });
   }
 
@@ -534,7 +548,7 @@ app.post("/api/login", async (req, res) => {
 
   user.sessionToken = generateSessionToken();
   await writeUsers(users);
-  setSessionCookie(res, user.sessionToken);
+  setSessionCookie(req, res, user.sessionToken);
   res.json({ user: toClientUser(user) });
 });
 
