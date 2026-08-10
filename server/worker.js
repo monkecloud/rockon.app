@@ -7,7 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import { gradeToBucket, bucketCounts, climbBucketGrade } from "../shared/grades.js";
+import { GRADE_OPTIONS, gradeToBucket, bucketCounts, climbBucketGrade } from "../shared/grades.js";
 
 // Re-exported so existing call sites (and worker.test.js's imports) don't
 // need to change — see shared/grades.js for the actual implementations,
@@ -57,11 +57,10 @@ export { gradeToBucket, climbBucketGrade };
 // Each user record also has an optional display `name` (set at signup,
 // separate from `username`), tracks `followers` and `following` (arrays of
 // usernames, kept in sync with each other by POST /api/users/:username/
-// follow and /unfollow below), `ascents` (a list of logged climbs), and
-// `ascentCount` — all empty/zero on signup. Ascents are appended via
-// POST /api/ascents (see
-// below), which the "Log ascent" bottom sheet in the app calls. Each entry
-// looks like:
+// follow and /unfollow below), and `ascents` (a list of logged climbs,
+// empty on signup). Ascents are appended via POST /api/ascents (see below),
+// which the "Log ascent" bottom sheet in the app calls. Each entry looks
+// like:
 //   {
 //     id: string,                 // uuid, used to target this ascent's comment for deletion
 //     wallId: number,             // which wall the climb is on
@@ -77,13 +76,15 @@ export { gradeToBucket, climbBucketGrade };
 //     attempts: number | null,          // total attempts, null if not logged
 //     attemptsThisSession: number | null,
 //   }
-// `ascentCount` is *not* just ascents.length: it only counts ascents logged
-// against a climb that's still part of its wall's current set (see
-// currentClimbsOnly below) — a climb archived by a newer reset stops
-// counting even though the ascent itself is kept. It's recomputed and
-// persisted every time this user logs a new ascent (see POST /api/ascents
-// and computeAscentCount), rather than derived fresh on every read, since
-// doing so requires cross-referencing climbs.json.
+// A user's ascentCount is *not* stored on the record and *not* just
+// ascents.length: it's derived fresh on every read (see computeAscentCount,
+// currentClimbKeys) as the number of DISTINCT climbs — not ascent rows —
+// logged against a climb that's still part of its wall's current set (see
+// currentClimbsOnly below). Deriving it on read rather than storing it is
+// what makes it structurally impossible for a wall reset to leave it stale
+// (§14.7) — the old stored-counter design only recomputed it for whichever
+// user next logged an ascent, so every other user's count silently kept
+// reporting pre-reset climbs as current until they happened to log again.
 // ---------------------------------------------------------------------------
 
 // bcrypt encodes the cost in the hash itself, so raising this doesn't
@@ -277,20 +278,6 @@ export async function readUsers() {
     for (const ascent of user.ascents || []) {
       if (!ascent.id) {
         ascent.id = crypto.randomUUID();
-        backfilled = true;
-      }
-    }
-  }
-
-  // Backfill ascentCount on users that predate that field. Only reads
-  // climbs.json (needed to know which climbs are still active) when at
-  // least one user actually needs it, since readUsers() runs on nearly
-  // every request.
-  if (users.some((user) => user.ascentCount === undefined)) {
-    const climbs = await readClimbs();
-    for (const user of users) {
-      if (user.ascentCount === undefined) {
-        user.ascentCount = computeAscentCount(user.ascents, climbs);
         backfilled = true;
       }
     }
@@ -514,15 +501,19 @@ export function archivedClimbsByWall(climbs) {
 
 // Shape of the `user` object sent to the client after signup/login — never
 // includes passwordHash, and reduces followers/following to counts since
-// that's all the Profile tab currently needs to render.
-export function toClientUser(user) {
+// that's all the Profile tab currently needs to render. `ascentCount` is no
+// longer stored on the user record (§14.7) — the caller computes it fresh
+// via computeAscentCount(user.ascents, currentClimbKeys(climbs)) and passes
+// it in, so it can never go stale after a wall reset the way the old stored
+// counter did.
+export function toClientUser(user, ascentCount = 0) {
   return {
     username: user.username,
     name: user.name || "",
     avatarUrl: user.avatarUrl || "",
     followersCount: (user.followers || []).length,
     followingCount: (user.following || []).length,
-    ascentCount: user.ascentCount || 0,
+    ascentCount,
     isModerator: !!user.isModerator,
     isSetter: !!user.isSetter,
     isAdmin: !!user.isAdmin,
@@ -546,15 +537,16 @@ export function toRoleListEntry(user) {
 // (see UserProfileScreen client-side), nothing account-sensitive. Also
 // backs the followers/following list endpoints below. `viewer` is whoever
 // is making the request (see resolveSessionUser) — null when logged out,
-// in which case isFollowing is always false.
-export function toSearchResultEntry(user, viewer) {
+// in which case isFollowing is always false. `ascentCount` — see the note
+// on toClientUser above; same deal here.
+export function toSearchResultEntry(user, viewer, ascentCount = 0) {
   return {
     username: user.username,
     name: user.name || "",
     avatarUrl: user.avatarUrl || "",
     followersCount: (user.followers || []).length,
     followingCount: (user.following || []).length,
-    ascentCount: user.ascentCount || 0,
+    ascentCount,
     isFollowing: Boolean(viewer && (user.followers || []).includes(viewer.username)),
   };
 }
@@ -686,14 +678,13 @@ app.post("/api/signup", async (req, res) => {
     followers: [],
     following: [],
     ascents: [],
-    ascentCount: 0,
   };
   users.push(user);
   await writeUsers(users);
   recordRateLimitFailure(rateLimitKeys);
 
   setSessionCookie(req, res, sessionToken);
-  res.json({ user: toClientUser(user) });
+  res.json({ user: toClientUser(user, 0) });
 });
 
 app.post("/api/login", async (req, res) => {
@@ -726,7 +717,11 @@ app.post("/api/login", async (req, res) => {
     await writeUsers(users);
     recordRateLimitSuccess(rateLimitKeys);
     setSessionCookie(req, res, user.sessionToken);
-    return res.json({ user: toClientUser(user), needsPasswordReset: true });
+    const currentKeys = currentClimbKeys(await readClimbs());
+    return res.json({
+      user: toClientUser(user, computeAscentCount(user.ascents, currentKeys)),
+      needsPasswordReset: true,
+    });
   }
 
   // Compare against a hash whether or not the user exists, so response
@@ -753,7 +748,8 @@ app.post("/api/login", async (req, res) => {
   await writeUsers(users);
   recordRateLimitSuccess(rateLimitKeys);
   setSessionCookie(req, res, user.sessionToken);
-  res.json({ user: toClientUser(user) });
+  const currentKeys = currentClimbKeys(await readClimbs());
+  res.json({ user: toClientUser(user, computeAscentCount(user.ascents, currentKeys)) });
 });
 
 // Clears the session both server-side (so the old token can't be replayed)
@@ -785,7 +781,8 @@ app.post("/api/users/:username/name", authenticate, requireSelf, async (req, res
 
   user.name = (name || "").trim();
   await writeUsers(users);
-  res.json({ user: toClientUser(user) });
+  const currentKeys = currentClimbKeys(await readClimbs());
+  res.json({ user: toClientUser(user, computeAscentCount(user.ascents, currentKeys)) });
 });
 
 app.post("/api/users/:username/avatar", authenticate, requireSelf, async (req, res) => {
@@ -804,7 +801,8 @@ app.post("/api/users/:username/avatar", authenticate, requireSelf, async (req, r
 
   user.avatarUrl = avatarUrl;
   await writeUsers(users);
-  res.json({ user: toClientUser(user) });
+  const currentKeys = currentClimbKeys(await readClimbs());
+  res.json({ user: toClientUser(user, computeAscentCount(user.ascents, currentKeys)) });
 });
 
 app.post("/api/users/:username/username", authenticate, requireSelf, async (req, res) => {
@@ -839,7 +837,8 @@ app.post("/api/users/:username/username", authenticate, requireSelf, async (req,
   // nothing populates those arrays yet.
   user.username = trimmed;
   await writeUsers(users);
-  res.json({ user: toClientUser(user) });
+  const currentKeys = currentClimbKeys(await readClimbs());
+  res.json({ user: toClientUser(user, computeAscentCount(user.ascents, currentKeys)) });
 });
 
 app.post("/api/users/:username/password", authenticate, requireSelf, async (req, res) => {
@@ -899,7 +898,10 @@ app.get("/api/users/search", async (req, res) => {
     (u) => u.username.toLowerCase().includes(q) || (u.name || "").toLowerCase().includes(q)
   );
 
-  res.json({ users: matches.map((u) => toSearchResultEntry(u, viewer)) });
+  const currentKeys = currentClimbKeys(await readClimbs());
+  res.json({
+    users: matches.map((u) => toSearchResultEntry(u, viewer, computeAscentCount(u.ascents, currentKeys))),
+  });
 });
 
 // Public "top ascenders" leaderboard — backs the Home tab's podium.
@@ -913,12 +915,17 @@ app.get("/api/users/leaderboard", async (req, res) => {
 
   const users = await readUsers();
   const viewer = await resolveSessionUser(req, users);
+  const currentKeys = currentClimbKeys(await readClimbs());
+  // Compute every user's derived ascentCount up front (once each, via the
+  // shared currentKeys Set) so ranking can sort/filter on it directly,
+  // rather than the old stored-field sort that went stale after a reset.
   const ranked = users
-    .filter((u) => (u.ascentCount || 0) > 0)
-    .sort((a, b) => b.ascentCount - a.ascentCount || a.username.localeCompare(b.username))
+    .map((u) => ({ user: u, ascentCount: computeAscentCount(u.ascents, currentKeys) }))
+    .filter((r) => r.ascentCount > 0)
+    .sort((a, b) => b.ascentCount - a.ascentCount || a.user.username.localeCompare(b.user.username))
     .slice(0, limit);
 
-  res.json({ users: ranked.map((u) => toSearchResultEntry(u, viewer)) });
+  res.json({ users: ranked.map((r) => toSearchResultEntry(r.user, viewer, r.ascentCount)) });
 });
 
 // Follow/unfollow — the acting user comes from the session cookie (see
@@ -980,7 +987,10 @@ app.get("/api/users/:username/followers", async (req, res) => {
   const followers = (target.followers || [])
     .map((name) => users.find((u) => u.username === name))
     .filter(Boolean);
-  res.json({ users: followers.map((u) => toSearchResultEntry(u, viewer)) });
+  const currentKeys = currentClimbKeys(await readClimbs());
+  res.json({
+    users: followers.map((u) => toSearchResultEntry(u, viewer, computeAscentCount(u.ascents, currentKeys))),
+  });
 });
 
 app.get("/api/users/:username/following", async (req, res) => {
@@ -995,7 +1005,10 @@ app.get("/api/users/:username/following", async (req, res) => {
   const following = (target.following || [])
     .map((name) => users.find((u) => u.username === name))
     .filter(Boolean);
-  res.json({ users: following.map((u) => toSearchResultEntry(u, viewer)) });
+  const currentKeys = currentClimbKeys(await readClimbs());
+  res.json({
+    users: following.map((u) => toSearchResultEntry(u, viewer, computeAscentCount(u.ascents, currentKeys))),
+  });
 });
 
 // Public list of every setter-flagged account — backs the Setter dropdown
@@ -1057,32 +1070,73 @@ app.post("/api/users/:username/reset-password", authenticate, requireAdmin, asyn
 // no id of their own, so ascents are matched to climbs by wallId + name.
 export const climbKey = (wallId, name) => `${wallId}::${name}`;
 
-// A user's ascentCount (see the User record note above) — how many of their
-// logged ascents are for a climb that's still part of its wall's current
-// set (see currentClimbsOnly), i.e. not superseded by a newer reset.
-export function computeAscentCount(ascents, climbs) {
-  const currentKeys = new Set(
-    currentClimbsOnly(climbs).map((c) => climbKey(c.wallId, c.setterName))
-  );
-  return (ascents || []).filter((a) => currentKeys.has(climbKey(a.wallId, a.climbName))).length;
+// The Set of climbKey()s for every currently-active climb — the shape
+// computeAscentCount and the serializers below need. Computed once per
+// request and passed around rather than rebuilt per user: rebuilding it
+// inside a per-user loop (e.g. the leaderboard, or toSearchResultEntry
+// called once per search result) would turn an O(n) endpoint into O(n·m).
+export function currentClimbKeys(climbs) {
+  return new Set(currentClimbsOnly(climbs).map((c) => climbKey(c.wallId, c.setterName)));
+}
+
+// A user's ascentCount (see the User record note above) — how many DISTINCT
+// climbs (not ascent rows) they've logged against a climb that's still part
+// of its wall's current set (see currentClimbsOnly), i.e. not superseded by
+// a newer reset. Distinct, not row count, because repeat ascents of the
+// same climb are allowed (§14.6) and must not inflate this — someone who
+// logs one climb five times has climbed 1 thing, not 5. `currentKeys` is
+// the Set from currentClimbKeys(climbs) above; this is no longer stored on
+// the user record (§14.7) — it's derived fresh on every read specifically
+// so a wall reset can never leave it stale.
+export function computeAscentCount(ascents, currentKeys) {
+  const distinctKeys = new Set();
+  for (const ascent of ascents || []) {
+    const key = climbKey(ascent.wallId, ascent.climbName);
+    if (currentKeys.has(key)) distinctKeys.add(key);
+  }
+  return distinctKeys.size;
+}
+
+// The Set of climbKey()s a new ascent can currently be logged against: every
+// currently-active climb, plus every climb in the most recently-archived
+// cycle per wall (once a wall resets, the just-superseded cycle stays
+// loggable for a while rather than being cut off instantly — see
+// GET /api/archive's `loggable` flag, which this is shared with).
+function loggableClimbKeys(climbs) {
+  const currentKeys = currentClimbKeys(climbs);
+  const archivedFlat = archivedClimbsByWall(climbs).flatMap((wall) => wall.climbs);
+  const archivedLoggableKeys = currentClimbKeys(archivedFlat);
+  return new Set([...currentKeys, ...archivedLoggableKeys]);
+}
+
+// Whether a new ascent may currently be logged against this climb — see
+// loggableClimbKeys above. Used by POST /api/ascents; GET /api/archive
+// computes the same Set in bulk for many climbs at once rather than calling
+// this per-climb.
+export function isLoggable(climb, climbs) {
+  return loggableClimbKeys(climbs).has(climbKey(climb.wallId, climb.setterName));
 }
 
 export async function withAscentStats(climbs) {
   const users = await readUsers();
-  const statsByKey = {};
+  // Per climb key: a Map of username -> that user's most-recent ascent
+  // against it. Repeats are allowed (climbers legitimately resend/reclimb a
+  // project), but must count once per user, not once per row — a climb
+  // logged five times by one person is 1 ascent, not 5 (§14.6). Ascents are
+  // appended in order, so later occurrences in this loop overwrite earlier
+  // ones in the Map, leaving each user's most recent entry.
+  const latestAscentByUserByKey = {};
   const userCommentsByKey = {};
 
   for (const user of users) {
     for (const ascent of user.ascents || []) {
       const key = climbKey(ascent.wallId, ascent.climbName);
-      const stats = statsByKey[key] || { count: 0, starSum: 0, starCount: 0 };
-      stats.count += 1;
-      if (ascent.starRating) {
-        stats.starSum += ascent.starRating;
-        stats.starCount += 1;
-      }
-      statsByKey[key] = stats;
+      const byUser = (latestAscentByUserByKey[key] ||= new Map());
+      byUser.set(user.username, ascent);
 
+      // Comments are deliberately unaffected by the dedupe above — every
+      // repeat's comment still shows on the Info page. That's a log of
+      // visits, not a vote, so repeats are correct there.
       const comment = ascent.comment && ascent.comment.trim();
       if (comment) {
         const list = userCommentsByKey[key] || [];
@@ -1099,12 +1153,28 @@ export async function withAscentStats(climbs) {
 
   return climbs.map((climb) => {
     const key = climbKey(climb.wallId, climb.setterName);
-    const stats = statsByKey[key];
+    const byUser = latestAscentByUserByKey[key];
     const userComments = userCommentsByKey[key] || [];
+
+    let starSum = 0;
+    let starCount = 0;
+    if (byUser) {
+      for (const ascent of byUser.values()) {
+        if (ascent.starRating) {
+          starSum += ascent.starRating;
+          starCount += 1;
+        }
+      }
+    }
+
     return {
       ...climb,
-      ascentCount: stats ? stats.count : 0,
-      averageStars: stats && stats.starCount ? stats.starSum / stats.starCount : 0,
+      // Distinct users, not ascent rows (§14.6) — otherwise one person
+      // repeat-logging a climb inflates its ascent count for everyone.
+      ascentCount: byUser ? byUser.size : 0,
+      // One rating per user — their most recent (§14.6) — so a single
+      // climber can't skew a climb's average by rating it repeatedly.
+      averageStars: starCount ? starSum / starCount : 0,
       comments: [...(climb.comments || []), ...userComments],
     };
   });
@@ -1327,6 +1397,32 @@ app.get("/api/archive", async (req, res) => {
   res.json({ walls: wallsWithStats });
 });
 
+const MAX_ASCENT_COMMENT_LENGTH = 2000;
+
+// A star rating is optional (null/undefined = no opinion given), but if
+// present must be 0.5-5 in 0.5 steps — an out-of-range or fractional value
+// would corrupt averageStars for every future viewer of that climb.
+function isValidStarRating(starRating) {
+  if (starRating === null || starRating === undefined) return true;
+  return (
+    typeof starRating === "number" &&
+    Number.isFinite(starRating) &&
+    starRating >= 0.5 &&
+    starRating <= 5 &&
+    Number.isInteger(starRating * 2)
+  );
+}
+
+// attempts/attemptsThisSession are optional, but if present must be
+// integers — attempts (total tries) positive since you can't complete a
+// climb with zero attempts; attemptsThisSession non-negative since logging
+// today with zero *new* attempts (e.g. a climb sent in an earlier session)
+// is legitimate.
+function isValidAttemptsValue(value, { allowZero }) {
+  if (value === null || value === undefined) return true;
+  return typeof value === "number" && Number.isInteger(value) && (allowZero ? value >= 0 : value >= 1);
+}
+
 app.post("/api/ascents", authenticate, async (req, res) => {
   const {
     wallId,
@@ -1340,8 +1436,46 @@ app.post("/api/ascents", authenticate, async (req, res) => {
     ascentClaim,
   } = req.body || {};
 
-  if (!wallId || !climbName) {
+  const numericWallId = Number(wallId);
+  if (!Number.isFinite(numericWallId) || !climbName) {
     return res.status(400).json({ error: "Wall and climb are required." });
+  }
+
+  // Validate first, mutate second — the handler used to push the ascent
+  // before it had even read climbs.json, so any {wallId, climbName} string
+  // pair was accepted, stored, counted, and rendered as a comment on a climb
+  // that might not exist (§14.6).
+  const climbs = await readClimbs();
+  const climb = climbs.find((c) => c.wallId === numericWallId && c.setterName === climbName);
+  if (!climb) {
+    return res.status(404).json({ error: "Climb not found." });
+  }
+  if (!isLoggable(climb, climbs)) {
+    return res.status(409).json({
+      error: "This climb is no longer accepting new ascents.",
+    });
+  }
+
+  if (!isValidStarRating(starRating)) {
+    return res.status(400).json({ error: "Star rating must be between 0.5 and 5, in 0.5 steps." });
+  }
+
+  const trimmedGrade = (grade || "").trim();
+  if (trimmedGrade && !GRADE_OPTIONS.includes(trimmedGrade)) {
+    return res.status(400).json({ error: "Unrecognized grade." });
+  }
+
+  if (logAttempts) {
+    if (!isValidAttemptsValue(attempts, { allowZero: false })) {
+      return res.status(400).json({ error: "Attempts must be a positive whole number." });
+    }
+    if (!isValidAttemptsValue(attemptsThisSession, { allowZero: true })) {
+      return res.status(400).json({ error: "Attempts this session must be a non-negative whole number." });
+    }
+  }
+
+  if ((comment || "").length > MAX_ASCENT_COMMENT_LENGTH) {
+    return res.status(400).json({ error: `Comment must be ${MAX_ASCENT_COMMENT_LENGTH} characters or fewer.` });
   }
 
   const users = await readUsers();
@@ -1353,56 +1487,47 @@ app.post("/api/ascents", authenticate, async (req, res) => {
   if (!user.ascents) user.ascents = [];
   user.ascents.push({
     id: crypto.randomUUID(),
-    wallId,
+    wallId: numericWallId,
     climbName,
     starRating: starRating ?? null,
-    grade: grade || "",
+    grade: trimmedGrade,
     comment: comment || "",
     logAttempts: Boolean(logAttempts),
     attempts: logAttempts ? attempts ?? null : null,
     attemptsThisSession: logAttempts ? attemptsThisSession ?? null : null,
   });
-
-  const climbs = await readClimbs();
-  // Recomputed from scratch (rather than incremented) since an ascent
-  // logged just now can only ever add to a current climb, but past ascents
-  // may have fallen out of the active set since they were logged — see
-  // computeAscentCount.
-  user.ascentCount = computeAscentCount(user.ascents, climbs);
-
   await writeUsers(users);
 
   // Optional first/second/.../fifth-ascent claim offered alongside this log
   // (see LogAscentSheet client-side) — recorded on the climb itself, one
   // slot per ordinal, first come first served, capped at 5.
   if (ascentClaim && (ascentClaim.name || ascentClaim.pass)) {
-    const climb = climbs.find((c) => c.wallId === Number(wallId) && c.setterName === climbName);
-    if (climb) {
-      if (!climb.ascentClaims) climb.ascentClaims = [];
-      if (climb.ascentClaims.length < 5) {
-        const trimmedClaimName = (ascentClaim.name || "").trim();
-        climb.ascentClaims.push({
+    if (!climb.ascentClaims) climb.ascentClaims = [];
+    if (climb.ascentClaims.length < 5) {
+      const trimmedClaimName = (ascentClaim.name || "").trim();
+      climb.ascentClaims.push({
+        name: trimmedClaimName,
+        pass: Boolean(ascentClaim.pass),
+      });
+      // Naming rights: whoever names an ascenter also proposes a new name
+      // for the climb itself, queued for a moderator/setter to approve
+      // (see GET /api/climbs/needs-name-approval, POST
+      // /api/climbs/approve-name) rather than taking effect immediately.
+      if (trimmedClaimName) {
+        if (!climb.pendingNames) climb.pendingNames = [];
+        climb.pendingNames.push({
+          id: crypto.randomUUID(),
           name: trimmedClaimName,
-          pass: Boolean(ascentClaim.pass),
+          claimedBy: user.username,
         });
-        // Naming rights: whoever names an ascenter also proposes a new name
-        // for the climb itself, queued for a moderator/setter to approve
-        // (see GET /api/climbs/needs-name-approval, POST
-        // /api/climbs/approve-name) rather than taking effect immediately.
-        if (trimmedClaimName) {
-          if (!climb.pendingNames) climb.pendingNames = [];
-          climb.pendingNames.push({
-            id: crypto.randomUUID(),
-            name: trimmedClaimName,
-            claimedBy: user.username,
-          });
-        }
-        await writeClimbs(climbs);
       }
+      await writeClimbs(climbs);
     }
   }
 
-  res.json({ ascents: user.ascents, ascentCount: user.ascentCount });
+  // Derived fresh rather than stored (§14.7) — see computeAscentCount.
+  const currentKeys = currentClimbKeys(climbs);
+  res.json({ ascents: user.ascents, ascentCount: computeAscentCount(user.ascents, currentKeys) });
 });
 
 // Deleting a comment only clears the `comment` text off the ascent it came
@@ -1428,10 +1553,12 @@ app.delete("/api/users/:username/ascents/:ascentId/comment", authenticate, requi
   res.json({ success: true });
 });
 
-// The Profile page's grade pyramid: how many logged ascents fall in each
-// V-grade bucket. Prefers the grade the user typed on the ascent itself;
-// falls back to the climb's own bucket grade (looked up by wallId+name,
-// across current AND archived climbs) when that was left blank.
+// The Profile page's grade pyramid: how many DISTINCT climbs (not ascent
+// rows — a repeat ascent doesn't inflate a bucket, §14.6) fall in each
+// V-grade bucket. Prefers the grade typed on the user's most recent ascent
+// of that climb; falls back to the climb's own bucket grade (looked up by
+// wallId+setterName, across current AND archived climbs) when that was
+// left blank.
 app.get("/api/users/:username/grade-counts", async (req, res) => {
   const { username } = req.params;
 
@@ -1447,24 +1574,29 @@ app.get("/api/users/:username/grade-counts", async (req, res) => {
     bucketGradeByKey[climbKey(climb.wallId, climb.setterName)] = climbBucketGrade(climb);
   });
 
-  const grades = (user.ascents || []).map(
-    (ascent) =>
-      (ascent.grade && ascent.grade.trim()) ||
-      bucketGradeByKey[climbKey(ascent.wallId, ascent.climbName)] ||
-      ""
-  );
+  // One entry per climb — later ascents in the array overwrite earlier
+  // ones, leaving each climb's most-recently-logged grade opinion.
+  const gradeByClimbKey = new Map();
+  for (const ascent of user.ascents || []) {
+    const key = climbKey(ascent.wallId, ascent.climbName);
+    const grade = (ascent.grade && ascent.grade.trim()) || bucketGradeByKey[key] || "";
+    gradeByClimbKey.set(key, grade);
+  }
 
-  res.json({ counts: bucketCounts(grades) });
+  res.json({ counts: bucketCounts([...gradeByClimbKey.values()]) });
 });
 
-// A single climb's Info page: how many logged ascents put its grade as
-// each V-grade bucket — the community's own opinions on difficulty. Unlike
-// the two grade-count endpoints above, an ascent left blank just doesn't
-// count here rather than falling back to the climb's official setterGrade/
-// grade, since the point of this chart is what people actually typed.
-// Matched by wallId+setterName (see climbKey), since climbs have no id of
-// their own and setterName — unlike the mutable, renameable `name` — is
-// guaranteed unique within a wall.
+// A single climb's Info page: the community's own opinions on difficulty —
+// one vote per user (§14.6), their most recent, not one per ascent row,
+// since the point of this chart is aggregating independent opinions and a
+// climber repeat-logging the same climb shouldn't be able to single-
+// handedly skew it. Unlike the two grade-count endpoints above, a blank
+// ascent grade just doesn't count here rather than falling back to the
+// climb's official setterGrade/grade, since the point of this chart is
+// specifically what people actually typed. Matched by wallId+setterName
+// (see climbKey), since climbs have no id of their own and setterName —
+// unlike the mutable, renameable `name` — is guaranteed unique within a
+// wall.
 app.get("/api/climbs/grade-distribution", async (req, res) => {
   const numericWallId = Number(req.query.wallId);
   const setterName = (req.query.setterName || "").toString();
@@ -1474,11 +1606,13 @@ app.get("/api/climbs/grade-distribution", async (req, res) => {
 
   const targetKey = climbKey(numericWallId, setterName);
   const users = await readUsers();
-  const grades = users.flatMap((user) =>
-    (user.ascents || [])
-      .filter((ascent) => climbKey(ascent.wallId, ascent.climbName) === targetKey)
-      .map((ascent) => ascent.grade)
-  );
+  const grades = users.map((user) => {
+    const matching = (user.ascents || []).filter(
+      (ascent) => climbKey(ascent.wallId, ascent.climbName) === targetKey
+    );
+    // The last matching entry is this user's most recent opinion.
+    return matching.length ? matching[matching.length - 1].grade : "";
+  });
 
   res.json({ counts: bucketCounts(grades) });
 });

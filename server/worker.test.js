@@ -48,6 +48,8 @@ const {
   toSetterListEntry,
   climbKey,
   computeAscentCount,
+  currentClimbKeys,
+  isLoggable,
   withAscentStats,
   gradeToBucket,
   climbBucketGrade,
@@ -298,7 +300,6 @@ describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEnt
     avatarUrl: "http://example.com/a.png",
     followers: ["a", "b"],
     following: ["c"],
-    ascentCount: 5,
     isModerator: true,
     isSetter: false,
     isAdmin: false,
@@ -306,7 +307,9 @@ describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEnt
   };
 
   it("toClientUser exposes counts and roles, never the password hash", () => {
-    const client = toClientUser(fullUser);
+    // ascentCount is no longer read off the user record (§14.7) — the
+    // caller computes it and passes it in as the second argument.
+    const client = toClientUser(fullUser, 5);
     expect(client).toEqual({
       username: "cube",
       name: "Cube Snail",
@@ -347,7 +350,7 @@ describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEnt
   });
 
   it("toSearchResultEntry has no role info, and defaults isFollowing false with no viewer", () => {
-    expect(toSearchResultEntry(fullUser)).toEqual({
+    expect(toSearchResultEntry(fullUser, undefined, 5)).toEqual({
       username: "cube",
       name: "Cube Snail",
       avatarUrl: "http://example.com/a.png",
@@ -374,23 +377,33 @@ describe("computeAscentCount", () => {
     { wallId: 1, setterName: "Current", setType: "reset", setDate: "2026-02-01" },
     { wallId: 1, setterName: "Archived", setType: "reset", setDate: "2026-01-01" },
   ];
+  const currentKeys = currentClimbKeys(climbs);
 
   it("counts only ascents against currently-active climbs", () => {
     const ascents = [
       { wallId: 1, climbName: "Current" },
       { wallId: 1, climbName: "Archived" },
     ];
-    expect(computeAscentCount(ascents, climbs)).toBe(1);
+    expect(computeAscentCount(ascents, currentKeys)).toBe(1);
   });
 
   it("returns 0 for an empty/undefined ascents list", () => {
-    expect(computeAscentCount([], climbs)).toBe(0);
-    expect(computeAscentCount(undefined, climbs)).toBe(0);
+    expect(computeAscentCount([], currentKeys)).toBe(0);
+    expect(computeAscentCount(undefined, currentKeys)).toBe(0);
   });
 
   it("ignores ascents against climbs that no longer exist at all", () => {
     const ascents = [{ wallId: 99, climbName: "Nonexistent" }];
-    expect(computeAscentCount(ascents, climbs)).toBe(0);
+    expect(computeAscentCount(ascents, currentKeys)).toBe(0);
+  });
+
+  it("counts distinct climbs, not ascent rows — a repeat ascent doesn't inflate it", () => {
+    const ascents = [
+      { wallId: 1, climbName: "Current" },
+      { wallId: 1, climbName: "Current" },
+      { wallId: 1, climbName: "Current" },
+    ];
+    expect(computeAscentCount(ascents, currentKeys)).toBe(1);
   });
 });
 
@@ -568,14 +581,11 @@ describe("readUsers / writeUsers", () => {
 
   it("round-trips via writeUsers", async () => {
     await writeUsers([{ username: "a" }]);
-    // readUsers backfills ascentCount on users that predate that field.
-    expect(await readUsers()).toEqual([{ username: "a", ascentCount: 0 }]);
+    expect(await readUsers()).toEqual([{ username: "a" }]);
   });
 
   it("backfills missing ascent ids and persists the change", async () => {
-    seedUsers([
-      { username: "a", ascentCount: 0, ascents: [{ wallId: 1, climbName: "X" }] },
-    ]);
+    seedUsers([{ username: "a", ascents: [{ wallId: 1, climbName: "X" }] }]);
     const users = await readUsers();
     expect(users[0].ascents[0].id).toEqual(expect.any(String));
     expect(fsPromises.writeFile).toHaveBeenCalled();
@@ -583,16 +593,12 @@ describe("readUsers / writeUsers", () => {
     expect(currentUsers()[0].ascents[0].id).toEqual(users[0].ascents[0].id);
   });
 
-  it("backfills ascentCount using climbs.json when missing, only reading climbs if needed", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
-    seedUsers([{ username: "a", ascents: [{ id: "1", wallId: 1, climbName: "X" }] }]);
-    const users = await readUsers();
-    expect(users[0].ascentCount).toBe(1);
-    expect(currentUsers()[0].ascentCount).toBe(1);
-  });
+  // ascentCount is no longer stored/backfilled at all (§14.7) — it's
+  // derived fresh on every read instead, so there's nothing left for
+  // readUsers to backfill here. See computeAscentCount/currentClimbKeys.
 
   it("does not write when no backfill is needed", async () => {
-    seedUsers([{ username: "a", ascentCount: 0, ascents: [] }]);
+    seedUsers([{ username: "a", ascents: [] }]);
     await readUsers();
     expect(fsPromises.writeFile).not.toHaveBeenCalled();
   });
@@ -654,7 +660,23 @@ describe("withAscentStats", () => {
     expect(climb.comments).toEqual([{ id: "seed-1", text: "hi" }]);
   });
 
-  it("averages only ascents that had a star rating", async () => {
+  it("averages one rating per user across distinct users", async () => {
+    seedUsers([
+      { username: "a", ascents: [{ id: "1", wallId: 1, climbName: "X", starRating: 5 }] },
+      { username: "b", ascents: [{ id: "2", wallId: 1, climbName: "X", starRating: null }] },
+      { username: "c", ascents: [{ id: "3", wallId: 1, climbName: "X", starRating: 3 }] },
+    ]);
+    const [climb] = await withAscentStats([{ wallId: 1, name: "X", setterName: "X" }]);
+    expect(climb.ascentCount).toBe(3); // 3 distinct users, regardless of who rated
+    expect(climb.averageStars).toBe(4); // (5 + 3) / 2 valid ratings, null skipped
+  });
+
+  it("counts distinct users, not ascent rows — one user repeat-logging isn't 3 ascents", async () => {
+    // Repeats are allowed (§14.6): the same user logs the same climb three
+    // times. ascentCount must reflect 1 person having climbed it, and
+    // averageStars must use only their most recent rating (3), not average
+    // across all three repeats — otherwise one climber could single-
+    // handedly skew both numbers for every other viewer of the climb.
     seedUsers([
       {
         username: "a",
@@ -666,8 +688,8 @@ describe("withAscentStats", () => {
       },
     ]);
     const [climb] = await withAscentStats([{ wallId: 1, name: "X", setterName: "X" }]);
-    expect(climb.ascentCount).toBe(3);
-    expect(climb.averageStars).toBe(4);
+    expect(climb.ascentCount).toBe(1);
+    expect(climb.averageStars).toBe(3);
   });
 
   it("merges user comments alongside seeded ones, skipping blank/whitespace-only comments", async () => {
@@ -1047,6 +1069,23 @@ describe("GET /api/users/search", () => {
   });
 });
 
+// ascentCount is derived from real climbs+ascents now (§14.7), not a stored
+// field the tests can set directly — these helpers build N current climbs
+// and N ascents against distinct ones of them, so "this user has logged N
+// climbs" is easy to set up precisely.
+function makeCurrentClimbs(n) {
+  return Array.from({ length: n }, (_, i) => ({
+    wallId: 1,
+    name: `Climb${i}`,
+    setterName: `Climb${i}`,
+    setType: "reset",
+    setDate: "2026-01-01",
+  }));
+}
+function makeAscentsAgainst(n) {
+  return Array.from({ length: n }, (_, i) => ({ id: `a${i}`, wallId: 1, climbName: `Climb${i}` }));
+}
+
 describe("GET /api/users/leaderboard", () => {
   it("returns [] when nobody has any ascents", async () => {
     await signup("zero-ascents");
@@ -1055,14 +1094,15 @@ describe("GET /api/users/leaderboard", () => {
   });
 
   it("excludes zero-ascent users and ranks the rest by ascentCount descending", async () => {
+    seedClimbs(makeCurrentClimbs(20));
     await signup("low");
     await signup("high");
     await signup("mid");
     await signup("none");
     const users = currentUsers();
-    users.find((u) => u.username === "low").ascentCount = 3;
-    users.find((u) => u.username === "high").ascentCount = 20;
-    users.find((u) => u.username === "mid").ascentCount = 10;
+    users.find((u) => u.username === "low").ascents = makeAscentsAgainst(3);
+    users.find((u) => u.username === "high").ascents = makeAscentsAgainst(20);
+    users.find((u) => u.username === "mid").ascents = makeAscentsAgainst(10);
     seedUsers(users);
 
     const res = await request(app).get("/api/users/leaderboard");
@@ -1070,10 +1110,11 @@ describe("GET /api/users/leaderboard", () => {
   });
 
   it("breaks ties alphabetically by username", async () => {
+    seedClimbs(makeCurrentClimbs(5));
     await signup("zed");
     await signup("amy");
     const users = currentUsers();
-    users.forEach((u) => (u.ascentCount = 5));
+    users.forEach((u) => (u.ascents = makeAscentsAgainst(5)));
     seedUsers(users);
 
     const res = await request(app).get("/api/users/leaderboard");
@@ -1081,15 +1122,46 @@ describe("GET /api/users/leaderboard", () => {
   });
 
   it("respects a custom limit", async () => {
+    seedClimbs(makeCurrentClimbs(10));
     await signup("a");
     await signup("b");
     await signup("c");
     const users = currentUsers();
-    users.forEach((u, i) => (u.ascentCount = 10 - i));
+    users.forEach((u, i) => (u.ascents = makeAscentsAgainst(10 - i)));
     seedUsers(users);
 
     const res = await request(app).get("/api/users/leaderboard").query({ limit: 2 });
     expect(res.body.users).toHaveLength(2);
+  });
+});
+
+describe("ascentCount can never go stale after a reset (§14.7)", () => {
+  it("drops immediately on the next read, with no write of any kind in between", async () => {
+    seedClimbs([{ wallId: 1, name: "X", setterName: "X", setType: "reset", setDate: "2026-01-01" }]);
+    const { cookie } = await signup("cube", "correct-password");
+    await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "X", starRating: 4 });
+
+    const before = await request(app)
+      .post("/api/login")
+      .send({ username: "cube", password: "correct-password" });
+    expect(before.body.user.ascentCount).toBe(1);
+
+    // A newer reset on the same wall supersedes "X" — no write to the user
+    // record happens anywhere in this test after logging the one ascent
+    // above, yet the count must still reflect the reset on the very next
+    // read. The old stored-counter design could only ever recompute this at
+    // write time, so it stayed wrong until the user happened to log again.
+    const climbs = JSON.parse(store.get(CLIMBS_PATH));
+    climbs.push({ wallId: 1, name: "Y", setterName: "Y", setType: "reset", setDate: "2026-02-01" });
+    seedClimbs(climbs);
+
+    const after = await request(app)
+      .post("/api/login")
+      .send({ username: "cube", password: "correct-password" });
+    expect(after.body.user.ascentCount).toBe(0);
   });
 });
 
@@ -1495,6 +1567,168 @@ describe("POST /api/ascents", () => {
     expect(res.body.ascents[0]).toEqual(expect.objectContaining({ wallId: 1, climbName: "X", starRating: 4 }));
   });
 
+  it("404s a climb that doesn't exist", async () => {
+    seedClimbs([]);
+    const { cookie } = await signup("cube");
+    const res = await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "Ghost" });
+    expect(res.status).toBe(404);
+  });
+
+  it("409s a climb from before the most recent archived cycle (no longer loggable)", async () => {
+    // groupIntoCycles (which archived-loggability is built on) keys cycles
+    // by setId, same as real climbs.json data always has — distinct setIds
+    // per cycle here are load-bearing, not decorative.
+    seedClimbs([
+      { wallId: 1, name: "TooOld", setterName: "TooOld", setId: "s1", setType: "reset", setDate: "2026-01-01" },
+      {
+        wallId: 1,
+        name: "StillLoggable",
+        setterName: "StillLoggable",
+        setId: "s2",
+        setType: "reset",
+        setDate: "2026-02-01",
+      },
+      { wallId: 1, name: "Current", setterName: "Current", setId: "s3", setType: "reset", setDate: "2026-03-01" },
+    ]);
+    const { cookie } = await signup("cube");
+    const res = await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "TooOld" });
+    expect(res.status).toBe(409);
+  });
+
+  it("logging against the most recently archived cycle still succeeds", async () => {
+    seedClimbs([
+      {
+        wallId: 1,
+        name: "StillLoggable",
+        setterName: "StillLoggable",
+        setId: "s1",
+        setType: "reset",
+        setDate: "2026-01-01",
+      },
+      { wallId: 1, name: "Current", setterName: "Current", setId: "s2", setType: "reset", setDate: "2026-02-01" },
+    ]);
+    const { cookie } = await signup("cube");
+    const res = await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "StillLoggable" });
+    expect(res.status).toBe(200);
+  });
+
+  it.each([1000, -5, 0.3])("400s an out-of-range or non-half-step starRating (%j)", async (starRating) => {
+    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    const { cookie } = await signup("cube");
+    const res = await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "X", starRating });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts a valid half-step starRating", async () => {
+    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    const { cookie } = await signup("cube");
+    const res = await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "X", starRating: 4.5 });
+    expect(res.status).toBe(200);
+  });
+
+  it("400s an out-of-list grade", async () => {
+    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    const { cookie } = await signup("cube");
+    const res = await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "X", grade: "banana" });
+    expect(res.status).toBe(400);
+  });
+
+  it("allows a blank grade — the climber declining to give an opinion", async () => {
+    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    const { cookie } = await signup("cube");
+    const res = await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "X", grade: "" });
+    expect(res.status).toBe(200);
+  });
+
+  it("400s a negative attempts value", async () => {
+    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    const { cookie } = await signup("cube");
+    const res = await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "X", logAttempts: true, attempts: -1, attemptsThisSession: 0 });
+    expect(res.status).toBe(400);
+  });
+
+  it("400s a non-integer attempts value", async () => {
+    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    const { cookie } = await signup("cube");
+    const res = await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "X", logAttempts: true, attempts: 2.5, attemptsThisSession: 0 });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts zero attemptsThisSession but not zero attempts", async () => {
+    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    const { cookie } = await signup("cube");
+    const zeroSession = await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "X", logAttempts: true, attempts: 3, attemptsThisSession: 0 });
+    expect(zeroSession.status).toBe(200);
+
+    const zeroAttempts = await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "X", logAttempts: true, attempts: 0, attemptsThisSession: 0 });
+    expect(zeroAttempts.status).toBe(400);
+  });
+
+  it("ignores attempts/attemptsThisSession validation when logAttempts is false", async () => {
+    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    const { cookie } = await signup("cube");
+    const res = await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "X", logAttempts: false, attempts: -99 });
+    expect(res.status).toBe(200);
+    expect(res.body.ascents[0].attempts).toBeNull();
+  });
+
+  it("400s a comment over the length cap", async () => {
+    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    const { cookie } = await signup("cube");
+    const res = await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "X", comment: "x".repeat(2001) });
+    expect(res.status).toBe(400);
+  });
+
+  it("the same user logging one climb three times produces three ascent rows but an ascentCount of 1", async () => {
+    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    const { cookie } = await signup("cube");
+    let res;
+    for (let i = 0; i < 3; i++) {
+      res = await request(app).post("/api/ascents").set("Cookie", cookie).send({ wallId: 1, climbName: "X" });
+    }
+    expect(res.body.ascents).toHaveLength(3);
+    expect(res.body.ascentCount).toBe(1);
+  });
+
   it("records an ascent claim on the target climb", async () => {
     seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01", ascentClaims: [] }]);
     const { cookie } = await signup("cube");
@@ -1740,13 +1974,16 @@ describe("GET /api/users/:username/grade-counts", () => {
   });
 
   it("prefers the ascent's own grade, falling back to the climb's bucket grade", async () => {
-    seedClimbs([{ wallId: 1, name: "NoGradeOnAscent", setterGrade: "V2-4", grade: "" }]);
+    seedClimbs([
+      { wallId: 1, name: "NoGradeOnAscent", setterName: "NoGradeOnAscent", setterGrade: "V2-4", grade: "" },
+      { wallId: 1, name: "HasGradeOnAscent", setterName: "HasGradeOnAscent", setterGrade: "V1", grade: "" },
+    ]);
     seedUsers([
       {
         username: "cube",
         ascents: [
           { id: "1", wallId: 1, climbName: "NoGradeOnAscent", grade: "" },
-          { id: "2", wallId: 1, climbName: "NoGradeOnAscent", grade: "V6" },
+          { id: "2", wallId: 1, climbName: "HasGradeOnAscent", grade: "V6" },
         ],
       },
     ]);
@@ -1754,6 +1991,23 @@ describe("GET /api/users/:username/grade-counts", () => {
     const byGrade = Object.fromEntries(res.body.counts.map((c) => [c.grade, c.count]));
     expect(byGrade.V4).toBe(1); // fell back to setterGrade range's top end
     expect(byGrade.V6).toBe(1); // used the ascent's own grade
+  });
+
+  it("counts each climb once, using the most recent grade opinion — a repeat doesn't double it", async () => {
+    seedClimbs([{ wallId: 1, name: "X", setterName: "X", setterGrade: "V4", grade: "" }]);
+    seedUsers([
+      {
+        username: "cube",
+        ascents: [
+          { id: "1", wallId: 1, climbName: "X", grade: "V2" },
+          { id: "2", wallId: 1, climbName: "X", grade: "V6" },
+        ],
+      },
+    ]);
+    const res = await request(app).get("/api/users/cube/grade-counts");
+    const byGrade = Object.fromEntries(res.body.counts.map((c) => [c.grade, c.count]));
+    expect(byGrade.V6).toBe(1); // the most recent ascent's grade
+    expect(byGrade.V2).toBe(0); // the earlier, superseded one doesn't also count
   });
 });
 
@@ -1778,10 +2032,10 @@ describe("GET /api/climbs/grade-distribution", () => {
 
   it("counts only ascents against the named climb, using the ascent's own grade", async () => {
     seedUsers([
+      { username: "cube", ascents: [{ id: "1", wallId: 1, climbName: "Target", grade: "V4" }] },
       {
-        username: "cube",
+        username: "other",
         ascents: [
-          { id: "1", wallId: 1, climbName: "Target", grade: "V4" },
           { id: "2", wallId: 1, climbName: "Target", grade: "V5" },
           { id: "3", wallId: 1, climbName: "Other", grade: "V9" },
           { id: "4", wallId: 2, climbName: "Target", grade: "V9" },
@@ -1795,6 +2049,24 @@ describe("GET /api/climbs/grade-distribution", () => {
     expect(byGrade.V4).toBe(1);
     expect(byGrade.V5).toBe(1);
     expect(byGrade.V9).toBe(0);
+  });
+
+  it("counts one vote per user — their most recent — not one per repeat ascent", async () => {
+    seedUsers([
+      {
+        username: "cube",
+        ascents: [
+          { id: "1", wallId: 1, climbName: "Target", grade: "V4" },
+          { id: "2", wallId: 1, climbName: "Target", grade: "V6" },
+        ],
+      },
+    ]);
+    const res = await request(app)
+      .get("/api/climbs/grade-distribution")
+      .query({ wallId: "1", setterName: "Target" });
+    const byGrade = Object.fromEntries(res.body.counts.map((c) => [c.grade, c.count]));
+    expect(byGrade.V6).toBe(1); // the most recent vote
+    expect(byGrade.V4).toBe(0); // the earlier, superseded one doesn't also count
   });
 
   it("does not fall back to the climb's own grade when an ascent left it blank", async () => {
