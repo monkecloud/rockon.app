@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  * Design tokens — the single place to edit the app's colors and font.
- * Referenced from src/App.jsx's inline styles as var(--token-name), so
+ * Referenced from src/styles.js's inline styles as var(--token-name), so
  * changing a value here updates every place it's used at once.
  * ------------------------------------------------------------------- */
 :root {

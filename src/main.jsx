@@ -12,8 +12,9 @@ document.addEventListener("gesturechange", (e) => e.preventDefault());
 
 // The equivalent two-finger-pinch-via-touchmove block used to live here too,
 // document-wide — but the only place it's needed is the image viewer's pinch
-// stage, so it's scoped there now (ZoomableImageViewer in src/App.jsx) rather
-// than running on every touchmove anywhere in the app (§14.22).
+// stage, so it's scoped there now (ZoomableImageViewer in
+// src/components/ZoomableImageViewer.jsx) rather than running on every
+// touchmove anywhere in the app (§14.22).
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

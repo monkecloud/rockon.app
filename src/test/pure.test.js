@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { roleOf, climbGradeSortValue, matchesClimbQuery, sortClimbs } from "../App.jsx";
+import { roleOf } from "../lib/roles.js";
+import { climbGradeSortValue, matchesClimbQuery, sortClimbs } from "../lib/climbs.js";
 
 describe("roleOf", () => {
   it("returns admin when isAdmin is set, even alongside other flags", () => {

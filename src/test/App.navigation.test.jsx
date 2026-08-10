@@ -2,7 +2,8 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import App, { clearApiCache } from "../App.jsx";
+import App from "../App.jsx";
+import { clearApiCache } from "../lib/fetch.js";
 import { installFetchMock } from "./mockFetch.js";
 
 // App() is the highest-risk file in the codebase: ~20 interdependent
