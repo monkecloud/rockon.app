@@ -538,7 +538,17 @@ function ListScreen({
     const title = climb ? climbTitleNode(climb) : "Loading…";
     const subtitle = climb ? `Set by ${climb.setter}` : undefined;
 
-    return <ZoomableImageViewer title={title} subtitle={subtitle} photoUrl={climb?.photoUrl} />;
+    // key forces a remount (resetting pan/zoom) whenever the climb changes,
+    // rather than relying on an intermediate unmount elsewhere in the tree
+    // to do it implicitly (§14.21f).
+    return (
+      <ZoomableImageViewer
+        key={`${selectedItem.id}::${selectedSubItem}`}
+        title={title}
+        subtitle={subtitle}
+        photoUrl={climb?.photoUrl}
+      />
+    );
   }
 
   if (selectedItem) {
@@ -557,9 +567,7 @@ function ListScreen({
           : true
     );
     const sortedClimbs = sortClimbs(visibleClimbs, climbSortBy);
-    const filteredClimbs = sortedClimbs.filter((climb) =>
-      climb.name.toLowerCase().includes(climbSearch.trim().toLowerCase())
-    );
+    const filteredClimbs = sortedClimbs.filter((climb) => matchesClimbQuery(climb, climbSearch));
 
     return (
       <div style={styles.screen}>
@@ -769,12 +777,8 @@ function SearchScreen({
   const trimmedQuery = query.trim();
 
   const climbResults = useMemo(() => {
-    if (!trimmedQuery) return [];
-    const q = trimmedQuery.toLowerCase();
-    return climbs.filter(
-      (climb) =>
-        climb.name.toLowerCase().includes(q) || (climb.setter || "").toLowerCase().includes(q)
-    );
+    if (!trimmedQuery || !climbs) return [];
+    return climbs.filter((climb) => matchesClimbQuery(climb, trimmedQuery));
   }, [climbs, trimmedQuery]);
 
   // Debounced (300ms) so typing a full query doesn't fire a request per
@@ -1369,6 +1373,16 @@ const SORT_OPTIONS = [
   { id: "setterDesc", label: "Setter (Z-A)" },
 ];
 
+// Shared by SearchScreen and the in-wall climb search (ListScreen) so
+// "search for a setter's name" works the same everywhere — matching on name
+// only in one place and name+setter in the other was an inconsistency, not
+// a deliberate scoping choice (§14.21c).
+function matchesClimbQuery(climb, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return climb.name.toLowerCase().includes(q) || (climb.setter || "").toLowerCase().includes(q);
+}
+
 function sortClimbs(climbs, sortBy) {
   const sorted = [...climbs];
   switch (sortBy) {
@@ -1451,15 +1465,18 @@ function climbTitleNode(climb) {
 // GET /api/users/:username/grade-counts (that user's logged ascents,
 // preferring the grade typed on the ascent and falling back to the
 // climb's own bucket grade when that was left blank).
+// Placeholder columns for GradeBarChart's loading skeleton — same count as
+// GRADE_OPTIONS so the skeleton's width/gaps match the real chart closely
+// enough that nothing visibly reflows once data arrives.
+const GRADE_CHART_SKELETON_COLUMNS = Array.from({ length: GRADE_OPTIONS.length }, (_, i) => i);
+
 function GradeBarChart({ title, endpoint, counts: providedCounts }) {
   const { data, error, retry } = useFetch(endpoint, { skip: !endpoint });
   const counts = providedCounts ?? data?.counts ?? null;
 
   if (!counts) {
     // A real fetch failure (endpoint mode only — in-memory `counts` can't
-    // fail) gets a visible retry instead of the chart just never appearing;
-    // still-loading stays silent, same as before §14.9 (a skeleton here is
-    // §14.21d, not this item).
+    // fail) gets a visible retry instead of the chart just never appearing.
     if (endpoint && error) {
       return (
         <div style={styles.gradeChartWrapper}>
@@ -1473,7 +1490,33 @@ function GradeBarChart({ title, endpoint, counts: providedCounts }) {
         </div>
       );
     }
-    return null;
+    // Same-dimensioned skeleton rather than `null` — the chart used to
+    // vanish entirely while loading, so everything below it (leaderboard,
+    // activity list) jumped up and then back down once data arrived (§14.21d).
+    return (
+      <div style={styles.gradeChartWrapper}>
+        {title && <p style={styles.gradeChartTitle}>{title}</p>}
+        <div style={styles.gradeChart}>
+          <div style={styles.gradeAxisColumn}>
+            <span style={styles.gradeAxisSpacer} />
+            <div style={styles.gradeAxisTrack} />
+            <span style={styles.gradeAxisSpacer} />
+          </div>
+          <div style={styles.gradeBarsRow}>
+            <div style={styles.gradeGridlines} />
+            {GRADE_CHART_SKELETON_COLUMNS.map((i) => (
+              <div key={i} style={styles.gradeBarColumn}>
+                <span style={styles.gradeBarCount} />
+                <div style={styles.gradeBarTrack}>
+                  <div style={{ ...styles.gradeBar, ...styles.gradeBarSkeleton, height: 3 }} />
+                </div>
+                <span style={styles.gradeBarLabel} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const maxCount = Math.max(1, ...counts.map((c) => c.count));
@@ -3079,6 +3122,7 @@ export default function App() {
           const subtitle = `Set by ${viewingArchivedClimb.setter}`;
           return (
             <ZoomableImageViewer
+              key={`${viewingArchivedClimb.wallId}::${viewingArchivedClimb.setterName}`}
               title={title}
               subtitle={subtitle}
               photoUrl={viewingArchivedClimb.photoUrl}
@@ -3930,6 +3974,9 @@ const styles = {
     width: "70%",
     background: "var(--color-accent)",
     borderRadius: "3px 3px 0 0",
+  },
+  gradeBarSkeleton: {
+    background: "var(--color-border)",
   },
   gradeBarLabel: {
     fontSize: 9,
