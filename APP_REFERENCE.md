@@ -1069,7 +1069,7 @@ implement 13.2-a+b using Option B."*
 | 13.8-c/f Shared grades + dev port | P2 | ✅ **DONE 2026-08-10** — `shared/grades.js` extracted, both sides import it; `vite.config.js` reads `PORT` via `loadEnv`. See §14.19 |
 | 13.8-e `WALLS` hardcoded | P2 | ✅ **DECIDED: fold into §14.3 as a `walls` table** (Derrick, 2026-08-10) — not a standalone item. See §14.3.2 |
 | 13.5-a/b/c + 13.3-h Data-model cleanups | P2/P3 | ✅ **DECIDED: Option A — fold all four into §14.3** (Derrick, 2026-08-10). See §14.20. ⚠️ `createdAt` is lost for every ascent logged before the migration |
-| 13.6-c/d/f Frontend UX | P2 | ✅ **DECIDED: Option B — align search, chart skeleton, key the viewer** (Derrick, 2026-08-10) — not yet started. See §14.21 |
+| 13.6-c/d/f Frontend UX | P2 | ✅ **DONE 2026-08-10** — Option B: `matchesClimbQuery` shared by both search boxes (in-wall now matches setter too), `GradeBarChart` renders a same-dimension skeleton instead of `null`, `ZoomableImageViewer` keyed by climb at both call sites. See §14.21 |
 | 13.6-e Optimistic UI | P2 | ⏸️ **DEFERRED** (Derrick, 2026-08-10) — cheaper after §14.9's `apiSend` lands. Stays open |
 | All 21 P3 items | P3 | ✅ **BATCH-DECIDED** (Derrick, 2026-08-10). Group 2 (stale comments, package.json, SALT_ROUNDS, reduced-motion) and Group 3 (touchmove scope, image lazy-loading, contrast, star icons, reset warning) **DONE 2026-08-10**. Groups 1 (absorbed elsewhere) and 4 (product question, not a bug) don't need standalone work. See §14.22 |
 | 13.1-f Password strength | P1 | 🔵 **STILL OPEN** — never discussed. The last undecided P1 |
@@ -2882,13 +2882,26 @@ partially-populated field.
 
 ### 14.21 — Frontend UX: search parity, chart skeleton, viewer reset  `P2`  ✅ decided
 
-> ## ✅ DECISION: build **Option B** — items (c), (d) and (f); **defer (e)**
+> ## ✅ DONE 2026-08-10 — built Option B: items (c), (d) and (f); **(e) still deferred**
 > Chosen by Derrick, 2026-08-10. Option A (all four) and Option C (defer all)
 > are recorded as **rejected**.
 >
 > **(e) optimistic UI is deferred, not dropped** — §14.9's `apiSend` changes how
 > every mutation is wired, so optimistic updates get much cheaper once it lands.
 > It remains an open item in §13.6.
+>
+> **What shipped.** `matchesClimbQuery(climb, query)` ([App.jsx](src/App.jsx))
+> extracted and used by both `SearchScreen` and the in-wall climb search — the
+> in-wall box now also matches on setter name, as decided. `GradeBarChart`'s
+> `!counts` early return now renders a same-dimension skeleton (empty bar
+> columns + gridlines, no title/axis-number text) instead of `null`, so the
+> leaderboard and activity list below it no longer jump when data arrives —
+> confirmed with a screenshot diff (route-delayed the endpoint, chart wrapper
+> occupied the identical space in both the loading and loaded screenshots).
+> `ZoomableImageViewer` is keyed by `wallId::setterName` at both call sites
+> (`ListScreen`'s current-climb branch and the archived-climb branch in
+> `App()`), so pan/zoom always resets on a climb change even if a future
+> navigation path swaps climbs without an intermediate unmount.
 
 Backlog refs: §13.6 items 3, 4, 6.
 
