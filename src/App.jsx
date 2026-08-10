@@ -170,7 +170,7 @@ function Leaderboard({ onSelectUser }) {
               onClick={() => onSelectUser(user)}
             >
               {user.avatarUrl ? (
-                <img src={user.avatarUrl} alt="" style={styles.avatarImage} />
+                <img src={user.avatarUrl} alt="" style={styles.avatarImage} width={56} height={56} loading="lazy" />
               ) : (
                 <div style={styles.avatar}>{initials}</div>
               )}
@@ -219,6 +219,7 @@ function HomeScreen({ onSelectUser }) {
 // touch drag, and two-finger pinch all go through the same code path.
 function ZoomableImageViewer({ title, subtitle, photoUrl }) {
   const imageRef = useRef(null);
+  const stageRef = useRef(null);
   // Mutable, not React state: on mobile, calling setState on every single
   // pointermove event was enough to make pinch/drag feel glitchy, since
   // each update forced a full re-render. Writing the transform straight to
@@ -286,6 +287,20 @@ function ZoomableImageViewer({ title, subtitle, photoUrl }) {
     applyTransform();
   };
 
+  // Blocks native two-finger pinch-zoom so it doesn't fight the pointer-
+  // based pinch handled above. Used to live as a document-wide listener in
+  // main.jsx, running on every touchmove anywhere in the app; scoped here
+  // to just the image stage, the only place it's actually needed (§14.22).
+  useEffect(() => {
+    const node = stageRef.current;
+    if (!node) return;
+    const handleTouchMove = (e) => {
+      if (e.touches.length > 1) e.preventDefault();
+    };
+    node.addEventListener("touchmove", handleTouchMove, { passive: false });
+    return () => node.removeEventListener("touchmove", handleTouchMove);
+  }, []);
+
   return (
     <div>
       <div style={styles.secondaryBar}>
@@ -294,6 +309,7 @@ function ZoomableImageViewer({ title, subtitle, photoUrl }) {
       </div>
 
       <div
+        ref={stageRef}
         style={styles.imageStage}
         onWheel={handleWheel}
         onPointerDown={handlePointerDown}
@@ -439,12 +455,7 @@ function ListScreen({
               >
                 <div style={styles.climbRowLeft}>
                   <span style={styles.climbDifficulty}>{climbDisplayGrade(climb)}</span>
-                  <span style={styles.climbStars}>
-                    {(() => {
-                      const filled = Math.round(climb.averageStars || 0);
-                      return "⭐".repeat(filled) + "☆".repeat(5 - filled);
-                    })()}
-                  </span>
+                  <StarRatingDisplay value={climb.averageStars} />
                   <span style={styles.climbAscents}>{climb.ascentCount ?? 0} ascents</span>
                 </div>
                 <div style={styles.climbRowRight}>
@@ -555,12 +566,7 @@ function ArchiveWallScreen({ wall, onSelectClimb }) {
           >
             <div style={styles.climbRowLeft}>
               <span style={styles.climbDifficulty}>{climbDisplayGrade(climb)}</span>
-              <span style={styles.climbStars}>
-                {(() => {
-                  const filled = Math.round(climb.averageStars || 0);
-                  return "⭐".repeat(filled) + "☆".repeat(5 - filled);
-                })()}
-              </span>
+              <StarRatingDisplay value={climb.averageStars} />
               <span style={styles.climbAscents}>{climb.ascentCount ?? 0} ascents</span>
             </div>
             <div style={styles.climbRowRight}>
@@ -719,7 +725,7 @@ function UserProfileScreen({ user, currentUser, onFollow, onUnfollow, onViewFoll
       <div style={styles.profileHeaderRow}>
         <div style={styles.profileLeft}>
           {user.avatarUrl ? (
-            <img src={user.avatarUrl} alt="" style={styles.avatarImage} />
+            <img src={user.avatarUrl} alt="" style={styles.avatarImage} width={56} height={56} loading="lazy" />
           ) : (
             <div style={styles.avatar}>{initials}</div>
           )}
@@ -1249,6 +1255,29 @@ function sortClimbs(climbs, sortBy) {
   return sorted;
 }
 
+// A climb row's star rating, rounded to the nearest whole star. Was
+// "⭐".repeat(n) + "☆".repeat(5-n) — read literally by screen readers as
+// "star star star...", once per character — replaced with the same lucide
+// Star icons StarRatingInput uses, plus one aria-label giving the numeric
+// value instead (§14.22).
+function StarRatingDisplay({ value }) {
+  const filled = Math.round(value || 0);
+  return (
+    <span style={styles.climbStars} aria-label={`${filled} out of 5 stars`}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <Star
+          key={n}
+          size={12}
+          color={n <= filled ? "var(--color-star)" : "var(--color-text-disabled)"}
+          fill={n <= filled ? "var(--color-star)" : "none"}
+          strokeWidth={1.5}
+          aria-hidden="true"
+        />
+      ))}
+    </span>
+  );
+}
+
 // The colored grade shown in a climb's title (see climbTitleNode below) —
 // gray for a setter's still-unconfirmed guess, white once an admin has
 // locked in the final grade (see the Grades tab).
@@ -1430,7 +1459,7 @@ function ProfileScreen({
         <div style={styles.profileHeaderRow}>
           <div style={styles.profileLeft}>
             {currentUser.avatarUrl ? (
-              <img src={currentUser.avatarUrl} alt="" style={styles.avatarImage} />
+              <img src={currentUser.avatarUrl} alt="" style={styles.avatarImage} width={56} height={56} loading="lazy" />
             ) : (
               <div style={styles.avatar}>{initials}</div>
             )}
@@ -3543,8 +3572,9 @@ const styles = {
     color: "var(--color-text-primary)",
   },
   climbStars: {
-    fontSize: 12,
-    lineHeight: 1,
+    display: "flex",
+    alignItems: "center",
+    gap: 1,
   },
   climbAscents: {
     fontSize: 12,

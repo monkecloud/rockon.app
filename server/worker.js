@@ -426,10 +426,21 @@ export function currentClimbsOnly(climbs) {
     }
   }
 
+  // No reset on record for a wall shouldn't happen once every wall has been
+  // seeded at least once — keeping the fail-open behavior below (showing
+  // everything rather than hiding the whole wall) is still the right call,
+  // since failing closed would be worse. But it should be discoverable
+  // rather than silent (§14.22), so warn once per wall per call rather than
+  // once per climb.
+  const wallsMissingReset = new Set(
+    climbs.filter((c) => !latestResetDateByWall[c.wallId]).map((c) => c.wallId)
+  );
+  for (const wallId of wallsMissingReset) {
+    console.warn(`currentClimbsOnly: wall ${wallId} has no "reset" climb on record; showing all its climbs.`);
+  }
+
   return climbs.filter((climb) => {
     const latestReset = latestResetDateByWall[climb.wallId];
-    // No reset on record for this wall (shouldn't happen once every wall
-    // has been seeded at least once) — show everything rather than hide it.
     if (!latestReset) return true;
     return climb.setDate >= latestReset;
   });

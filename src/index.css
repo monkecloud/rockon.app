@@ -22,11 +22,17 @@
   --color-border-strong: #33332f;
   --color-border-subtle: #3a3a36;
 
-  /* Text, darkest/most-muted to brightest */
+  /* Text, darkest/most-muted to brightest.
+   * text-disabled is intentionally left below AA — WCAG's text-contrast
+   * criterion (1.4.3) doesn't apply to disabled controls, and it's never
+   * used for content a user needs to read. faint/muted/inactive were
+   * measured at ~2.75/3.50/4.42:1 against --color-surface-0 (below the
+   * 4.5:1 AA-normal-text minimum) and lifted here to just clear it
+   * (§14.22) while keeping the same relative ordering/tint. */
   --color-text-disabled: #4a4a46;
-  --color-text-faint: #5a5a56;
-  --color-text-muted: #6a6a66;
-  --color-text-inactive: #7a7a76;
+  --color-text-faint: #7c7c78;
+  --color-text-muted: #848480;
+  --color-text-inactive: #8a8a86;
   --color-text-tertiary: #8f8f8a;
   --color-text-secondary: #c9c9c4;
   --color-text-offwhite: #e4e3df;

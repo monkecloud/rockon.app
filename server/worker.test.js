@@ -192,6 +192,19 @@ describe("currentClimbsOnly", () => {
     expect(currentClimbsOnly(climbs)).toHaveLength(2);
   });
 
+  it("warns once per wall missing a reset, rather than staying silent (§14.22)", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const climbs = [
+      { wallId: 1, name: "A", setType: "backfill", setDate: "2026-01-01" },
+      { wallId: 1, name: "B", setType: "backfill", setDate: "2026-01-02" },
+      { wallId: 2, name: "C", setType: "reset", setDate: "2026-01-01" },
+    ];
+    currentClimbsOnly(climbs);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain("wall 1");
+    warn.mockRestore();
+  });
+
   it("excludes climbs before the latest reset on that wall", () => {
     const climbs = [
       { wallId: 1, name: "Old", setType: "reset", setDate: "2026-01-01" },
