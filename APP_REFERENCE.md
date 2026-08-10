@@ -55,7 +55,7 @@ npm install
 npm run dev:all   # Vite UI (:5173) + Express API (:25100) — normal dev loop
 npm run dev       # UI only
 npm run server    # API only
-npm test          # vitest run — all 263 tests (217 server + 46 frontend)
+npm test          # vitest run — all 313 tests (217 server + 96 frontend)
 npx vitest run server/worker.test.js       # one file
 npx vitest run -t "POST /api/ascents"      # one describe/test by name
 npm run build     # frontend → dist/
@@ -603,7 +603,7 @@ covers brute-force/spam, not weak passwords.
 
 ## 9. Tests
 
-`npm test` — vitest, 263 tests.
+`npm test` — vitest, 313 tests.
 
 | File | Tests | Approach |
 |---|---|---|
@@ -611,11 +611,21 @@ covers brute-force/spam, not weak passwords.
 | `shared/grades.test.js` | 17 | Plain node env — pure functions, no DOM. Every export of `shared/grades.js`, including the `composeSetterGrade`/`parseSetterGrade` round-trip |
 | `src/test/pure.test.js` | 17 | Plain node env — `roleOf` (`lib/roles.js`), `climbGradeSortValue`/`matchesClimbQuery`/`sortClimbs` (`lib/climbs.js`) |
 | `src/test/App.navigation.test.jsx` | 12 | jsdom + `@testing-library/react` — `App()`'s navigation state machine: role-gated tabs, Walls drill-down/back, tab re-tap-to-root, the search stack, `leaderboardReturnTab`, plus the §14.9/§14.8 regression tests |
+| `src/test/NewClimbForm.test.jsx` | 8 | jsdom — `NewClimbForm` + `NewWallForm`'s shared grade-range/required-field validation, composed `setterGrade`, the fixed-vs-picked wall, `NewClimbForm`'s Backfill-gated Date field |
+| `src/test/LogAscentSheet.test.jsx` | 5 | jsdom — the `starRating >= 0.5` / `attempts >= 1` submit gate, ascent-claim slot visibility (< 5 taken) |
+| `src/test/ChangePasswordForm.test.jsx` | 5 | jsdom — required-fields and confirmation-match validation, success clears the form, failure preserves it, the forced-reset variant (`requireCurrentPassword={false}`) |
+| `src/test/ManageRolesScreen.test.jsx` | 4 | jsdom — role-filter tabs, the `changedUsernames` diff (Save POSTs only staged picks that actually differ from the server), per-row reset-password |
+| `src/test/GradesScreen.test.jsx` | 4 | jsdom — the grade dropdown's default-from-setterGrade-range, confirming drops the row, posting the picked (not default) grade |
+| `src/test/ListScreen.test.jsx` | 10 | jsdom — `ListScreen`'s three modes (wall list / climbs list / `ZoomableImageViewer` detail) and `ArchiveWallScreen`, all prop-driven |
+| `src/test/SearchScreen.test.jsx` | 4 | jsdom — Climbs mode's in-memory filtering, Users mode's debounced `/api/users/search` request, mode-aware empty state |
+| `src/test/StarRatingInput.test.jsx` | 5 | jsdom — pointer-drag-to-rate in 0.5 steps (with `getBoundingClientRect` stubbed), edge clamping, arrow/Home/End keyboard control |
+| `src/test/ZoomableImageViewer.test.jsx` | 5 | jsdom — single-pointer drag translate, two-finger pinch scale (clamped [1,4]), wheel zoom, all read off `img.style.transform` since it's written via ref, not state |
 
-**Frontend coverage is partial** (§14.11a done — infra, pure functions, the
-navigation state machine; §14.11b — forms, derived state, data-driven and
-pointer-driven components — unblocked now that §14.16's split has landed,
-but not yet started).
+**Frontend coverage: §14.11a and §14.11b both done** — infra, pure
+functions, the navigation state machine (§14.11a), plus forms, derived
+state, data-driven screens, and pointer-driven components (§14.11b, built
+after §14.16's split landed). See §14.11's own writeup for what each
+priority covered and one non-obvious timing gotcha found while building it.
 
 `server/worker.test.js` sets `process.env.NODE_ENV = "test"` at the top —
 this is what makes importing `worker.js` skip binding a real socket and
@@ -1046,9 +1056,10 @@ failure modes that take it down until someone notices.
 
 ### 13.9 Tooling & process — P2
 
-- [x] **P1 ✅ Zero frontend tests.** → **DECIDED: Option B — component-level coverage, §14.11.** All 168 tests cover the server; the 3,943-line
-  `App.jsx` has none. Vitest is already installed — adding
-  `@testing-library/react` covers the navigation state machine cheaply.
+- [x] **P1 ✅ Zero frontend tests.** → **DONE: Option B — component-level coverage, §14.11.** Was: all 168 tests cover the server; the 3,943-line
+  `App.jsx` had none. Vitest was already installed — adding
+  `@testing-library/react` covered the navigation state machine cheaply, plus
+  broad component coverage once §14.16 split the file up.
 - [x] **P2 ✅ No CI.** Nothing runs `npm test` on push. → **DECIDED: Option A, §14.14. Build this first.**
 - [ ] **P2 ✅ No linter.** `CLAUDE.md` notes it; no ESLint config exists. → **Considered and DECLINED 2026-08-10 (§14.14); revisit after the §13.8 file split.**
 - [~] **P2 ✅ No `.env` support.** → **PARTLY: §14.19 part 2 adds loadEnv for the dev proxy; the server still reads process.env directly.**  `PORT` is the only configurable value, read
@@ -1103,7 +1114,7 @@ implement 13.2-a+b using Option B."*
 | 13.3-c Client trusts localStorage | P1 | ✅ **DONE 2026-08-10** — `GET /api/me` called on mount, verified in a real browser. See §14.8. ⚠️ Mid-session expiry still unhandled — tracked as a separate open item |
 | 13.6-a/b Loading & error states | P1 | ✅ **DONE 2026-08-10** — Option B: `useFetch` hook + `<Async>` wrapper, `apiSend` for writes, url-keyed `apiCache` cleared on every mutation. Verified against a real browser (§14.9). |
 | 13.7-a/b Keyboard access | P1 | ✅ **DONE 2026-08-10** — global `:focus-visible` ring in `index.css`; `ArchiveSection`'s expander + wall rows are real `<button>`s now. See §14.10 |
-| 13.9-a Zero frontend tests | P1 | 🟡 **IN PROGRESS 2026-08-10** — Option B, component-level coverage. Infra + blockers done, plus priorities 1-2 (pure functions, `App()` state machine) and both named regression tests — 46 new frontend tests. **Priorities 3-6 (forms, derived state, data-driven/pointer-driven screens) were deliberately held for §14.16's split, per this item's own ordering note — the split is now done, so they're unblocked but not yet started.** **Unblocks §14.10 Option B (CSS Modules)** once fully done. See §14.11 |
+| 13.9-a Zero frontend tests | P1 | ✅ **DONE 2026-08-10** — Option B, component-level coverage, both halves complete: priorities 1-2 (pure functions, `App()` state machine, §14.11a) landed before §14.16's split; priorities 3-6 (forms, derived state, data-driven/pointer-driven screens, §14.11b) landed after it, per this item's own ordering note — 96 frontend tests total. **Unblocks §14.10 Option B (CSS Modules).** See §14.11 |
 | 13.2-f/g Error handler & health check | P1 | ⏸️ **DEFERRED: Option C** (Derrick, 2026-08-10) — build after §14.3 lands. **Stopgap (`NODE_ENV=production` in the systemd unit) DONE 2026-08-10** — see §14.12. Error handler + health check itself still open |
 | 13.7-c/d/e/f A11y cluster | P2 | ✅ **DONE 2026-08-10** — Option C, full closure: 6 icon-only buttons labelled, `role="alert"`/`role="status"` on form messages, tab-order leak fixed, `LogAscentSheet` is a real trapped/labelled dialog with focus restore, `StarRatingInput` is keyboard-operable (`role="slider"`, arrow/Home/End). See §14.13 |
 | 13.9-b CI | P2 | ✅ **DONE 2026-08-10** — `.github/workflows/ci.yml` (test + build). Option A, no linter. See §14.14 |
@@ -2124,24 +2135,27 @@ Still open (P3, not part of either item): star ratings in list rows render as
 below WCAG AA (this specific pair was actually fixed in §14.22 group 3 —
 `prefers-reduced-motion` on the sheet transition was also picked up there).
 
-#### On Option B (CSS Modules) — deferred, with a prerequisite
+#### On Option B (CSS Modules) — its prerequisite is now done
 
 Migrating the ~900-line `styles` object to `.module.css` is the right end
 state: it unlocks every pseudo-selector, media queries, and real theming, and
-retires three §13.8 items at once. **But it touches every component and there
-are currently zero frontend tests to catch what breaks (§13.9).** Land tests
-first, then do it. Option A does not conflict with it — the global rule
-survives the migration unchanged.
+retires three §13.8 items at once. It touches every component, so it wanted
+frontend test coverage in place first to catch what breaks (§13.9) — and a
+per-file split (§14.16) to make touching "every component" tractable one
+file at a time rather than one enormous diff. Option A does not conflict
+with it — the global rule survives the migration unchanged.
 
-🔗 **§14.11 is that prerequisite, and it has been decided** (Option B,
-component-level coverage). Build §14.11, then revisit this.
+🔗 **§14.11 was that test-coverage prerequisite, and §14.16 the split
+prerequisite — both are now done** (component-level coverage, §14.11a+b;
+`App.jsx` split by screen, §14.16). CSS Modules is unblocked and ready to be
+picked up as its own item.
 
 ---
 
-### 14.11 — Frontend test coverage  `P1`  🟡 in progress (part 1 of 2 done)
+### 14.11 — Frontend test coverage  `P1`  ✅ done
 
-> ## 🟡 IN PROGRESS 2026-08-10 — building Option B: component-level tests,
-> broad coverage
+> ## ✅ DONE 2026-08-10 — built Option B: component-level tests, broad
+> coverage
 > Chosen by Derrick, 2026-08-10. Option A (state machine only) and Option C
 > (Playwright E2E) are recorded as **rejected for now** — C remains sensible
 > *later*, once CI exists (§13.9).
@@ -2204,13 +2218,68 @@ component-level coverage). Build §14.11, then revisit this.
 > already tolerates a missing body per §14.9's design; supports a
 > `{ networkError: true }` route for the 401-vs-network-error test).
 >
-> **§14.11b — not started.** §14.16's split is done, so the blocker is
-> cleared; priorities 3-6 (forms, derived state, data-driven screens,
-> pointer-driven components) can now proceed against the new per-file
-> import paths without being rewritten twice.
+> **§14.11b — done.** Built against the new per-file import paths from
+> §14.16's split, one test file per component rather than rewriting the
+> old monolithic-`App.jsx` imports twice. 50 new tests across 9 files —
+> see §9's test table for the file-by-file breakdown.
+>
+> Priority 3 (forms): `NewClimbForm.test.jsx` covers both `NewClimbForm` and
+> `NewWallForm` together (near-identical validation — bottom ≤ top grade,
+> required name/setter — plus each one's own difference: fixed vs. picked
+> wall, `NewClimbForm`'s Backfill-gated Date field). `LogAscentSheet.test.jsx`
+> covers the `starRating >= 0.5` / `attempts >= 1` gate and ascent-claim slot
+> visibility. `ChangePasswordForm.test.jsx` covers required-fields,
+> confirmation-match, and the forced-reset variant.
+>
+> Priority 4 (subtle derived state): `ManageRolesScreen.test.jsx` covers the
+> `changedUsernames` diff — staging a role pick locally and confirming Save
+> POSTs only the usernames that actually changed, not every visible row.
+> ⚠️ **This item's own example needed a correction**: this section originally
+> named `ApproveClimbsScreen`'s "default-grade-from-range" as the second
+> priority-4 example, but that logic actually lives in `GradesScreen`
+> (`climb.setterGrade.split("-")[0]`) — `ApproveClimbsScreen` handles naming
+> proposals, not grades, a mislabel left over from when grade confirmation
+> and naming approval shared one "Approve" tab/slot before it split (see
+> §7.2's `GRADES_TAB` comment). `GradesScreen.test.jsx` covers the actual
+> default-grade behavior instead.
+>
+> Priority 5 (data-driven screens): `ListScreen.test.jsx` covers all three
+> modes (wall list → a wall's climb list → `ZoomableImageViewer` detail) plus
+> the sibling `ArchiveWallScreen` export, both fully prop-driven so no
+> fetch-mocking was needed. `SearchScreen.test.jsx` covers Climbs mode's
+> in-memory filtering and Users mode's debounced request, using a small
+> stateful wrapper component since `SearchScreen` itself is fully controlled
+> (query/mode/results all come from props, per §14.16's structure notes).
+>
+> Priority 6 (pointer-driven, last as planned — needed the jsdom stubs
+> above): `StarRatingInput.test.jsx` stubs `getBoundingClientRect` on the
+> slider (jsdom's default is all-zero, unlike a real layout) to test
+> pointer-drag-to-rate and edge clamping, plus the arrow/Home/End keyboard
+> path. `ZoomableImageViewer.test.jsx` reads `img.style.transform` directly
+> rather than props/rendered output, since the component intentionally
+> writes it straight to the DOM node via a ref instead of React state (see
+> §7.2's note on why) — drag, two-finger pinch, and wheel zoom all verified
+> this way, clamped to `[1, 4]`.
+>
+> ⚠️ **A second non-obvious infra gotcha, worth recording alongside §14.11a's
+> `apiCache` one**: `LogAscentSheet` moves focus onto the rating slider via a
+> **double-`requestAnimationFrame`** on open (see the component's own comment
+> — a transitioned `visibility` style not landing for a frame; §14.13 part
+> 4). A test that calls `slider.focus()` and starts typing immediately races
+> that effect — if the double-rAF fires *after* focus has moved to a
+> different field, it silently steals focus back mid-input, and characters
+> typed after the steal land on the slider (which ignores them) instead of
+> the field, producing a flaky failure (passes alone, fails ~50% of the time
+> after a preceding test in the same file). Symptom looks exactly like
+> `apiCache` leakage — passes in isolation, fails in the full run — but the
+> cause and fix are different: **wait for the slider to actually have focus
+> (`await waitFor(() => expect(slider).toHaveFocus())`) before driving any
+> keyboard input**, rather than calling `.focus()` manually and racing the
+> effect.
 
 Backlog ref: §13.9 item 1. All 168 existing tests cover the server;
-`src/App.jsx` (3,943 lines, 31 components) has none.
+`src/App.jsx` (3,943 lines, 31 components) has none. *(Original framing at
+the time this item was opened — both halves are done now; see above.)*
 
 #### ⚠️ Three blockers to clear first — verified 2026-08-10
 
@@ -2670,7 +2739,9 @@ but don't record the item as fully closed until the migration lands.
 > `src/test/pure.test.js` updated for the new import paths
 > (`clearApiCache` from `lib/fetch.js`; `roleOf` from `lib/roles.js`;
 > `climbGradeSortValue`/`matchesClimbQuery`/`sortClimbs` from `lib/climbs.js`).
-> **Unblocks §14.11b, §14.10 Option B, and §14.14** (see the chain below).
+> **Unblocked §14.11b, §14.10 Option B, and §14.14** (see the chain below).
+> §14.11b has since landed too — the whole chain up through CSS Modules is
+> now clear, see §14.11.
 
 Backlog refs: §13.8 items 1 and 2.
 
@@ -2681,7 +2752,7 @@ blocker in §14.11, and the linter declined in §14.14.
 #### 🔗 The ordering chain this resolves
 
 ```
-split (§14.16)  →  component tests (§14.11)  →  CSS Modules (§14.10 B)  →  CSP (§14.15)
+split (§14.16) ✅  →  component tests (§14.11) ✅  →  CSS Modules (§14.10 B)  →  CSP (§14.15)
 ```
 
 **And here is how to break the apparent circularity.** §14.11 wants the split
