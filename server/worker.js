@@ -7,7 +7,13 @@ import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import { GRADE_OPTIONS, gradeToBucket, bucketCounts, climbBucketGrade } from "../shared/grades.js";
+import {
+  GRADE_OPTIONS,
+  gradeToBucket,
+  bucketCounts,
+  climbBucketGrade,
+  parseSetterGrade,
+} from "../shared/grades.js";
 
 // Re-exported so existing call sites (and worker.test.js's imports) don't
 // need to change — see shared/grades.js for the actual implementations,
@@ -1196,6 +1202,20 @@ app.get("/api/climbs", async (req, res) => {
   res.json({ climbs: await withAscentStats(currentClimbsOnly(climbs)) });
 });
 
+// currentClimbsOnly/groupIntoCycles/archivedClimbsByWall all compare setDate
+// as plain strings, so a single malformed value changes which climbs are
+// "current" on a wall with no error raised anywhere: "" sorts below every
+// real date (the climb silently vanishes into the archive); "2026-8-7"
+// sorts *above* "2026-10-02" (lexical "8" > "1"), corrupting the wall's
+// whole current set (§14.17d). The round-trip check is the important half
+// — a bare regex would accept "2026-02-31", which `new Date` silently
+// rolls forward to March 3rd.
+function isValidSetDate(s) {
+  if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}
+
 // Adds a single climb. Moderators/setters only, enforced server-side via
 // `requireModeratorOrSetter` (previously this was only hidden client-side,
 // so anyone who could reach the endpoint directly could create climbs).
@@ -1223,6 +1243,22 @@ app.post("/api/climbs", authenticate, requireModeratorOrSetter, async (req, res)
     return res.status(400).json({ error: "Wall, climb name, grade, and setter are required." });
   }
 
+  // setterGrade must match exactly what composeSetterGrade produces
+  // client-side — either a single GRADE_OPTIONS grade or a "V<n>-<n>" range
+  // — since climbBucketGrade parses this same shape back apart for grade-
+  // pyramid bucketing. A malformed value wouldn't error there; it'd just
+  // silently produce a wrong bucket (§14.17e).
+  if (!parseSetterGrade(trimmedSetterGrade)) {
+    return res.status(400).json({ error: "Unrecognized setter grade." });
+  }
+
+  // Only an absent/null setDate defaults to today below — an explicit ""
+  // (or any other malformed value) is rejected rather than silently
+  // treated the same as "not given".
+  if (setDate !== undefined && setDate !== null && !isValidSetDate(setDate)) {
+    return res.status(400).json({ error: "Set date must be a valid YYYY-MM-DD date." });
+  }
+
   const climbs = await readClimbs();
   // Climb identity is wallId + setterName (see the note on readClimbs
   // above), so that pair has to be unique across every climb ever put up on
@@ -1232,6 +1268,14 @@ app.post("/api/climbs", authenticate, requireModeratorOrSetter, async (req, res)
   );
   if (isDuplicate) {
     return res.status(409).json({ error: "A climb with that name already exists on this wall." });
+  }
+
+  // Existence only, not the isSetter flag — a climb set by someone who has
+  // since lost the flag is still historically correct; requiring isSetter
+  // here would make a role change retroactively invalidate history.
+  const users = await readUsers();
+  if (!users.some((u) => u.username === trimmedSetter)) {
+    return res.status(400).json({ error: "Unknown setter." });
   }
 
   const climb = {
@@ -1283,14 +1327,27 @@ app.post("/api/climbs/grade", authenticate, requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "Wall, climb name, and grade are required." });
   }
 
+  if (!GRADE_OPTIONS.includes(trimmedGrade)) {
+    return res.status(400).json({ error: "Unrecognized grade." });
+  }
+
   const climbs = await readClimbs();
-  const climb = climbs.find((c) => c.wallId === numericWallId && c.setterName === setterName);
+  // Case-insensitive, matching POST /api/climbs' duplicate check above —
+  // the two used to disagree (creation case-insensitive, this exact-match),
+  // so a climb could be un-findable here purely because of how its name was
+  // capitalized when typed (§14.17g). climbKey itself is deliberately left
+  // alone: ascents store climbName copied from a real climb object, so keys
+  // already match exactly, and lowercasing the key format risks breaking
+  // that join for no gain.
+  const climb = climbs.find(
+    (c) => c.wallId === numericWallId && c.setterName.toLowerCase() === setterName.toLowerCase()
+  );
   if (!climb) {
     return res.status(404).json({ error: "Climb not found." });
   }
 
   const isCurrent = currentClimbsOnly(climbs).some(
-    (c) => c.wallId === numericWallId && c.setterName === setterName
+    (c) => c.wallId === numericWallId && c.setterName.toLowerCase() === setterName.toLowerCase()
   );
   if (isCurrent) {
     return res.status(409).json({

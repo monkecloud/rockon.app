@@ -1461,11 +1461,79 @@ describe("POST /api/climbs", () => {
     const res = await request(app)
       .post("/api/climbs")
       .set("Cookie", cookie)
-      .send({ wallId: 1, name: "New Climb", setterGrade: "V4", setter: "someone" });
+      .send({ wallId: 1, name: "New Climb", setterGrade: "V4", setter: "setter-user" });
     expect(res.status).toBe(200);
     expect(res.body.climb).toEqual(
       expect.objectContaining({ wallId: 1, name: "New Climb", setType: "backfill", grade: "" })
     );
+  });
+
+  it("accepts a valid setterGrade range", async () => {
+    const cookie = await setterCookie();
+    const res = await request(app)
+      .post("/api/climbs")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, name: "Ranged", setterGrade: "V2-4", setter: "setter-user" });
+    expect(res.status).toBe(200);
+  });
+
+  it.each(["banana", "V3-", "V6-2"])("400s a malformed setterGrade (%j)", async (setterGrade) => {
+    const cookie = await setterCookie();
+    const res = await request(app)
+      .post("/api/climbs")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, name: "Bad Grade", setterGrade, setter: "setter-user" });
+    expect(res.status).toBe(400);
+  });
+
+  it.each(["", "2026-8-7", "07/08/2026", "2026-02-31"])(
+    "400s a malformed setDate (%j)",
+    async (setDate) => {
+      const cookie = await setterCookie();
+      const res = await request(app)
+        .post("/api/climbs")
+        .set("Cookie", cookie)
+        .send({ wallId: 1, name: "Bad Date", setterGrade: "V4", setter: "setter-user", setDate });
+      expect(res.status).toBe(400);
+    }
+  );
+
+  it("accepts a valid setDate", async () => {
+    const cookie = await setterCookie();
+    const res = await request(app)
+      .post("/api/climbs")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, name: "Good Date", setterGrade: "V4", setter: "setter-user", setDate: "2026-03-15" });
+    expect(res.status).toBe(200);
+  });
+
+  it("defaults setDate to today when omitted, without validating that path", async () => {
+    const cookie = await setterCookie();
+    const res = await request(app)
+      .post("/api/climbs")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, name: "No Date Given", setterGrade: "V4", setter: "setter-user" });
+    expect(res.status).toBe(200);
+    expect(res.body.climb.setDate).toEqual(expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
+  });
+
+  it("400s an unknown setter — existence only, not the isSetter flag", async () => {
+    const cookie = await setterCookie();
+    const res = await request(app)
+      .post("/api/climbs")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, name: "Orphan Setter", setterGrade: "V4", setter: "nobody-by-this-name" });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts a setter who exists but has since lost the isSetter flag", async () => {
+    const cookie = await setterCookie();
+    await signup("former-setter"); // exists, but never flagged isSetter
+    const res = await request(app)
+      .post("/api/climbs")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, name: "Historical", setterGrade: "V4", setter: "former-setter" });
+    expect(res.status).toBe(200);
   });
 });
 
@@ -1528,6 +1596,33 @@ describe("POST /api/climbs/grade", () => {
       .post("/api/climbs/grade")
       .set("Cookie", cookie)
       .send({ wallId: 1, setterName: "Old", grade: "V4" });
+    expect(res.status).toBe(200);
+    expect(res.body.climb.grade).toBe("V4");
+  });
+
+  it("400s an out-of-list grade", async () => {
+    const cookie = await adminCookie();
+    seedClimbs([
+      { wallId: 1, name: "Old", setType: "reset", setDate: "2026-01-01" },
+      { wallId: 1, name: "New", setType: "reset", setDate: "2026-02-01" },
+    ]);
+    const res = await request(app)
+      .post("/api/climbs/grade")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, setterName: "Old", grade: "banana" });
+    expect(res.status).toBe(400);
+  });
+
+  it("finds the climb case-insensitively, matching creation's dedupe check", async () => {
+    const cookie = await adminCookie();
+    seedClimbs([
+      { wallId: 1, name: "Old", setterName: "Old", setType: "reset", setDate: "2026-01-01" },
+      { wallId: 1, name: "New", setterName: "New", setType: "reset", setDate: "2026-02-01" },
+    ]);
+    const res = await request(app)
+      .post("/api/climbs/grade")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, setterName: "OLD", grade: "V4" });
     expect(res.status).toBe(200);
     expect(res.body.climb.grade).toBe("V4");
   });
