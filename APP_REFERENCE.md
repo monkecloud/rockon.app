@@ -55,7 +55,7 @@ npm install
 npm run dev:all   # Vite UI (:5173) + Express API (:25100) — normal dev loop
 npm run dev       # UI only
 npm run server    # API only
-npm test          # vitest run — all 202 tests
+npm test          # vitest run — all 216 tests
 npx vitest run server/worker.test.js       # one file
 npx vitest run -t "POST /api/ascents"      # one describe/test by name
 npm run build     # frontend → dist/
@@ -305,8 +305,8 @@ Base: `/api`. All bodies/responses JSON. Auth is the httpOnly `session` cookie
 | Method | Path | Auth | Notes |
 |---|---|---|---|
 | GET | `/api/climbs` | — | **Current climbs only**, with `ascentCount`, `averageStars`, and merged comments |
-| POST | `/api/climbs` | **mod/setter** | `{wallId, name, setterGrade, setter, setDate?, photoUrl?, setType?}` — `name` seeds both the immutable `setterName` and the initial display `name`. `setType` defaults to `"backfill"`; only `"reset"` is honored as an alternative. 409 on duplicate `wallId`+`setterName` **across all history**, not just the current set. `grade` always starts `""` |
-| POST | `/api/climbs/grade` | **admin** | `{wallId, setterName, grade}`. **409 if the climb is still current** |
+| POST | `/api/climbs` | **mod/setter** | `{wallId, name, setterGrade, setter, setDate?, photoUrl?, setType?}` — `name` seeds both the immutable `setterName` and the initial display `name`. `setType` defaults to `"backfill"`; only `"reset"` is honored as an alternative. Validated (§14.17): `setterGrade` must parse via `parseSetterGrade`; `setDate` (if given) must be a real `YYYY-MM-DD`, else defaults to today; `setter` must be an existing username. 409 on duplicate `wallId`+`setterName` **across all history**, not just the current set. `grade` always starts `""` |
+| POST | `/api/climbs/grade` | **admin** | `{wallId, setterName, grade}`. `grade` must be in `GRADE_OPTIONS`; climb lookup is case-insensitive (§14.17g). **409 if the climb is still current** |
 | GET | `/api/climbs/needs-grade` | **admin** | Non-current climbs with no `grade`, newest first. Backs the Grades tab |
 | GET | `/api/climbs/needs-name-approval` | **mod/setter** | Climbs with at least one pending naming-rights proposal, newest first. Backs the Approve tab |
 | POST | `/api/climbs/approve-name` | **mod/setter** | `{wallId, setterName, proposalId, action}`, `action` ∈ `approve\|reject`. Approving sets `climb.name` and clears the rest of `pendingNames`; rejecting drops just that one proposal |
@@ -576,11 +576,11 @@ covers brute-force/spam, not weak passwords.
 
 ## 9. Tests
 
-`npm test` — vitest, 202 tests.
+`npm test` — vitest, 216 tests.
 
 | File | Tests | Approach |
 |---|---|---|
-| `server/worker.test.js` | 202 | Mocks `fs/promises` with an in-memory store; drives `app` through supertest. Covers every route, every middleware, every pure helper |
+| `server/worker.test.js` | 216 | Mocks `fs/promises` with an in-memory store; drives `app` through supertest. Covers every route, every middleware, every pure helper |
 
 **No frontend tests.** `src/App.jsx` is untested (tracked in §14.11).
 
@@ -1064,7 +1064,7 @@ implement 13.2-a+b using Option B."*
 | 13.9-c Linter | P2 | ❌ **Not being built** (Derrick, 2026-08-10) — considered and declined as part of §14.14. Stays open in §13.9 |
 | 13.1-c/d/e Security hardening | P2 | ✅ **DONE 2026-08-10** — helmet (CSP deferred), CORS defaults to same-origin only, timing-safe token compare. See §14.15 |
 | 13.8-a/b Split `App.jsx` | P2 | ✅ **DECIDED: Option A — split by screen, shared `styles.js`** (Derrick, 2026-08-10) — not yet started. **Unblocks a 4-item chain.** See §14.16 |
-| 13.3-d/e/f/g Climb validation | P2 | ✅ **DECIDED: Option A — validate all** (Derrick, 2026-08-10) — not yet started. See §14.17 |
+| 13.3-d/e/f/g Climb validation | P2 | ✅ **DONE 2026-08-10** — setDate, setterGrade, grade, setter existence all validated; grade lookup now case-insensitive. See §14.17 |
 | 13.4-h/i Debounce & refetch | P2 | ✅ **DECIDED: Option A** (Derrick, 2026-08-10) — not yet started. **Build inside §14.9's `useFetch`.** See §14.18 |
 | 13.8-c/f Shared grades + dev port | P2 | ✅ **DONE 2026-08-10** — `shared/grades.js` extracted, both sides import it; `vite.config.js` reads `PORT` via `loadEnv`. See §14.19 |
 | 13.8-e `WALLS` hardcoded | P2 | ✅ **DECIDED: fold into §14.3 as a `walls` table** (Derrick, 2026-08-10) — not a standalone item. See §14.3.2 |
