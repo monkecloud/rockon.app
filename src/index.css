@@ -78,3 +78,12 @@ body {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Keyboard-only focus ring (§14.10). :focus-visible, never :focus — :focus
+ * would also ring on mouse clicks, which is why apps that use it end up
+ * deleting it and breaking keyboard users instead. */
+:focus-visible {
+  outline: 2px solid var(--color-accent-bright);
+  outline-offset: 2px;
+  border-radius: 2px;
+}

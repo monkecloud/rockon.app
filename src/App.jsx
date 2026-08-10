@@ -210,7 +210,7 @@ function Async({ loading, error, retry, loadingFallback, children }) {
   if (error) {
     return (
       <div style={styles.asyncError}>
-        <p style={styles.formError}>{error}</p>
+        <p style={styles.formError} role="alert">{error}</p>
         <button type="button" style={styles.retryButton} onClick={retry}>
           Retry
         </button>
@@ -273,7 +273,7 @@ function Leaderboard({ onSelectUser }) {
     return (
       <div style={styles.gradeChartWrapper}>
         <div style={styles.asyncError}>
-          <p style={styles.formError}>{error}</p>
+          <p style={styles.formError} role="alert">{error}</p>
           <button type="button" style={styles.retryButton} onClick={retry}>
             Retry
           </button>
@@ -585,13 +585,18 @@ function ListScreen({
             value={climbSearch}
             onChange={(e) => setClimbSearch(e.target.value)}
           />
-          <button type="button" style={styles.climbsFilterButton} onClick={onOpenFilter}>
+          <button
+            type="button"
+            style={styles.climbsFilterButton}
+            onClick={onOpenFilter}
+            aria-label="Filter climbs"
+          >
             <Filter size={18} />
           </button>
         </div>
         {climbsError ? (
           <div style={styles.asyncError}>
-            <p style={styles.formError}>{climbsError}</p>
+            <p style={styles.formError} role="alert">{climbsError}</p>
             <button type="button" style={styles.retryButton} onClick={onRetryClimbs}>
               Retry
             </button>
@@ -673,19 +678,19 @@ const WALL_NAME_BY_ID = Object.fromEntries(WALLS.map((wall) => [wall.id, wall.na
 function ArchiveSection({ expanded, walls, error, onRetry, onToggle, onSelectWall }) {
   return (
     <>
-      <div style={styles.archiveBar} onClick={onToggle}>
+      <button type="button" style={styles.archiveBar} onClick={onToggle}>
         <span>Archive</span>
         <ChevronRight
           size={18}
           color="var(--color-text-muted)"
           style={{ transform: expanded ? "rotate(90deg)" : "none" }}
         />
-      </div>
+      </button>
 
       {expanded &&
         (error ? (
           <div style={{ ...styles.asyncError, padding: "16px 20px" }}>
-            <p style={styles.formError}>{error}</p>
+            <p style={styles.formError} role="alert">{error}</p>
             <button type="button" style={styles.retryButton} onClick={onRetry}>
               Retry
             </button>
@@ -696,7 +701,8 @@ function ArchiveSection({ expanded, walls, error, onRetry, onToggle, onSelectWal
           <p style={{ ...styles.placeholderText, padding: "16px 20px" }}>No archived climbs yet.</p>
         ) : (
           walls.map((wall) => (
-            <div
+            <button
+              type="button"
               key={wall.wallId}
               style={styles.archiveSetRow}
               onClick={() => onSelectWall(wall.wallId)}
@@ -708,7 +714,7 @@ function ArchiveSection({ expanded, walls, error, onRetry, onToggle, onSelectWal
                 <p style={styles.listMeta}>{wall.climbs.length} climbs</p>
               </div>
               <ChevronRight size={18} color="var(--color-text-muted)" />
-            </div>
+            </button>
           ))
         ))}
     </>
@@ -1183,7 +1189,7 @@ function NewClimbForm({ wallId, resetDate, onSave }) {
             disabled={!isBackfill}
           />
         </label>
-        {error && <p style={styles.formError}>{error}</p>}
+        {error && <p style={styles.formError} role="alert">{error}</p>}
         <button type="submit" style={styles.button} disabled={saving}>
           {saving ? "Saving…" : "Save"}
         </button>
@@ -1340,7 +1346,7 @@ function NewWallForm({ walls, onSave }) {
             onChange={(e) => setSetDate(e.target.value)}
           />
         </label>
-        {error && <p style={styles.formError}>{error}</p>}
+        {error && <p style={styles.formError} role="alert">{error}</p>}
         <button type="submit" style={styles.button} disabled={saving}>
           {saving ? "Saving…" : "Save"}
         </button>
@@ -1482,7 +1488,7 @@ function GradeBarChart({ title, endpoint, counts: providedCounts }) {
         <div style={styles.gradeChartWrapper}>
           {title && <p style={styles.gradeChartTitle}>{title}</p>}
           <div style={styles.asyncError}>
-            <p style={styles.formError}>{error}</p>
+            <p style={styles.formError} role="alert">{error}</p>
             <button type="button" style={styles.retryButton} onClick={retry}>
               Retry
             </button>
@@ -1746,7 +1752,7 @@ function ProfileScreen({
             onChange={(e) => setPassword(e.target.value)}
           />
         </label>
-        {error && <p style={styles.formError}>{error}</p>}
+        {error && <p style={styles.formError} role="alert">{error}</p>}
         <button type="submit" style={styles.button} disabled={submitting}>
           {submitting
             ? "Please wait…"
@@ -1843,7 +1849,7 @@ function ChangeAvatarForm({ currentUser, onSave }) {
           />
         </label>
 
-        {error && <p style={styles.formError}>{error}</p>}
+        {error && <p style={styles.formError} role="alert">{error}</p>}
         <button type="submit" style={styles.button} disabled={submitting}>
           {submitting ? "Saving…" : "Save"}
         </button>
@@ -1888,7 +1894,7 @@ function ChangeUsernameForm({ currentUser, onSave }) {
             onChange={(e) => setUsername(e.target.value)}
           />
         </label>
-        {error && <p style={styles.formError}>{error}</p>}
+        {error && <p style={styles.formError} role="alert">{error}</p>}
         <button type="submit" style={styles.button} disabled={submitting}>
           {submitting ? "Saving…" : "Save"}
         </button>
@@ -1928,7 +1934,7 @@ function ChangeNameForm({ currentUser, onSave }) {
             onChange={(e) => setName(e.target.value)}
           />
         </label>
-        {error && <p style={styles.formError}>{error}</p>}
+        {error && <p style={styles.formError} role="alert">{error}</p>}
         <button type="submit" style={styles.button} disabled={submitting}>
           {submitting ? "Saving…" : "Save"}
         </button>
@@ -2011,7 +2017,7 @@ function ChangePasswordForm({ onSave, requireCurrentPassword = true, helperText 
             onChange={(e) => setConfirmPassword(e.target.value)}
           />
         </label>
-        {error && <p style={styles.formError}>{error}</p>}
+        {error && <p style={styles.formError} role="alert">{error}</p>}
         <button type="submit" style={styles.button} disabled={submitting}>
           {submitting ? "Saving…" : "Save"}
         </button>
@@ -2150,12 +2156,12 @@ function ManageRolesScreen() {
         })}
       </div>
 
-      {error && <p style={styles.formError}>{error}</p>}
-      {successMessage && <p style={styles.formSuccess}>{successMessage}</p>}
+      {error && <p style={styles.formError} role="alert">{error}</p>}
+      {successMessage && <p style={styles.formSuccess} role="status">{successMessage}</p>}
       {users === null && loading && <p style={styles.placeholderText}>Loading…</p>}
       {users === null && fetchError && (
         <div style={styles.asyncError}>
-          <p style={styles.formError}>{fetchError}</p>
+          <p style={styles.formError} role="alert">{fetchError}</p>
           <button type="button" style={styles.retryButton} onClick={retry}>
             Retry
           </button>
@@ -2250,7 +2256,7 @@ function GradesScreen() {
 
   return (
     <div style={styles.screen}>
-      {(error || fetchError) && <p style={styles.formError}>{error || fetchError}</p>}
+      {(error || fetchError) && <p style={styles.formError} role="alert">{error || fetchError}</p>}
       {climbs === null && loading && <p style={styles.placeholderText}>Loading…</p>}
       {climbs === null && fetchError && (
         <button type="button" style={styles.retryButton} onClick={retry}>
@@ -2353,7 +2359,7 @@ function ApproveClimbsScreen() {
 
   return (
     <div style={styles.screen}>
-      {(error || fetchError) && <p style={styles.formError}>{error || fetchError}</p>}
+      {(error || fetchError) && <p style={styles.formError} role="alert">{error || fetchError}</p>}
       {climbs === null && loading && <p style={styles.placeholderText}>Loading…</p>}
       {climbs === null && fetchError && (
         <button type="button" style={styles.retryButton} onClick={retry}>
@@ -2409,12 +2415,13 @@ function TopBar({
   showInfoButton,
   onShowInfo,
   showAddButton,
+  addButtonLabel,
   onAdd,
 }) {
   return (
     <header style={styles.topBar}>
       {showBack ? (
-        <button style={styles.topBarBackButton} onClick={onBack}>
+        <button style={styles.topBarBackButton} onClick={onBack} aria-label="Back">
           <ArrowLeft size={20} />
         </button>
       ) : (
@@ -2422,11 +2429,13 @@ function TopBar({
       )}
       <h1 style={styles.topBarTitle}>{title}</h1>
       {showInfoButton ? (
-        <button style={styles.topBarBackButton} onClick={onShowInfo}>
+        <button style={styles.topBarBackButton} onClick={onShowInfo} aria-label="Climb info">
           <Info size={20} />
         </button>
       ) : showAddButton ? (
-        <button style={styles.topBarBackButton} onClick={onAdd}>
+        // addButtonLabel is context-dependent (New Climb vs. New Wall) — the
+        // caller knows which, TopBar doesn't (§14.13 part 1).
+        <button style={styles.topBarBackButton} onClick={onAdd} aria-label={addButtonLabel}>
           <Plus size={20} />
         </button>
       ) : (
@@ -2449,6 +2458,7 @@ function ClimbActionBar({ attempts, onDecrement, onIncrement, onLogAscent, disab
         }}
         onClick={disabled ? undefined : onDecrement}
         disabled={disabled}
+        aria-label="Decrease attempts"
       >
         <Minus size={22} />
       </button>
@@ -2473,6 +2483,7 @@ function ClimbActionBar({ attempts, onDecrement, onIncrement, onLogAscent, disab
         }}
         onClick={disabled ? undefined : onIncrement}
         disabled={disabled}
+        aria-label="Increase attempts"
       >
         <Plus size={22} />
       </button>
@@ -2480,7 +2491,7 @@ function ClimbActionBar({ attempts, onDecrement, onIncrement, onLogAscent, disab
   );
 }
 
-function StarRatingInput({ value, onChange, invalid }) {
+function StarRatingInput({ value, onChange, invalid, inputRef }) {
   // A precise left-half/right-half tap on a 26px star is too fiddly with a
   // finger, so instead the whole row is a drag surface: press or drag
   // anywhere across it and the rating (in 0.5 steps) tracks the pointer's
@@ -2511,14 +2522,41 @@ function StarRatingInput({ value, onChange, invalid }) {
     isDragging.current = false;
   };
 
+  // Arrow keys move in 0.5 steps; Home/End jump to the practical min (a
+  // half star — 0 itself is invalid, see LogAscentSheet's ratingInvalid)
+  // and max. preventDefault on the arrows, otherwise they scroll the sheet
+  // instead of adjusting the rating (§14.13 part 5). The pointer-drag path
+  // above is unchanged — this is an alternate input, not a replacement.
+  const handleKeyDown = (e) => {
+    let next = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowUp") next = Math.min(5, value + 0.5);
+    else if (e.key === "ArrowLeft" || e.key === "ArrowDown") next = Math.max(0, value - 0.5);
+    else if (e.key === "Home") next = 0.5;
+    else if (e.key === "End") next = 5;
+    if (next === null) return;
+    e.preventDefault();
+    onChange(next);
+  };
+
   return (
     <div
-      ref={rowRef}
+      ref={(el) => {
+        rowRef.current = el;
+        if (inputRef) inputRef.current = el;
+      }}
+      role="slider"
+      tabIndex={0}
+      aria-label="Rating"
+      aria-valuemin={0}
+      aria-valuemax={5}
+      aria-valuenow={value}
+      aria-valuetext={`${value} out of 5 stars`}
       style={{ ...styles.starRow, ...(invalid ? styles.starRowInvalid : {}) }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={stopDragging}
       onPointerCancel={stopDragging}
+      onKeyDown={handleKeyDown}
     >
       {[1, 2, 3, 4, 5].map((n) => {
         const isFull = value >= n;
@@ -2568,6 +2606,9 @@ function LogAscentSheet({
   const [showValidation, setShowValidation] = useState(false);
   const [ascentClaimName, setAscentClaimName] = useState("");
   const [ascentClaimPass, setAscentClaimPass] = useState(false);
+  const sheetRef = useRef(null);
+  const ratingRef = useRef(null);
+  const previouslyFocused = useRef(null);
 
   useEffect(() => {
     if (open) {
@@ -2580,6 +2621,62 @@ function LogAscentSheet({
       setAscentClaimPass(false);
     }
   }, [open, attemptsThisSession, currentGrade]);
+
+  // Dialog focus management (§14.13 part 4): move focus into the sheet on
+  // open (the rating slider is the first real field) and restore it to
+  // whatever had focus before — normally the "Log ascent" button — on
+  // close. Without the restore, a keyboard user who closes the sheet is
+  // dumped back at the top of the page with no indication where they
+  // landed.
+  useEffect(() => {
+    if (open) {
+      previouslyFocused.current = document.activeElement;
+      // The sheet's own `visibility: hidden -> visible` is a *transitioned*
+      // property (see styles.sheet), and focus() on an element that still
+      // computes as visibility:hidden is a silent no-op. Right after this
+      // effect commits, the browser hasn't applied the new computed style
+      // yet (verified: still "hidden" even one rAF later) — it takes a
+      // second frame for the transitioned value to actually land, a known
+      // browser quirk with transitioning styles set in the same tick as a
+      // React commit. Double-rAF is the standard workaround.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => ratingRef.current?.focus());
+      });
+    } else {
+      previouslyFocused.current?.focus?.();
+      previouslyFocused.current = null;
+    }
+  }, [open]);
+
+  // Escape closes; Tab/Shift+Tab wrap within the sheet instead of leaking
+  // into the page behind it (the sheet stays in the DOM/tab-order-capable
+  // even while closed — see styles.sheet's visibility toggle — so without
+  // a trap, tabbing from the last field would walk into whatever's behind
+  // the backdrop).
+  const handleKeyDown = (e) => {
+    if (!open) return;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+      return;
+    }
+    if (e.key !== "Tab" || !sheetRef.current) return;
+    const focusable = Array.from(
+      sheetRef.current.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((el) => !el.disabled);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
 
   const claimedCount = ascentClaims?.length ?? 0;
   const showAscentClaim = claimedCount < 5;
@@ -2622,16 +2719,27 @@ function LogAscentSheet({
         onClick={onClose}
       />
       <div
+        ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Log ascent"
+        onKeyDown={handleKeyDown}
         style={{
           ...styles.sheet,
           transform: open ? "translateY(0)" : "translateY(100%)",
+          visibility: open ? "visible" : "hidden",
         }}
       >
         <div style={styles.sheetHandle} />
         <form style={styles.sheetForm} onSubmit={handleSubmit} noValidate>
           <label style={styles.label}>
             Rating
-            <StarRatingInput value={starRating} onChange={setStarRating} invalid={ratingInvalid} />
+            <StarRatingInput
+              value={starRating}
+              onChange={setStarRating}
+              invalid={ratingInvalid}
+              inputRef={ratingRef}
+            />
           </label>
 
           <label style={styles.label}>
@@ -3340,6 +3448,7 @@ export default function App() {
         showInfoButton={showInfoButton}
         onShowInfo={() => setShowInfo(true)}
         showAddButton={showAddButton}
+        addButtonLabel={isWallsRoot ? "Add wall" : "Add climb"}
         onAdd={() => {
           if (isClimbsList || isWallsRoot) setCreatingClimb(true);
         }}
@@ -4268,7 +4377,11 @@ const styles = {
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     padding: "10px 20px calc(24px + env(safe-area-inset-bottom))",
-    transition: "transform 0.28s ease",
+    // visibility is listed alongside transform so the sheet stays visible
+    // for the duration of the close animation instead of vanishing
+    // mid-slide, while still leaving the tab order once fully closed
+    // (transform alone doesn't remove hidden elements from it — §14.13 part 3).
+    transition: "transform 0.28s ease, visibility 0.28s",
     zIndex: 21,
   },
   sheetHandle: {
