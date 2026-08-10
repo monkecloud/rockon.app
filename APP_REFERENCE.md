@@ -55,7 +55,7 @@ npm install
 npm run dev:all   # Vite UI (:5173) + Express API (:25100) — normal dev loop
 npm run dev       # UI only
 npm run server    # API only
-npm test          # vitest run — all 168 tests
+npm test          # vitest run — all 197 tests
 npx vitest run server/worker.test.js       # one file
 npx vitest run -t "POST /api/ascents"      # one describe/test by name
 npm run build     # frontend → dist/
@@ -189,19 +189,20 @@ climbs) roughly weekly.
 ```jsonc
 {
   "username": "Cubesnail",       // case-insensitively unique
-  "passwordHash": "$2a$10$...",  // bcrypt, SALT_ROUNDS=10; "" = needs reset
+  "passwordHash": "$2b$12$...",  // bcrypt, SALT_ROUNDS=12; "" = needs reset
   "sessionToken": "hex64",       // one active session per user
   "name": "Display Name",        // optional
   "avatarUrl": "data:image/...", // base64 inline
   "followers": ["alice"],        // usernames
   "following": ["bob"],          // usernames
   "ascents": [ /* below */ ],
-  "ascentCount": 12,             // MAINTAINED COUNTER, not ascents.length
   "isModerator": true,           // role flags — admin sets all three
   "isSetter": true,
   "isAdmin": true
 }
 ```
+
+**`ascentCount` is not a field on the user record at all** — see below.
 
 An ascent:
 
@@ -209,9 +210,9 @@ An ascent:
 {
   "id": "uuid",                  // targets this ascent's comment for deletion
   "wallId": 4,
-  "climbName": "Wild Ledge",     // wallId + climbName = the climb
-  "starRating": 4.5,             // 0.5 steps, min 0.5
-  "grade": "V4",                 // the climber's own opinion
+  "climbName": "Wild Ledge",     // wallId + climbName = the climb's setterName
+  "starRating": 4.5,             // 0.5 steps, min 0.5-5, or null
+  "grade": "V4",                 // the climber's own opinion, or "" for none
   "comment": "Great moves",      // non-empty → shows on the Info page
   "logAttempts": true,
   "attempts": 7,
@@ -219,11 +220,18 @@ An ascent:
 }
 ```
 
-**`ascentCount` ≠ `ascents.length`.** It counts only ascents against climbs
-still in their wall's *current* set — a climb archived by a newer reset stops
-counting, though the ascent itself is kept. Recomputed by `computeAscentCount`
-on every new ascent log, because deriving it requires cross-referencing
-`climbs.json`.
+**`ascentCount` is derived fresh on every read, never stored** (§14.7) —
+`computeAscentCount(ascents, currentKeys)`, where `currentKeys` is a
+`currentClimbKeys(climbs)` Set built once per request and passed around
+(rebuilding it per user, e.g. in the leaderboard, would turn an O(n)
+endpoint into O(n·m)). It counts **distinct climbs**, not ascent rows or
+`ascents.length` — repeats are allowed (climbers legitimately resend a
+project) but must not inflate the count — restricted to climbs still in
+their wall's *current* set; a climb archived by a newer reset stops
+counting, though the ascent itself is kept. Deriving it on read rather than
+storing it is what makes a wall reset unable to leave it stale for anyone —
+the earlier stored-counter design only recomputed it for whoever next
+logged an ascent.
 
 ### 4.3 Lazy schema backfill — the migration pattern
 
@@ -232,7 +240,7 @@ Both readers backfill missing fields on load and persist immediately.
 
 | Reader | Backfills |
 |---|---|
-| `readUsers()` | `ascent.id` (uuid); `user.ascentCount` (only reads climbs.json if at least one user needs it, since readUsers runs on nearly every request) |
+| `readUsers()` | `ascent.id` (uuid). (`ascentCount` used to be backfilled here too — no longer; it's derived on read instead, see §4.2.) |
 | `readClimbs()` | Old single `difficulty` → `setterGrade` + `grade` (treated as already-confirmed), deletes `difficulty`; missing `setterName` ← `name` (pre-naming-rights climbs); missing `pendingNames` → `[]` |
 
 ---
@@ -302,14 +310,14 @@ Base: `/api`. All bodies/responses JSON. Auth is the httpOnly `session` cookie
 | GET | `/api/climbs/needs-name-approval` | **mod/setter** | Climbs with at least one pending naming-rights proposal, newest first. Backs the Approve tab |
 | POST | `/api/climbs/approve-name` | **mod/setter** | `{wallId, setterName, proposalId, action}`, `action` ∈ `approve\|reject`. Approving sets `climb.name` and clears the rest of `pendingNames`; rejecting drops just that one proposal |
 | GET | `/api/climbs/grade-counts` | — | Pyramid of every *currently active* climb (Home chart) |
-| GET | `/api/climbs/grade-distribution?wallId=&setterName=` | — | What climbers logged *this* climb's grade as. Blank ascent grades are skipped (no fallback) — the point is what people actually typed |
+| GET | `/api/climbs/grade-distribution?wallId=&setterName=` | — | What climbers logged *this* climb's grade as — one vote per user (their most recent), not one per ascent row. Blank ascent grades are skipped (no fallback) — the point is what people actually typed |
 | GET | `/api/archive` | — | `{walls: [{wallId, climbs}]}`. Every pre-current climb per wall, flattened, with stats. Each climb gets `loggable: bool` — the most recent archived cycle per wall stays loggable |
 
 ### 5.7 Ascents
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| POST | `/api/ascents` | session | `{wallId, climbName, starRating, grade, comment, logAttempts, attempts, attemptsThisSession, ascentClaim?}` → `{ascents, ascentCount}`. Recomputes `ascentCount`. `ascentClaim: {name, pass}` fills the next free claim slot, capped at 5, first-come-first-served |
+| POST | `/api/ascents` | session | `{wallId, climbName, starRating, grade, comment, logAttempts, attempts, attemptsThisSession, ascentClaim?}` → `{ascents, ascentCount}` (§14.6). Validated before mutating: climb must exist (404) and be loggable — current or in the most recently archived cycle, via `isLoggable` (409); `starRating` 0.5-5 in 0.5 steps; `grade` blank or in `GRADE_OPTIONS`; `attempts`/`attemptsThisSession` non-negative integers when `logAttempts` is set; `comment` capped at 2000 chars. Repeats of the same climb are allowed — `ascentCount` in the response is derived fresh (§14.7), counting distinct climbs. `ascentClaim: {name, pass}` fills the next free claim slot, capped at 5, first-come-first-served |
 
 ### 5.8 Static fallback
 
@@ -330,38 +338,51 @@ All exported (for tests). Grouped by job.
 
 **Storage**
 - `readUsers()` / `writeUsers(users)` — with the lazy backfills of §4.3
-- `readClimbs()` / `writeClimbs(climbs)` — `writeClimbs` also pings the primary
-  with `climbs-updated`, triggering the worker swap
+- `readClimbs()` / `writeClimbs(climbs)` — plain disk I/O now (§14.3.1ii); no
+  IPC ping, no worker swap, that whole layer is gone
 
 **Set/cycle logic — the conceptual core**
 - `currentClimbsOnly(climbs)` — per wall, finds the latest `setType:"reset"`
   date, keeps every climb with `setDate >= ` that. A wall with no reset shows
   everything rather than hiding it
 - `groupIntoCycles(climbs)` — one entry per cycle (`{setId, wallId, setDate,
-  climbs}`), a reset plus every backfill before the next reset, newest first
+  climbs}`), a reset plus every backfill before the next reset, newest first.
+  **Keyed by `setId`** — test climbs need distinct ones or cycles collapse
 - `archivedClimbsByWall(climbs)` — the inverse: everything before each wall's
   latest cycle, flattened per wall
 
 **Derived stats**
-- `climbKey(wallId, name)` — `` `${wallId}::${name}` ``
-- `computeAscentCount(ascents, climbs)` — how many ascents hit still-current climbs
+- `climbKey(wallId, setterName)` — `` `${wallId}::${setterName}` ``
+- `currentClimbKeys(climbs)` — the Set version of `currentClimbsOnly`, built
+  once per request and passed around rather than rebuilt per user (§14.7)
+- `computeAscentCount(ascents, currentKeys)` — **distinct** current climbs
+  logged, not ascent rows (§14.6); takes the Set from `currentClimbKeys`,
+  not a raw climbs array
+- `isLoggable(climb, climbs)` / `loggableClimbKeys(climbs)` — whether a new
+  ascent may be logged against this climb: current, or in the wall's most
+  recently *archived* cycle. Shared with `GET /api/archive`'s `loggable` flag
 - `withAscentStats(climbs)` — walks every user's ascents once to attach
-  `ascentCount`, `averageStars`, and merge user comments (id `ascent-<uuid>`)
-  onto seeded ones
+  `ascentCount` (distinct users), `averageStars` (one rating per user, their
+  most recent), and merge user comments (id `ascent-<uuid>`, every repeat's
+  comment shown — not deduped) onto seeded ones
 
-**Grades**
+**Grades — now `shared/grades.js` (§14.19), not worker.js**
 - `gradeToBucket(grade)` — `"V4"`→`V4`, `"vb"`→`VB`, ≥10→`V10+`, unparseable→`null`
 - `climbBucketGrade(climb)` — confirmed `grade` if set, else the **top end** of
   the `setterGrade` range (`"V2-4"`→`"V4"`) — the harder, more conservative read
+- `bucketCounts(grades)` — buckets a list of raw grade strings via `gradeToBucket`
+- `parseSetterGrade(s)` — inverse of `composeSetterGrade`; `null` if malformed
 - `GRADE_BUCKETS` — `["VB","V0".."V9","V10+"]` (12 buckets)
+- `worker.js` re-exports `gradeToBucket`/`climbBucketGrade` so existing
+  imports of them from `worker.js` (incl. in tests) still work
 
 **Serializers — what actually crosses the wire**
 
 | Function | Fields | Used by |
 |---|---|---|
-| `toClientUser` | username, name, avatarUrl, followersCount, followingCount, ascentCount, isModerator, isSetter, isAdmin | signup/login/settings |
+| `toClientUser(user, ascentCount)` | username, name, avatarUrl, followersCount, followingCount, ascentCount, isModerator, isSetter, isAdmin | signup/login/settings |
 | `toRoleListEntry` | username, name, 3 role flags | admin roles list |
-| `toSearchResultEntry(user, viewer)` | username, name, avatarUrl, counts, ascentCount, **isFollowing** | search, leaderboard, follower lists |
+| `toSearchResultEntry(user, viewer, ascentCount)` | username, name, avatarUrl, counts, ascentCount, **isFollowing** | search, leaderboard, follower lists |
 | `toSetterListEntry` | username, name | setter dropdown |
 
 None of these ever include `passwordHash` or `sessionToken`.
@@ -554,11 +575,11 @@ covers brute-force/spam, not weak passwords.
 
 ## 9. Tests
 
-`npm test` — vitest, 168 tests.
+`npm test` — vitest, 197 tests.
 
 | File | Tests | Approach |
 |---|---|---|
-| `server/worker.test.js` | 168 | Mocks `fs/promises` with an in-memory store; drives `app` through supertest. Covers every route, every middleware, every pure helper |
+| `server/worker.test.js` | 197 | Mocks `fs/promises` with an in-memory store; drives `app` through supertest. Covers every route, every middleware, every pure helper |
 
 **No frontend tests.** `src/App.jsx` is untested (tracked in §14.11).
 
@@ -1030,8 +1051,8 @@ implement 13.2-a+b using Option B."*
 | 13.2-e Hot-swap is a no-op | P0 | ✅ **DONE 2026-08-10** — Option (ii), `server/index.js`/`index.test.js` deleted, `worker.js` binds `PORT` directly |
 | 13.1-b Login rate limiting | P0 | ✅ **DONE 2026-08-10** — hand-rolled dual-key (IP+username) escalating-delay limiter on login; signup gets it too (IP-only, every attempt counts). See §14.4 |
 | 13.4-a/b/c Payload trio | P1 | ✅ **Step 1 DONE 2026-08-10** — picturetest climb deleted, `compression` added. **Step 2 (Option B, files on disk) not started.** See §14.5 |
-| 13.3-a Ascent validation | P1 | ✅ **DECIDED: Option B — allow repeats, count distinct** (Derrick, 2026-08-10) — not yet started. See §14.6 |
-| 13.3-b Stale `ascentCount` | P1 | ✅ **DECIDED: Option B — derive on read, drop the stored field** (Derrick, 2026-08-10) — not yet started. **Build together with §14.6.** See §14.7 |
+| 13.3-a Ascent validation | P1 | ✅ **DONE 2026-08-10** — validate-then-mutate, `isLoggable`, repeats allowed but counted distinct across all 5 call sites. See §14.6 |
+| 13.3-b Stale `ascentCount` | P1 | ✅ **DONE 2026-08-10** — dropped the stored field entirely, derived on read via `computeAscentCount`+`currentClimbKeys`. See §14.7 |
 | 13.3-c Client trusts localStorage | P1 | ✅ **DECIDED: Option A — `GET /api/me` on mount** (Derrick, 2026-08-10) — not yet started. See §14.8. ⚠️ Leaves mid-session expiry unhandled — tracked as a separate open item |
 | 13.6-a/b Loading & error states | P1 | ✅ **DECIDED: Option B — `useFetch` hook + `<Async>` wrapper** (Derrick, 2026-08-10) — not yet started. See §14.9 |
 | 13.7-a/b Keyboard access | P1 | ✅ **DECIDED: Option A — global `:focus-visible` rule + fix the `<div onClick>`s** (Derrick, 2026-08-10) — not yet started. See §14.10. ⚠️ Closes 2 of 9 a11y items only |

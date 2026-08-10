@@ -107,13 +107,17 @@ the README's "Running it persistently" section for the systemd deploy path
 Both files are hand-rolled JSON "databases," read/written directly by
 `server/worker.js` (`readUsers`/`writeUsers`/`readClimbs`/`writeClimbs`).
 Both readers do lazy schema backfills on load (e.g. adding `ascent.id`,
-`ascentCount`, splitting old `difficulty` into `setterGrade`/`grade`) and
-persist the backfilled shape immediately — when adding a new field, prefer
-this same lazy-backfill-on-read pattern over a one-off migration script.
+splitting old `difficulty` into `setterGrade`/`grade`, splitting old `name`
+into `setterName`/`name`) and persist the backfilled shape immediately —
+when adding a new field, prefer this same lazy-backfill-on-read pattern
+over a one-off migration script.
 
-- **Climbs have no id of their own.** `wallId` + `name` (unique within a
-  wall) is the key everything — ascents, comments, front-end lookups —
-  references a climb by.
+- **Climbs have no id of their own.** `wallId` + `setterName` (immutable,
+  unique within a wall — unlike the mutable, renameable `name`) is the key
+  everything — ascents, comments, front-end lookups — references a climb
+  by. A climber can propose renaming a climb by filling in a name on an
+  ascent claim; a moderator/setter approves or rejects it on the Approve
+  tab, which changes only `name`, never `setterName`.
 - **Sets, not a flat climb list.** Each wall periodically gets a new "set" of
   climbs: a `reset` (every old climb comes down, replaced) or a `backfill`
   (new climbs added, nothing removed). Every climb tracks `setId`,
@@ -137,9 +141,16 @@ this same lazy-backfill-on-read pattern over a one-off migration script.
   permission level via `requireModeratorOrSetter`, just a different label),
   admin (all three flags set, gated by `requireAdmin`).
 - Passwords are bcrypt-hashed before ever touching disk.
-- `user.ascentCount` is a maintained counter, not `ascents.length` — it only
-  counts ascents against climbs still in their wall's current set, and is
-  recomputed via `computeAscentCount` whenever an ascent is logged.
+- **`ascentCount` is not stored anywhere, and not `ascents.length`.** It's
+  derived fresh on every read via `computeAscentCount` + `currentClimbKeys`
+  — the number of *distinct* climbs (repeats don't inflate it) still in
+  their wall's current set. Deriving it on read rather than storing it is
+  what makes a wall reset unable to leave any user's count stale — the
+  earlier stored-counter design only recomputed it for whoever next logged
+  an ascent, so it silently went wrong for everyone else until they did.
+  Repeats are allowed everywhere ascents are logged; every place a count is
+  *derived* from ascents (a climb's `ascentCount`, `averageStars`, grade
+  pyramids) counts distinct climbs/users, never ascent rows.
 
 See the module comment at the top of `server/worker.js` and the "Notes"
 section of `README.md` for further field-by-field detail on ascents,
