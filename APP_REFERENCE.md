@@ -55,7 +55,7 @@ npm install
 npm run dev:all   # Vite UI (:5173) + Express API (:25100) — normal dev loop
 npm run dev       # UI only
 npm run server    # API only
-npm test          # vitest run — all 216 tests
+npm test          # vitest run — all 217 tests
 npx vitest run server/worker.test.js       # one file
 npx vitest run -t "POST /api/ascents"      # one describe/test by name
 npm run build     # frontend → dist/
@@ -576,11 +576,11 @@ covers brute-force/spam, not weak passwords.
 
 ## 9. Tests
 
-`npm test` — vitest, 216 tests.
+`npm test` — vitest, 217 tests.
 
 | File | Tests | Approach |
 |---|---|---|
-| `server/worker.test.js` | 216 | Mocks `fs/promises` with an in-memory store; drives `app` through supertest. Covers every route, every middleware, every pure helper |
+| `server/worker.test.js` | 217 | Mocks `fs/promises` with an in-memory store; drives `app` through supertest. Covers every route, every middleware, every pure helper |
 
 **No frontend tests.** `src/App.jsx` is untested (tracked in §14.11).
 
@@ -1071,7 +1071,7 @@ implement 13.2-a+b using Option B."*
 | 13.5-a/b/c + 13.3-h Data-model cleanups | P2/P3 | ✅ **DECIDED: Option A — fold all four into §14.3** (Derrick, 2026-08-10). See §14.20. ⚠️ `createdAt` is lost for every ascent logged before the migration |
 | 13.6-c/d/f Frontend UX | P2 | ✅ **DECIDED: Option B — align search, chart skeleton, key the viewer** (Derrick, 2026-08-10) — not yet started. See §14.21 |
 | 13.6-e Optimistic UI | P2 | ⏸️ **DEFERRED** (Derrick, 2026-08-10) — cheaper after §14.9's `apiSend` lands. Stays open |
-| All 21 P3 items | P3 | ✅ **BATCH-DECIDED** (Derrick, 2026-08-10) — one recommendation each, no options. See §14.22 |
+| All 21 P3 items | P3 | ✅ **BATCH-DECIDED** (Derrick, 2026-08-10). Group 2 (stale comments, package.json, SALT_ROUNDS, reduced-motion) and Group 3 (touchmove scope, image lazy-loading, contrast, star icons, reset warning) **DONE 2026-08-10**. Groups 1 (absorbed elsewhere) and 4 (product question, not a bug) don't need standalone work. See §14.22 |
 | 13.1-f Password strength | P1 | 🔵 **STILL OPEN** — never discussed. The last undecided P1 |
 
 Everything else in §13 has no options drafted yet.
