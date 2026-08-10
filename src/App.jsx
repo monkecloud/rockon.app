@@ -2627,6 +2627,33 @@ export default function App() {
     saveToStorage(STORAGE_KEYS.currentUser, currentUser);
   }, [currentUser]);
 
+  // Verifies the cached session against the cookie (the actual source of
+  // truth, see the comment above) on mount, rather than trusting whatever
+  // was cached at last page load forever — a session that's expired, been
+  // reset by an admin, or had a role change since only self-corrects here
+  // (§14.8). A brief flash of stale cached state before this resolves is
+  // acceptable.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/me")
+      .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
+      .then((data) => {
+        if (!cancelled) setCurrentUser(data.user);
+      })
+      .catch((err) => {
+        // Only an explicit 401 ("the cookie says you're logged out") clears
+        // the cached session. A network error — dropped wifi, the server
+        // restarting — must NOT: on a phone at a climbing gym with patchy
+        // signal, that would log people out constantly. This is the one
+        // detail that makes this safe to ship; get it wrong and every wifi
+        // blip becomes a surprise logout.
+        if (!cancelled && err === 401) setCurrentUser(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const callAuthApi = async (endpoint, credentials) => {
     try {
       const res = await fetch(`/api/${endpoint}`, {

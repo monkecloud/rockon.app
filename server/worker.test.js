@@ -917,6 +917,44 @@ describe("POST /api/logout", () => {
   });
 });
 
+describe("GET /api/me", () => {
+  it("401s without a valid session", async () => {
+    const res = await request(app).get("/api/me");
+    expect(res.status).toBe(401);
+  });
+
+  it("401s a stale/unknown token", async () => {
+    const res = await request(app).get("/api/me").set("Cookie", "session=nope");
+    expect(res.status).toBe(401);
+  });
+
+  it("200s with the current user for a valid session", async () => {
+    const { cookie } = await signup("cube");
+    const res = await request(app).get("/api/me").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    expect(res.body.user.username).toBe("cube");
+  });
+
+  it("reflects a role change made after the session was issued", async () => {
+    const { cookie } = await signup("cube");
+    const users = currentUsers();
+    users[0].isModerator = true;
+    seedUsers(users);
+
+    const res = await request(app).get("/api/me").set("Cookie", cookie);
+    expect(res.body.user.isModerator).toBe(true);
+  });
+
+  it("reports a derived ascentCount, same as everywhere else", async () => {
+    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    const { cookie } = await signup("cube");
+    await request(app).post("/api/ascents").set("Cookie", cookie).send({ wallId: 1, climbName: "X" });
+
+    const res = await request(app).get("/api/me").set("Cookie", cookie);
+    expect(res.body.user.ascentCount).toBe(1);
+  });
+});
+
 describe("PATCH-style settings routes require the caller to be the same account", () => {
   it("403s /name when acting on someone else's account", async () => {
     const { cookie } = await signup("cube");

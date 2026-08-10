@@ -765,6 +765,17 @@ app.post("/api/logout", authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
+// "Who am I?" — called by the client on mount so a stale localStorage
+// session (see §CLAUDE.md "Client-side session") gets corrected against the
+// cookie, the actual source of truth, instead of trusting whatever was
+// cached at last page load. 401 means "the cookie says you're logged out";
+// the client must not conflate that with a network error, or a phone with
+// patchy gym wifi would get logged out on every blip (§14.8).
+app.get("/api/me", authenticate, async (req, res) => {
+  const currentKeys = currentClimbKeys(await readClimbs());
+  res.json({ user: toClientUser(req.user, computeAscentCount(req.user.ascents, currentKeys)) });
+});
+
 // The Settings-page actions below all require a valid session cookie
 // (see `authenticate`) belonging to the same account named in the URL
 // (see `requireSelf`) — no longer just trusting the :username in the URL.
