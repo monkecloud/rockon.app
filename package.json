@@ -8,10 +8,10 @@
   },
   "scripts": {
     "dev": "vite",
-    "server": "node server/index.js",
+    "server": "node server/worker.js",
     "dev:all": "concurrently -n client,server -c blue,green \"npm:dev\" \"npm:server\"",
     "build": "vite build",
-    "start": "node server/index.js",
+    "start": "node server/worker.js",
     "preview": "vite preview",
     "test": "vitest run"
   },

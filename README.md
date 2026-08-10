@@ -45,9 +45,9 @@ npm start        # serves dist/ AND the API, both on http://localhost:25100
 `server/worker.js` serves `dist/` as static files and falls back to
 `index.html` for any non-`/api` route (so client-side navigation/refreshes
 still work), while `/api/*` keeps going to the Express routes as before —
-same port, same process, via the primary/worker proxy in `server/index.js`.
-Only one port (`25100` by default, override with `PORT`) needs to be reachable
-now, instead of both `5173` and `25100`.
+same port, same process; `server/worker.js` binds `PORT` directly (there's no
+separate primary/proxy process). Only one port (`25100` by default, override
+with `PORT`) needs to be reachable now, instead of both `5173` and `25100`.
 
 **Session cookies adapt automatically to how each request arrived** — no
 `NODE_ENV` flag needed. `setSessionCookie` in `server/worker.js` marks the

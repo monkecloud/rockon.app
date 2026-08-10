@@ -36,11 +36,11 @@ npm start             # production-style: one process serves dist/ + API on :251
 There is no lint script configured.
 
 Tests set `NODE_ENV=test` themselves (via `process.env.NODE_ENV = "test"` at
-the top of the test file) — this skips the real `fs`/socket/fork side
-effects in `server/index.js` and `server/worker.js` (see below) so importing
-those modules under vitest doesn't fork real processes or touch real
-`users.json`/`climbs.json`. `server/worker.test.js` mocks `fs/promises` with
-an in-memory store; `server/index.test.js` mocks `child_process.fork`.
+the top of the test file) — this skips `server/worker.js`'s real `fs`/socket
+side effects (see below) so importing it under vitest doesn't bind a real
+port or touch real `users.json`/`climbs.json`. `server/worker.test.js` mocks
+`fs/promises` with an in-memory store and exercises `app` directly via
+`supertest`.
 
 **`NODE_ENV=production` is safe to set, including locally.** The session
 cookie's `secure` flag is driven by `req.secure` (the actual request), not
@@ -72,37 +72,35 @@ Client-side session (the logged-in user) is kept in `localStorage`
 refresh doesn't log the user out; server-side auth is cookie-based (below),
 this is not the source of truth.
 
-### Backend: primary/worker hot-reload, not a typical Express app
+### Backend: a single process, not primary/worker
 
-`server/index.js` and `server/worker.js` are two different processes with a
-specific split — don't merge logic between them or add routes to
-`index.js`:
+`server/worker.js` is the whole backend — the Express app (all `/api/*`
+routes) plus static-serving `dist/` in production. It binds `PORT` (25100 by
+default) directly and is the only process; there is no separate primary or
+worker-forking layer.
 
-- **`server/index.js`** is a process manager, not the API. It owns the real
-  `PORT` (25100 by default) and runs a plain `http` reverse proxy in front of
-  whichever worker is currently "active." It forks `worker.js` as a child
-  process, waits for a `{ type: "ready", port }` IPC message before routing
-  traffic to it, and — whenever a worker reports `{ type: "climbs-updated" }`
-  — forks a *new* worker, waits for it to be ready, atomically swaps it in,
-  and retires the old one (grace period, then force-kill). This means a
-  `climbs.json` write triggers a full worker restart with **zero dropped
-  connections**, because the primary's listening socket on `PORT` never
-  closes. Workers are `child_process.fork()`, deliberately not the `cluster`
-  module — cluster shares/round-robins the listening socket across workers,
-  which fights the "exactly one active worker, chosen by us" design here.
-- **`server/worker.js`** is the actual Express app (all `/api/*` routes) plus
-  static-serving `dist/` in production. It never binds `PORT`; it listens on
-  port 0 (OS-assigned) and reports that port back to the primary over IPC.
-  Because each `climbs.json` write forks a brand-new worker process, workers
-  must not rely on in-memory state surviving a request — anything that needs
-  to persist (sessions included) has to be written to disk (`users.json` /
-  `climbs.json`), not kept in a module-level variable.
+That used to be different: an earlier design had `server/index.js` as a
+process manager forking `worker.js` as a child on every `climbs.json` write
+and hot-swapping traffic over to the new one, on the theory that this let
+writes take effect without dropping connections. It was removed (see
+`APP_REFERENCE.md` §14.3.1) once analysis showed there was **no
+module-level cache anywhere in `worker.js` for that swap to invalidate** —
+every read hits disk fresh via `readClimbs`/`readUsers` regardless, so the
+restart changed nothing observable while costing a process spawn per write
+and being the root cause of two P0 crash-recovery bugs. `deploy/climbing-app.service`
+(`Restart=always`) is now the only supervisor.
+
+Because nothing forks or restarts this process on a normal write anymore,
+in-memory state *could* now survive across requests — but sessions and
+everything else still persist to disk (`users.json` / `climbs.json`)
+because a crash-and-restart (or the eventual SQLite migration, §14.3) would
+still wipe a module-level variable; don't start relying on one.
 
 In dev (`npm run dev:all`), Vite (`:5173`) serves the UI and proxies `/api`
-to the primary on `:25100` (see `vite.config.js`). In production
-(`npm start`), the worker serves `dist/` itself and the primary proxies
-everything through one port — see the README's "Running it persistently"
-section for the systemd deploy path (`deploy/climbing-app.service`).
+to this same process on `:25100` (see `vite.config.js`). In production
+(`npm start`), it serves `dist/` itself and the API on the one port — see
+the README's "Running it persistently" section for the systemd deploy path
+(`deploy/climbing-app.service`).
 
 ### Data model (`server/users.json`, `server/climbs.json`)
 

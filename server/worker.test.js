@@ -85,10 +85,6 @@ beforeEach(() => {
   fsPromises.writeFile.mockClear();
 });
 
-afterEach(() => {
-  delete process.send;
-});
-
 // ---------------------------------------------------------------------------
 // Pure / small helper functions
 // ---------------------------------------------------------------------------
@@ -627,18 +623,6 @@ describe("readClimbs / writeClimbs", () => {
     expect(JSON.parse(store.get(CLIMBS_PATH))[0].setterName).toBe("X");
   });
 
-  it("pings the primary process over IPC when process.send exists", async () => {
-    const send = vi.fn();
-    process.send = send;
-    await writeClimbs([]);
-    expect(send).toHaveBeenCalledWith({ type: "climbs-updated" });
-    delete process.send;
-  });
-
-  it("does not throw when process.send is unavailable", async () => {
-    delete process.send;
-    await expect(writeClimbs([])).resolves.toBeUndefined();
-  });
 });
 
 describe("withAscentStats", () => {
@@ -1204,9 +1188,7 @@ describe("POST /api/climbs", () => {
     expect(res.status).toBe(409);
   });
 
-  it("creates a backfill climb and pings the primary process", async () => {
-    const send = vi.fn();
-    process.send = send;
+  it("creates a backfill climb", async () => {
     const cookie = await setterCookie();
     const res = await request(app)
       .post("/api/climbs")
@@ -1216,8 +1198,6 @@ describe("POST /api/climbs", () => {
     expect(res.body.climb).toEqual(
       expect.objectContaining({ wallId: 1, name: "New Climb", setType: "backfill", grade: "" })
     );
-    expect(send).toHaveBeenCalledWith({ type: "climbs-updated" });
-    delete process.send;
   });
 });
 

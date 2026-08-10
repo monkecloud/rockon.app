@@ -7,13 +7,14 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 
 // ---------------------------------------------------------------------------
-// The actual Express API — forked as a cluster worker by index.js, which
-// owns the real PORT and proxies to whichever worker is current. This file
-// never binds PORT itself (see the bottom: it listens on an OS-assigned
-// port and reports it back to the primary over IPC), so it can be freely
-// hot-restarted without ever closing the socket clients connect to. See
-// writeClimbs() below for the other half: it pings the primary whenever
-// climbs.json changes so a fresh worker gets spun up automatically.
+// The actual Express API, plus static-serving the built frontend in
+// production. Binds the real PORT itself and is the only process in this
+// app — see APP_REFERENCE.md §14.3.1 for why the old primary/worker
+// hot-swap (a separate process.js proxying to a forked worker, restarted on
+// every climbs.json write) was removed: there was never a module-level
+// cache for that restart to invalidate, so it cost a process spawn per
+// write for no observable benefit. systemd's `Restart=always` (see
+// deploy/climbing-app.service) is the only supervisor now.
 //
 // Minimal API server for the Profile tab's sign-up/login.
 //
@@ -32,10 +33,9 @@ import bcrypt from "bcryptjs";
 // `authenticate` middleware below, rather than trusting a username the
 // client puts in the URL/body/query — the latter used to be this API's
 // entire auth story, letting anyone impersonate anyone by naming them.
-// Tokens live in users.json (not in worker memory) because index.js forks a
-// fresh worker process — wiping any in-memory state — every time
-// climbs.json is written; storage that survives that swap has to be on
-// disk, same as the users themselves.
+// Tokens live in users.json, not in memory, because nothing about this
+// process's lifetime is guaranteed — a crash and systemd restart wipes
+// memory the same way the old worker-recycling design used to.
 //
 // Still a toy auth system in some respects (no rate limiting, no email
 // verification, one active session per user at a time since logging in
@@ -54,8 +54,10 @@ import bcrypt from "bcryptjs";
 //     id: string,                 // uuid, used to target this ascent's comment for deletion
 //     wallId: number,             // which wall the climb is on
 //     climbName: string,          // climbs have no id of their own — see
-//                                 // readClimbs() below — so wallId + name
-//                                 // is the key that identifies a climb
+//                                 // readClimbs() below — so wallId +
+//                                 // setterName is the key that identifies
+//                                 // a climb (climbName here holds that
+//                                 // setterName, not the mutable display name)
 //     starRating: number,        // e.g. 1-5
 //     grade: string,             // e.g. "V4"
 //     comment: string,
@@ -360,12 +362,6 @@ export async function readClimbs() {
 
 export async function writeClimbs(climbs) {
   await fs.writeFile(CLIMBS_FILE, JSON.stringify(climbs, null, 2));
-  // Tell the primary (index.js) climbs.json changed so it can spin up a
-  // fresh worker and swap traffic over — see the module comment up top.
-  // process.send only exists when this file is actually running as a
-  // forked worker (not e.g. under a future test runner that imports it
-  // directly), hence the guard.
-  if (process.send) process.send({ type: "climbs-updated" });
 }
 
 // A wall's "current" climbs are whatever went up in its most recent reset,
@@ -1385,25 +1381,11 @@ app.use((req, res, next) => {
 });
 
 // Skipped under the test runner (NODE_ENV=test) so importing this module for
-// unit tests doesn't bind a real socket or register a real process-level
-// message listener — tests exercise `app` directly (e.g. via supertest).
+// unit tests doesn't bind a real socket — tests exercise `app` directly (e.g.
+// via supertest).
 if (process.env.NODE_ENV !== "test") {
-  // Port 0 = let the OS pick a free one. The real PORT (25100 by default) is
-  // owned by the primary process's proxy in index.js; this worker just needs
-  // *a* port to listen on, then reports it back over IPC so the primary can
-  // route traffic here.
-  const server = app.listen(0, () => {
-    const { port } = server.address();
-    console.log(`Worker ${process.pid} listening on http://127.0.0.1:${port}`);
-    if (process.send) process.send({ type: "ready", port });
-  });
-
-  // Sent by the primary once a replacement worker is up and taking new
-  // traffic — stop accepting new connections but let in-flight ones finish,
-  // then exit. (The primary force-kills this process if it takes too long.)
-  process.on("message", (msg) => {
-    if (msg?.type === "shutdown") {
-      server.close(() => process.exit(0));
-    }
+  const PORT = process.env.PORT || 25100;
+  app.listen(PORT, () => {
+    console.log(`Server listening on http://localhost:${PORT}`);
   });
 }
