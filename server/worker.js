@@ -72,7 +72,13 @@ import bcrypt from "bcryptjs";
 // doing so requires cross-referencing climbs.json.
 // ---------------------------------------------------------------------------
 
-const SALT_ROUNDS = 10;
+// bcrypt encodes the cost in the hash itself, so raising this doesn't
+// invalidate or need to touch any existing hash — old ones keep verifying
+// at whatever cost they were created with. Only new/changed passwords get
+// the new cost immediately; POST /api/login opportunistically rehashes an
+// existing user's password at the new cost on their next successful login
+// (see below), so the fleet upgrades gradually rather than all at once.
+const SALT_ROUNDS = 12;
 const SESSION_COOKIE = "session";
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
@@ -573,6 +579,13 @@ app.post("/api/login", async (req, res) => {
 
   if (!user || !isMatch) {
     return res.status(401).json({ error: "Incorrect username or password." });
+  }
+
+  // Opportunistic rehash: a successful login is the one moment we hold the
+  // plaintext password, so it's the only place a hash created under an
+  // older, lower SALT_ROUNDS can be upgraded.
+  if (bcrypt.getRounds(user.passwordHash) < SALT_ROUNDS) {
+    user.passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
   }
 
   user.sessionToken = generateSessionToken();

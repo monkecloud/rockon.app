@@ -42,10 +42,12 @@ those modules under vitest doesn't fork real processes or touch real
 `users.json`/`climbs.json`. `server/worker.test.js` mocks `fs/promises` with
 an in-memory store; `server/index.test.js` mocks `child_process.fork`.
 
-**Don't set `NODE_ENV=production`** locally unless the app is behind HTTPS —
-`setSessionCookie` in `server/worker.js` marks the session cookie `secure`
-in production, and browsers silently drop `secure` cookies over plain HTTP,
-which breaks login.
+**`NODE_ENV=production` is safe to set, including locally.** The session
+cookie's `secure` flag is driven by `req.secure` (the actual request), not
+`NODE_ENV` — see `setSessionCookie` in `server/worker.js`. Production mode
+matters for a different reason: Express 5's default error handler only
+omits stack traces from 500 responses when `NODE_ENV === "production"`,
+so deploys should set it (see `deploy/climbing-app.service`).
 
 ## Architecture
 

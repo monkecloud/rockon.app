@@ -65,3 +65,10 @@ body {
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

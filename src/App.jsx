@@ -45,9 +45,12 @@ import {
 //   comments left when logging an ascent.
 // - Profile tab: sign up / log in against a small Express server that
 //   stores users in server/users.json — shared across everyone hitting
-//   this server, not just the local browser (plaintext, no real auth —
-//   see server/index.js for where to add hashing/a real database)
-// - Search tab: placeholder screen, ready for you to build out
+//   this server, not just the local browser. Passwords are bcrypt-hashed
+//   before they ever touch disk, and auth is an httpOnly session cookie
+//   resolved server-side on every request (see server/worker.js).
+// - Search tab: query + Climbs/Users mode toggle (see SearchScreen) —
+//   climbs filter client-side against the in-memory climbs list, users
+//   hit /api/users/search.
 // ---------------------------------------------------------------------------
 
 const TABS = [
