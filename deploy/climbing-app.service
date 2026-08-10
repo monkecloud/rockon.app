@@ -17,12 +17,24 @@ After=network.target
 Type=simple
 User=cubesnail
 WorkingDirectory=/home/cubesnail/app/site
+# Production mode: Express's default error handler only omits stack traces
+# from 500 responses when this is set — see APP_REFERENCE.md §14.12. Safe to
+# set regardless of how the app is reached (HTTP on the LAN, HTTPS through a
+# reverse proxy) — the session cookie's `secure` flag is driven by the
+# request itself (req.secure), not NODE_ENV.
+Environment=NODE_ENV=production
 # Rebuilds dist/ on every (re)start, so a `git pull` + restart always picks
 # up the latest code without a separate manual `npm run build` step.
 ExecStartPre=/usr/bin/npm run build
 ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=5
+# ExecStartPre re-runs the build on every restart, so a broken build (or
+# poisoned data that crashes the app at import) would otherwise retry every
+# 5s forever — a silent loop rather than a visible failure. Give up after 5
+# restarts within 5 minutes and leave the unit in a failed state instead.
+StartLimitBurst=5
+StartLimitIntervalSec=300
 
 [Install]
 WantedBy=multi-user.target
