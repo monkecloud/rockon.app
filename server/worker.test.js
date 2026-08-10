@@ -479,6 +479,19 @@ describe("authenticate", () => {
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
   });
+
+  it("401s cleanly (doesn't throw) when the cookie is a different length than any stored token", async () => {
+    // crypto.timingSafeEqual throws on mismatched buffer lengths — tokensMatch
+    // must guard against that itself rather than relying on equal-length
+    // real tokens always being presented.
+    seedUsers([{ username: "cube", sessionToken: "a-much-longer-real-session-token" }]);
+    const req = { headers: { cookie: "session=short" } };
+    const res = mockRes();
+    const next = vi.fn();
+    await expect(authenticate(req, res, next)).resolves.not.toThrow();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(next).not.toHaveBeenCalled();
+  });
 });
 
 describe("requireSelf", () => {
@@ -1277,6 +1290,20 @@ describe("GET /api/climbs", () => {
     const res = await request(app).get("/api/climbs");
     expect(res.body.climbs.map((c) => c.name)).toEqual(["New"]);
     expect(res.body.climbs[0]).toEqual(expect.objectContaining({ ascentCount: 0, averageStars: 0 }));
+  });
+});
+
+describe("Security headers (§14.15)", () => {
+  it("sends helmet's headers, with CSP left off", async () => {
+    const res = await request(app).get("/api/climbs");
+    expect(res.headers["x-content-type-options"]).toBe("nosniff");
+    expect(res.headers["x-frame-options"]).toBeDefined();
+    expect(res.headers["content-security-policy"]).toBeUndefined();
+  });
+
+  it("does not reflect an arbitrary Origin — no ALLOWED_ORIGINS means same-origin only", async () => {
+    const res = await request(app).get("/api/climbs").set("Origin", "http://evil.example");
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
   });
 });
 

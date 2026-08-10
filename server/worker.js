@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import compression from "compression";
 import fs from "fs/promises";
 import path from "path";
@@ -116,22 +117,58 @@ export const app = express();
 // falls back to whether *this* connection is actually TLS (it never is;
 // this server only ever speaks plain HTTP, TLS is the proxy's job).
 app.set("trust proxy", "loopback");
+// X-Content-Type-Options, X-Frame-Options (the app was previously embeddable
+// in an iframe on any site), Referrer-Policy, HSTS, and friends. CSP is left
+// off deliberately: the app styles almost everything with inline style={}
+// objects, so any CSP today would need `style-src 'unsafe-inline'`, which
+// forfeits most of what a CSP buys. Revisit once styling moves off inline
+// styles (§14.10 Option B / CSS Modules).
+//
+// HSTS is safe here despite this server also being reachable over plain
+// HTTP on the LAN (see setSessionCookie below): HSTS is scoped per-hostname,
+// and the LAN path is reached by IP address, not the domain a reverse proxy
+// terminates HTTPS for — browsers also simply ignore HSTS received over
+// plain HTTP in the first place.
+app.use(helmet({ contentSecurityPolicy: false }));
 // gzips every response over Express's default 1kb threshold — GET /api/climbs
 // is by far the biggest payload in the app (it's the whole current climb
 // list, re-fetched after every ascent/comment mutation), so this matters most
 // there.
 app.use(compression());
-// credentials: true + reflecting the request origin (rather than "*") is
-// required for the session cookie to travel on cross-origin requests — e.g.
-// if the client ever isn't served through the Vite dev proxy that makes
-// today's requests same-origin.
-app.use(cors({ origin: true, credentials: true }));
+// Defaults to *no* CORS headers at all (same-origin only), which matches how
+// this app is actually deployed: the worker serves dist/ itself in
+// production, and Vite's dev proxy makes dev same-origin too, so
+// credentials: true + reflecting any Origin used to be pure speculation
+// ("if the client ever isn't served through the proxy") with no live use —
+// and speculative but real exposure, since sameSite: "lax" is the only thing
+// stopping it from being exploitable, and that's one cookie-config change
+// away from not being true. Set ALLOWED_ORIGINS (comma-separated) if a
+// cross-origin client is ever actually needed.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true }));
 // Default 100kb limit is too small for a base64-encoded profile picture
 // upload (see POST /api/users/:username/avatar below).
 app.use(express.json({ limit: "5mb" }));
 
 export function generateSessionToken() {
   return crypto.randomBytes(32).toString("hex");
+}
+
+// Constant-time session-token comparison, used everywhere a cookie's token
+// is checked against a stored one (authenticate, resolveSessionUser) instead
+// of === . Be honest about what this fixes and what it doesn't: authenticate
+// still finds the matching user via a linear Array.find scan, so the
+// *position* of the match in users.json still leaks through timing
+// regardless of how each individual comparison is done — this closes the
+// per-comparison side channel, not the scan itself. The real fix is an
+// indexed session lookup (§14.3's sessions table); this is the 20-minute
+// partial measure worth taking now anyway.
+function tokensMatch(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
 // No cookie-parser dependency in this project, so parse the one header we
@@ -178,7 +215,7 @@ export async function authenticate(req, res, next) {
   }
 
   const users = await readUsers();
-  const user = users.find((u) => u.sessionToken && u.sessionToken === token);
+  const user = users.find((u) => u.sessionToken && tokensMatch(u.sessionToken, token));
   if (!user) {
     return res.status(401).json({ error: "Session expired. Please log in again." });
   }
@@ -194,7 +231,7 @@ export async function authenticate(req, res, next) {
 export async function resolveSessionUser(req, users) {
   const token = getCookie(req, SESSION_COOKIE);
   if (!token) return null;
-  return users.find((u) => u.sessionToken && u.sessionToken === token) || null;
+  return users.find((u) => u.sessionToken && tokensMatch(u.sessionToken, token)) || null;
 }
 
 // For routes shaped as /api/users/:username/... that act on one account —
