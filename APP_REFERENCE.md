@@ -34,14 +34,17 @@ A mobile-first (max-width 420px, dark-only) web app for a single climbing gym.
 **A moderator or setter can additionally:**
 - Add a climb to a wall (`+` on a wall's Climbs page → backfill)
 - Start a wall's next set (`+` on the Walls root list → reset)
-- Confirm a climb's final grade once it's off the wall (Approve tab)
+- Approve or reject pending naming-rights proposals (Approve tab) — a named
+  first/second/…/fifth-ascent claim also proposes that name as the climb's
+  new display name
 
 **An admin can additionally:**
+- Confirm a climb's final grade once it's off the wall (Grades tab)
 - Change anyone's role (Admin tab)
 - Force-reset anyone's password
 
-**Explicitly not built yet** (see §12): Logbook screen, climb filters,
-recent-activity feed, wall management UI, notifications.
+**Explicitly not built yet** (see §12): Logbook screen, recent-activity feed,
+wall management UI, notifications.
 
 ---
 
@@ -165,23 +168,39 @@ Two hand-rolled JSON files, read/written directly. No database, no migrations.
 ```jsonc
 {
   "wallId": 4,                    // 1=Back 2=Slab 3=Cave 4=Front
-  "name": "Wild Ledge",           // UNIQUE WITHIN A WALL — this is the key
+  "setterName": "Wild Ledge",     // UNIQUE WITHIN A WALL, IMMUTABLE — this is the key
+  "name": "Wild Ledge",           // confirmed DISPLAY name — starts equal to
+                                   // setterName, can change via an approved
+                                   // naming-rights proposal (see pendingNames).
+                                   // Not unique, never a key.
   "setter": "Cubesnail",          // a username; not validated server-side
   "setterGrade": "VB-1",          // setter's guess at set time; IMMUTABLE
-  "grade": "V1",                  // confirmed final grade; "" until approved
+  "grade": "V1",                  // confirmed final grade; "" until an admin sets it
   "photoUrl": "data:image/...",   // base64 inline; "" or absent
   "comments": [],                 // seeded sample comments only
   "setId": "47c503be-...",        // uuid shared by climbs put up together
   "setDate": "2026-05-01",        // "YYYY-MM-DD"
   "setType": "reset",             // "reset" | "backfill"
   "archived": false,              // NOT AUTHORITATIVE — reserved for a future tool
-  "ascentClaims": []              // up to 5 × { name, pass }
+  "ascentClaims": [],             // up to 5 × { name, pass }
+  "pendingNames": []              // queued rename proposals — see below
 }
 ```
 
-**Climbs have no id of their own.** `wallId` + `name` is the key that ascents,
-comments, and every front-end lookup reference a climb by. `climbKey(wallId,
-name)` → `` `${wallId}::${name}` `` is the canonical join key.
+**Climbs have no id of their own.** `wallId` + `setterName` is the key that
+ascents, comments, and every front-end lookup reference a climb by —
+`setterName` is immutable and guaranteed unique within a wall, unlike the
+mutable, renameable `name`. `climbKey(wallId, setterName)` →
+`` `${wallId}::${setterName}` `` is the canonical join key.
+
+**Naming rights.** Whenever a logged ascent fills in a name for any
+`ascentClaims` slot (first/second/.../fifth ascent — see §5.7), that name is
+also queued in `pendingNames` (`[{id, name, claimedBy}]`) as a proposal to
+rename the climb. A moderator/setter resolves each proposal on the **Approve**
+tab (`GET /api/climbs/needs-name-approval`, `POST /api/climbs/approve-name`):
+approving sets `climb.name` to the proposed name and discards every other
+pending proposal for that climb (only one name can win); rejecting drops just
+that one. `setterName` never changes either way.
 
 **Sets, not a flat list.** A wall periodically gets a new set:
 - **reset** — everything older on that wall stops being "current"
@@ -195,7 +214,7 @@ climbs) roughly weekly.
 1. `setterGrade` — a single grade (`"V6"`) or a range (`"V2-4"`), set at
    creation, never editable after.
 2. `grade` — the confirmed single grade, settable **only once the climb is no
-   longer current**, by a moderator/setter, via the Approve tab.
+   longer current**, by an **admin**, via the Grades tab.
 
 ### 4.2 `server/users.json` — 10 accounts
 
@@ -246,7 +265,7 @@ Both readers backfill missing fields on load and persist immediately.
 | Reader | Backfills |
 |---|---|
 | `readUsers()` | `ascent.id` (uuid); `user.ascentCount` (only reads climbs.json if at least one user needs it, since readUsers runs on nearly every request) |
-| `readClimbs()` | Old single `difficulty` → `setterGrade` + `grade` (treated as already-confirmed), deletes `difficulty` |
+| `readClimbs()` | Old single `difficulty` → `setterGrade` + `grade` (treated as already-confirmed), deletes `difficulty`; missing `setterName` ← `name` (pre-naming-rights climbs); missing `pendingNames` → `[]` |
 
 ---
 
@@ -309,11 +328,13 @@ Base: `/api`. All bodies/responses JSON. Auth is the httpOnly `session` cookie
 | Method | Path | Auth | Notes |
 |---|---|---|---|
 | GET | `/api/climbs` | — | **Current climbs only**, with `ascentCount`, `averageStars`, and merged comments |
-| POST | `/api/climbs` | **mod/setter** | `{wallId, name, setterGrade, setter, setDate?, photoUrl?, setType?}`. `setType` defaults to `"backfill"`; only `"reset"` is honored as an alternative. 409 on duplicate `wallId`+`name` **across all history**, not just the current set. `grade` always starts `""` |
-| POST | `/api/climbs/grade` | **mod/setter** | `{wallId, name, grade}`. **409 if the climb is still current** |
-| GET | `/api/climbs/needs-grade` | — | Non-current climbs with no `grade`, newest first. Backs the Approve tab |
+| POST | `/api/climbs` | **mod/setter** | `{wallId, name, setterGrade, setter, setDate?, photoUrl?, setType?}` — `name` seeds both the immutable `setterName` and the initial display `name`. `setType` defaults to `"backfill"`; only `"reset"` is honored as an alternative. 409 on duplicate `wallId`+`setterName` **across all history**, not just the current set. `grade` always starts `""` |
+| POST | `/api/climbs/grade` | **admin** | `{wallId, setterName, grade}`. **409 if the climb is still current** |
+| GET | `/api/climbs/needs-grade` | **admin** | Non-current climbs with no `grade`, newest first. Backs the Grades tab |
+| GET | `/api/climbs/needs-name-approval` | **mod/setter** | Climbs with at least one pending naming-rights proposal, newest first. Backs the Approve tab |
+| POST | `/api/climbs/approve-name` | **mod/setter** | `{wallId, setterName, proposalId, action}`, `action` ∈ `approve\|reject`. Approving sets `climb.name` and clears the rest of `pendingNames`; rejecting drops just that one proposal |
 | GET | `/api/climbs/grade-counts` | — | Pyramid of every *currently active* climb (Home chart) |
-| GET | `/api/climbs/grade-distribution?wallId=&name=` | — | What climbers logged *this* climb's grade as. Blank ascent grades are skipped (no fallback) — the point is what people actually typed |
+| GET | `/api/climbs/grade-distribution?wallId=&setterName=` | — | What climbers logged *this* climb's grade as. Blank ascent grades are skipped (no fallback) — the point is what people actually typed |
 | GET | `/api/archive` | — | `{walls: [{wallId, climbs}]}`. Every pre-current climb per wall, flattened, with stats. Each climb gets `loggable: bool` — the most recent archived cycle per wall stays loggable |
 
 ### 5.7 Ascents
@@ -393,7 +414,7 @@ is stale and unused** — ignore it.
 | Constant | Line | Value |
 |---|---|---|
 | `TABS` | ~52 | Home, Walls (`list`), Search, Profile |
-| `ADMIN_TAB` / `APPROVE_TAB` | ~61/65 | Appended conditionally by role |
+| `ADMIN_TAB` / `GRADES_TAB` / `APPROVE_TAB` | ~62/67/74 | Appended conditionally by role — Grades + Admin for admins, Approve for mod/setter (and admins) |
 | `WALLS` | ~71 | **Hardcoded**: `{1 Back, 2 Slab, 3 Cave, 4 Front}` |
 | `WALL_NAME_BY_ID` | ~453 | Derived lookup |
 | `STORAGE_KEYS` | ~88 | `boilerplate:currentUser` |
@@ -419,7 +440,7 @@ is stale and unused** — ignore it.
 | `SearchScreen` | 558 | Query + Climbs/Users mode toggle. Climbs filter client-side against in-memory `climbs`; users hit `/api/users/search`. All state lifted to `App()` |
 | `UserProfileScreen` | 681 | Read-only profile: avatar, tappable follower/following counts, Follow/Unfollow, grade pyramid |
 | `FollowListScreen` | 730 | Followers or following list; rows push another profile |
-| `ClimbsFilterForm` | 777 | **Placeholder — not wired up.** Apply button is a no-op |
+| `ClimbsFilterForm` | 801 | Sort by (grade/name/setter, asc/desc) and show/hide reset vs. backfill are wired to `ListScreen`'s climb list via state lifted to `App()`; grade-range and setter fields are still placeholders |
 | `NewClimbForm` | 834 | `+` on a wall's Climbs page. Fixed `wallId`. Always saves as **backfill**; the "Backfill" checkbox only chooses the *date* (today/reset date vs. a picked past date) |
 | `NewWallForm` | 992 | `+` on the Walls root. Wall dropdown, always saves `setType: "reset"` — starts a new cycle |
 | `GradeBarChart` | 1215 | The pyramid. Takes **either** `counts` (in-memory) **or** `endpoint` (fetch). Y-axis ticks at 100/75/50/25%, rounded to integers with duplicates blanked |
@@ -430,7 +451,8 @@ is stale and unused** — ignore it.
 | `ChangeNameForm` | 1608 | |
 | `ChangePasswordForm` | 1648 | `requireCurrentPassword` prop is `false` for the forced-reset path |
 | `ManageRolesScreen` | 1759 | Admin tab. **Stages** role picks in `pendingRoles`; Save POSTs only the diff, in parallel. Also per-user Reset password |
-| `ApproveClimbsScreen` | 1946 | Approve tab. `/api/climbs/needs-grade`; dropdown defaults to the bottom of the setter's range; ✓ confirms and drops the row |
+| `GradesScreen` | 2055 | Grades tab (admin-only). `/api/climbs/needs-grade`; dropdown defaults to the bottom of the setter's range; ✓ confirms and drops the row |
+| `ApproveClimbsScreen` | 2160 | Approve tab (mod/setter). `/api/climbs/needs-name-approval` — pending naming-rights proposals from ascent claims; reject drops one proposal, approve sets the climb's display `name` and clears the rest of that climb's queue |
 | `TopBar` | 2041 | Back / title / (Info \| Add) |
 | `ClimbActionBar` | 2078 | **Replaces the tab bar** on a climb detail page: −, attempts, Log ascent, + |
 | `StarRatingInput` | 2119 | Whole row is a drag surface; rating tracks pointer x in 0.5 steps |
@@ -544,7 +566,8 @@ different label. Admin has all three flags set.
 | Follow / unfollow | ❌ | ✅ | ✅ | ✅ |
 | Change own avatar/name/username/password | ❌ | ✅ | ✅ | ✅ |
 | Add a climb / start a reset | ❌ | ❌ | ✅ | ✅ |
-| Confirm a final grade (Approve tab) | ❌ | ❌ | ✅ | ✅ |
+| Approve/reject naming-rights proposals (Approve tab) | ❌ | ❌ | ✅ | ✅ |
+| Confirm a final grade (Grades tab) | ❌ | ❌ | ❌ | ✅ |
 | Change roles, force-reset passwords (Admin tab) | ❌ | ❌ | ❌ | ✅ |
 
 **Rules:** authorize off `req.user`, never off a username in
@@ -600,15 +623,22 @@ date. Every climb dated on/after that becomes the new current set; everything
 older moves to the Archive automatically. Nothing gets deleted.
 
 **Confirm grades** → they only become confirmable *after* a reset supersedes
-them. Approve tab.
+them. Grades tab (admin-only).
+
+**Rename a climb** → not a direct edit. A climber proposes a new name by
+filling in a name on an ascent claim (see §5.7); a moderator/setter approves
+or rejects it on the Approve tab. Approving sets `climb.name` only —
+`climb.setterName`, the actual join key, never changes.
 
 ---
 
 ## 11. Footguns
 
-1. **Climbs have no id.** Renaming a climb orphans its ascents and comments —
-   they're joined by `wallId`+`name`. There is no rename endpoint; don't add
-   one without migrating ascents.
+1. **Climbs have no id.** They're joined by `wallId`+`setterName` — `setterName`
+   is immutable specifically so the naming-rights flow (see §5.6, §10 "Rename
+   a climb") can change the mutable, display-only `name` without orphaning
+   ascents/comments. Anything that still keys off `climb.name` instead of
+   `climb.setterName` will break the moment a name proposal is approved.
 2. **`archived` is a lie.** It exists on every climb but nothing trusts it.
    Currency is always derived via `currentClimbsOnly`.
 3. **Worker memory is disposable.** Any `climbs.json` write forks a fresh
@@ -623,8 +653,9 @@ them. Approve tab.
    eventual fix.
 7. **`writeUsers` / `writeClimbs` are read-modify-write with no locking.**
    Concurrent writes can lose data.
-8. **Duplicate climb names are rejected across all history**, not just the
-   current set — so a name can never be reused on a wall.
+8. **Duplicate `setterName`s are rejected across all history**, not just the
+   current set — so a name can never be reused on a wall at creation time.
+   `name` (the mutable display name) has no such uniqueness check.
 9. **The root `App.jsx` is stale.** Only `src/App.jsx` is built.
 
 ---
@@ -634,7 +665,7 @@ them. Approve tab.
 | Thing | Where the stub is |
 |---|---|
 | Logbook screen | `handleOpenLogbook` is `() => {}` (App.jsx:2486); button renders |
-| Climb filters | `ClimbsFilterForm` (777) — fields render, Apply is a no-op, `filteringClimbs` state exists |
+| Climb filters — grade range & setter | `ClimbsFilterForm` (801) — sort/reset/backfill are wired up; grade-range and setter fields still render but don't filter |
 | Recent Activity feed | `RECENT_ACTIVITY_PLACEHOLDERS` — five dead rows on Home |
 | Wall management UI | No create/rename/delete wall; `WALLS` is hardcoded |
 | Explicit archive tool | `archived` field reserved for it |
