@@ -390,64 +390,86 @@ None of these ever include `passwordHash` or `sessionToken`.
 
 ---
 
-## 7. Frontend reference (`src/App.jsx`, ~3940 lines)
+## 7. Frontend reference (`src/App.jsx` + `src/{screens,components,lib}/`)
 
-**One file, no router.** Every screen is a function component in this file;
-`App()` at the bottom owns all navigation as plain `useState`. Follow this
-pattern when adding a screen — don't introduce a routing library.
+**Split by screen, no router** (§14.16, 2026-08-10 — this used to be one
+~3940-line `src/App.jsx`; see that section for the split's history and the
+one naming deviation from the originally-proposed layout). `src/App.jsx` is
+now 761 lines — `App()` only: navigation state, handlers, and the persistent
+chrome (top bar, tab bar, climb action bar, log-ascent sheet). Every screen
+is a function component in `src/screens/`, every reusable piece of chrome in
+`src/components/`, shared non-component logic in `src/lib/`, module-level
+config in `src/constants.js`, and the inline `styles` object in
+`src/styles.js`. **Dependencies flow one way: `App.jsx` → `screens/` →
+`components/` → `lib/`/`constants.js`.** Nothing imports back up — a screen
+importing from `App.jsx` is the split's failure mode; keep it that way. Follow
+this pattern when adding a screen — don't introduce a routing library.
 
-`index.html` → `src/main.jsx` → `src/App.jsx`. **The `App.jsx` at the repo root
-is stale and unused** — ignore it.
+`index.html` → `src/main.jsx` → `src/App.jsx`. **There is no longer a stale
+root-level `App.jsx`** — it was deleted during §14.16 (it predated the move
+into `src/` and was never part of the build).
 
 ### 7.1 Module-level constants (edit these to reconfigure)
 
-| Constant | Line | Value |
+| Constant | File | Value |
 |---|---|---|
-| `TABS` | ~52 | Home, Walls (`list`), Search, Profile |
-| `ADMIN_TAB` / `GRADES_TAB` / `APPROVE_TAB` | ~62/67/74 | Appended conditionally by role — Grades + Admin for admins, Approve for mod/setter (and admins) |
-| `WALLS` | ~71 | **Hardcoded**: `{1 Back, 2 Slab, 3 Cave, 4 Front}` |
-| `WALL_NAME_BY_ID` | ~453 | Derived lookup |
-| `STORAGE_KEYS` | ~88 | `boilerplate:currentUser` |
+| `TABS` | `src/constants.js` | Home, Walls (`list`), Search, Profile |
+| `ADMIN_TAB` / `GRADES_TAB` / `APPROVE_TAB` | `src/constants.js` | Appended conditionally by role — Grades + Admin for admins, Approve for mod/setter (and admins) |
+| `WALLS` | `src/constants.js` | **Hardcoded**: `{1 Back, 2 Slab, 3 Cave, 4 Front}` |
+| `WALL_NAME_BY_ID` | `src/constants.js` | Derived lookup |
+| `STORAGE_KEYS` | `src/lib/storage.js` | `boilerplate:currentUser` |
 | `GRADE_OPTIONS` | `shared/grades.js` | `VB, V0…V11` — every grade dropdown |
 | `GRADE_BUCKETS` | `shared/grades.js` | `VB, V0…V9, V10+` — chart buckets |
-| `SETTINGS_OPTIONS` | ~1470 | avatar, username, name, password |
-| `ROLE_OPTIONS` | ~1731 | member, moderator, setter, admin |
-| `ROLE_FILTER_TABS` | ~1750 | Admin screen's Moderator/Setter/Users filter |
-| `ASCENT_ORDINALS` | ~2188 | First…Fifth |
-| `PODIUM_HEIGHTS` | ~116 | `{1:64, 2:44, 3:30}` px |
+| `SETTINGS_OPTIONS` | `src/constants.js` | avatar, username, name, password |
+| `ROLE_OPTIONS` | `src/constants.js` | member, moderator, setter, admin |
+| `ROLE_FILTER_TABS` | `src/screens/ManageRolesScreen.jsx` (module-local — only consumer) | Admin screen's Moderator/Setter/Users filter |
+| `ASCENT_ORDINALS` | `src/components/LogAscentSheet.jsx` (module-local — only consumer) | First…Fifth |
+| `PODIUM_HEIGHTS` | `src/constants.js` | `{1:64, 2:44, 3:30}` px |
 
-### 7.2 Components
+### 7.2 Components and screens
 
-| Component | Line | Role |
+| Component | File | Role |
 |---|---|---|
-| `Leaderboard` | 121 | Home podium. Fetches `/api/users/leaderboard`. Renders 2nd/1st/3rd; omits itself entirely if nobody has ascents |
-| `HomeScreen` | 178 | Wall pyramid + Leaderboard + placeholder activity rows |
-| `ZoomableImageViewer` | 201 | Climb photo. **Pointer Events**: drag, two-finger pinch, wheel zoom. Scale clamped 1–4. Writes `transform` **straight to the DOM node via refs**, never React state — setState per pointermove made pinch/drag glitchy on mobile |
-| `ClimbInfoScreen` | 297 | Grade-distribution chart + comments. Delete button only on your own ascent-derived comments (seeded ones have no `ascentId`) |
-| `ListScreen` | 348 | Three modes in one component: wall list → climbs list (with local search box + pyramid) → `ZoomableImageViewer` |
-| `ArchiveSection` | 467 | Inline expander at the bottom of the wall list. Fully controlled from `App()` so it survives unmount |
-| `ArchiveWallScreen` | 511 | One wall's archived climbs, flat |
-| `SearchScreen` | 558 | Query + Climbs/Users mode toggle. Climbs filter client-side against in-memory `climbs`; users hit `/api/users/search`. All state lifted to `App()` |
-| `UserProfileScreen` | 681 | Read-only profile: avatar, tappable follower/following counts, Follow/Unfollow, grade pyramid |
-| `FollowListScreen` | 730 | Followers or following list; rows push another profile |
-| `ClimbsFilterForm` | 801 | Sort by (grade/name/setter, asc/desc) and show/hide reset vs. backfill are wired to `ListScreen`'s climb list via state lifted to `App()`; grade-range and setter fields are still placeholders |
-| `NewClimbForm` | 834 | `+` on a wall's Climbs page. Fixed `wallId`. Always saves as **backfill**; the "Backfill" checkbox only chooses the *date* (today/reset date vs. a picked past date) |
-| `NewWallForm` | 992 | `+` on the Walls root. Wall dropdown, always saves `setType: "reset"` — starts a new cycle |
-| `GradeBarChart` | 1215 | The pyramid. Takes **either** `counts` (in-memory) **or** `endpoint` (fetch). Y-axis ticks at 100/75/50/25%, rounded to integers with duplicates blanked |
-| `ProfileScreen` | 1289 | Logged out → login/signup toggle. Logged in → header + pyramid + Logbook. Also handles the forced password reset |
-| `SettingsScreen` | 1477 | Four options + Log out |
-| `ChangeAvatarForm` | 1502 | FileReader → base64 data URL |
-| `ChangeUsernameForm` | 1563 | |
-| `ChangeNameForm` | 1608 | |
-| `ChangePasswordForm` | 1648 | `requireCurrentPassword` prop is `false` for the forced-reset path |
-| `ManageRolesScreen` | 1759 | Admin tab. **Stages** role picks in `pendingRoles`; Save POSTs only the diff, in parallel. Also per-user Reset password |
-| `GradesScreen` | 2055 | Grades tab (admin-only). `/api/climbs/needs-grade`; dropdown defaults to the bottom of the setter's range; ✓ confirms and drops the row |
-| `ApproveClimbsScreen` | 2160 | Approve tab (mod/setter). `/api/climbs/needs-name-approval` — pending naming-rights proposals from ascent claims; reject drops one proposal, approve sets the climb's display `name` and clears the rest of that climb's queue |
-| `TopBar` | 2041 | Back / title / (Info \| Add) |
-| `ClimbActionBar` | 2078 | **Replaces the tab bar** on a climb detail page: −, attempts, Log ascent, + |
-| `StarRatingInput` | 2119 | Whole row is a drag surface; rating tracks pointer x in 0.5 steps |
-| `LogAscentSheet` | 2190 | Bottom sheet. Requires rating ≥ 0.5 and attempts ≥ 1. Offers the next ascent claim while fewer than 5 are taken |
-| `PlaceholderScreen` | 545 | **Dead code** — nothing renders it |
+| `Leaderboard` | `screens/HomeScreen.jsx` | Home podium. Fetches `/api/users/leaderboard`. Renders 2nd/1st/3rd; omits itself entirely if nobody has ascents |
+| `HomeScreen` | `screens/HomeScreen.jsx` | Wall pyramid + Leaderboard + placeholder activity rows |
+| `ZoomableImageViewer` | `components/ZoomableImageViewer.jsx` | Climb photo. **Pointer Events**: drag, two-finger pinch, wheel zoom. Scale clamped 1–4. Writes `transform` **straight to the DOM node via refs**, never React state — setState per pointermove made pinch/drag glitchy on mobile |
+| `ClimbInfoScreen` | `screens/ClimbInfoScreen.jsx` | Grade-distribution chart + comments. Delete button only on your own ascent-derived comments (seeded ones have no `ascentId`) |
+| `ListScreen` | `screens/ListScreen.jsx` | Three modes in one component: wall list → climbs list (with local search box + pyramid) → `ZoomableImageViewer` |
+| `ArchiveSection` | `screens/ListScreen.jsx` | Inline expander at the bottom of the wall list. Fully controlled from `App()` so it survives unmount |
+| `ArchiveWallScreen` | `screens/ListScreen.jsx` | One wall's archived climbs, flat |
+| `SearchScreen` | `screens/SearchScreen.jsx` | Query + Climbs/Users mode toggle. Climbs filter client-side against in-memory `climbs`; users hit `/api/users/search`. All state lifted to `App()` |
+| `UserProfileScreen` | `screens/UserProfileScreen.jsx` | Read-only profile: avatar, tappable follower/following counts, Follow/Unfollow, grade pyramid |
+| `FollowListScreen` | `screens/FollowListScreen.jsx` | Followers or following list; rows push another profile |
+| `ClimbsFilterForm` | `screens/ClimbsFilterForm.jsx` | Sort by (grade/name/setter, asc/desc) and show/hide reset vs. backfill are wired to `ListScreen`'s climb list via state lifted to `App()`; grade-range and setter fields are still placeholders |
+| `NewClimbForm` | `screens/NewClimbForm.jsx` | `+` on a wall's Climbs page. Fixed `wallId`. Always saves as **backfill**; the "Backfill" checkbox only chooses the *date* (today/reset date vs. a picked past date) |
+| `NewWallForm` | `screens/NewWallForm.jsx` | `+` on the Walls root. Wall dropdown, always saves `setType: "reset"` — starts a new cycle |
+| `GradeBarChart` | `components/GradeBarChart.jsx` | The pyramid. Takes **either** `counts` (in-memory) **or** `endpoint` (fetch). Y-axis ticks at 100/75/50/25%, rounded to integers with duplicates blanked |
+| `ProfileScreen` | `screens/ProfileScreen.jsx` | Logged out → login/signup toggle. Logged in → header + pyramid + Logbook. Also handles the forced password reset |
+| `SettingsScreen` | `screens/SettingsScreen.jsx` | Four options + Log out |
+| `ChangeAvatarForm` | `screens/SettingsScreen.jsx` | FileReader → base64 data URL |
+| `ChangeUsernameForm` | `screens/SettingsScreen.jsx` | |
+| `ChangeNameForm` | `screens/SettingsScreen.jsx` | |
+| `ChangePasswordForm` | `screens/SettingsScreen.jsx` | `requireCurrentPassword` prop is `false` for the forced-reset path |
+| `ManageRolesScreen` | `screens/ManageRolesScreen.jsx` | Admin tab. **Stages** role picks in `pendingRoles`; Save POSTs only the diff, in parallel. Also per-user Reset password |
+| `GradesScreen` | `screens/GradesScreen.jsx` | Grades tab (admin-only). `/api/climbs/needs-grade`; dropdown defaults to the bottom of the setter's range; ✓ confirms and drops the row |
+| `ApproveClimbsScreen` | `screens/ApproveClimbsScreen.jsx` | Approve tab (mod/setter). `/api/climbs/needs-name-approval` — pending naming-rights proposals from ascent claims; reject drops one proposal, approve sets the climb's display `name` and clears the rest of that climb's queue |
+| `TopBar` | `components/TopBar.jsx` | Back / title / (Info \| Add) |
+| `ClimbActionBar` | `components/ClimbActionBar.jsx` | **Replaces the tab bar** on a climb detail page: −, attempts, Log ascent, + |
+| `StarRatingInput` | `components/StarRatingInput.jsx` | Whole row is a drag surface; rating tracks pointer x in 0.5 steps |
+| `StarRatingDisplay` | `components/StarRatingDisplay.jsx` | Read-only star row (list rows, comments) — split out of `StarRatingInput` during §14.16 since it has no drag/keyboard logic |
+| `LogAscentSheet` | `components/LogAscentSheet.jsx` | Bottom sheet. Requires rating ≥ 0.5 and attempts ≥ 1. Offers the next ascent claim while fewer than 5 are taken |
+| `Async` | `components/Async.jsx` | Loading/error/retry wrapper around `useFetch` results (§14.9) |
+| `climbTitleNode` | `components/ClimbGradeLabel.jsx` | Not a component — a helper that composes a climb's title + grade label, used by three screens |
+
+`PlaceholderScreen` (dead code — nothing rendered it) was deleted during §14.16
+rather than moved; see that section.
+
+`src/lib/` also holds non-component logic split out at the same time:
+`lib/storage.js` (`loadFromStorage`/`saveToStorage`/`STORAGE_KEYS`),
+`lib/fetch.js` (`useFetch`/`apiSend`/`clearApiCache`, §14.9),
+`lib/roles.js` (`roleOf`), `lib/climbs.js` (`climbGradeSortValue`,
+`matchesClimbQuery`, `sortClimbs`, plus the grade-bucket helpers that operate
+on a climb shape — see §7.4 for the distinction from `shared/grades.js`).
 
 ### 7.3 `App()` — the navigation state machine
 
@@ -493,7 +515,7 @@ climbs, currentUser
 | Value | Meaning |
 |---|---|
 | `visibleTabs` | `TABS` + Approve (mod/setter) + Admin (admin) |
-| `topBarTitle` / `showBack` / `handleBack` | One if/else-if ladder, ~line 2913 — **the single place to add a new drilled-in screen's title and back behavior** |
+| `topBarTitle` / `showBack` / `handleBack` | One if/else-if ladder, `src/App.jsx` ~line 627 — **the single place to add a new drilled-in screen's title and back behavior** |
 | `isClimbDetail` | Swaps the tab bar for `ClimbActionBar` and mounts `LogAscentSheet` |
 | `isWallsRoot` / `isClimbsList` | Where `+` appears |
 | `showAddButton` | `(isWallsRoot \|\| isClimbsList) && (isModerator \|\| isSetter)` |
@@ -503,7 +525,7 @@ climbs, currentUser
 
 | Handler | Notes |
 |---|---|
-| `fetchClimbs()` | `GET /api/climbs` → `climbs`. Re-called after logging an ascent or deleting a comment so the change shows immediately |
+| `climbsFetch` (`useFetch("/api/climbs")`) | → `climbs`. `.retry()` called after logging an ascent or deleting a comment so the change shows immediately |
 | `callAuthApi(endpoint, creds)` | Shared by signup/login; sets `currentUser` |
 | `callSettingsApi(path, body)` | Shared by all four settings forms; replaces `currentUser`, pops back to the Settings list |
 | `handleTabPress(tabId)` | **Re-tapping the active tab pops to its root** — Walls resets the whole drill-down, Profile exits Settings, Search clears the stack |
@@ -520,10 +542,15 @@ Used to be duplicated in both `App.jsx` and `worker.js`, with nothing tying
 the two implementations together — fixed by §14.19. `shared/grades.js` is
 now the single source for `GRADE_OPTIONS`, `GRADE_BUCKETS`, `gradeToBucket`,
 `bucketCounts`, `climbBucketGrade`, `climbDisplayGrade`, `composeSetterGrade`,
-and `parseSetterGrade`; both `App.jsx` and `worker.js` import it (`worker.js`
-re-exports `gradeToBucket`/`climbBucketGrade` so existing test imports don't
-change). **When editing grade logic, edit `shared/grades.js` — don't
-reintroduce a client- or server-local copy.**
+and `parseSetterGrade`; `worker.js` imports it directly (re-exporting
+`gradeToBucket`/`climbBucketGrade` so existing test imports don't change), and
+on the frontend it's imported directly by whichever screen/component needs it
+(`GradeBarChart`, `LogAscentSheet`, `ClimbGradeLabel`, `NewClimbForm`,
+`NewWallForm`, `ClimbsFilterForm`, `GradesScreen`, `SearchScreen`,
+`ListScreen`) plus `lib/climbs.js` — there's no single frontend re-export
+point since §14.16's split, each file imports straight from
+`shared/grades.js`. **When editing grade logic, edit `shared/grades.js` —
+don't reintroduce a client- or server-local copy.**
 
 `composeSetterGrade(bottom, top)` produces `"V6"` when equal, else `"V2-4"`
 (top loses its `V`); `parseSetterGrade` is its inverse, returning `null` for
@@ -531,8 +558,8 @@ anything malformed. Everything that parses a range assumes this exact shape.
 
 ### 7.5 Styling
 
-- **Inline styles only**, one `styles` object at the bottom of `App.jsx`
-  (~line 3048). No CSS framework.
+- **Inline styles only**, one `styles` object in `src/styles.js` (extracted
+  from `App.jsx` during §14.16). No CSS framework.
 - **All colors are CSS custom properties** defined once in `src/index.css`
   (`--color-bg`, `--color-surface-0…7`, `--color-text-*`, `--color-accent`,
   `--color-danger`, `--color-star`). **Change a color there, not in App.jsx.**
@@ -582,12 +609,13 @@ covers brute-force/spam, not weak passwords.
 |---|---|---|
 | `server/worker.test.js` | 217 | Mocks `fs/promises` with an in-memory store; drives `app` through supertest. Covers every route, every middleware, every pure helper |
 | `shared/grades.test.js` | 17 | Plain node env — pure functions, no DOM. Every export of `shared/grades.js`, including the `composeSetterGrade`/`parseSetterGrade` round-trip |
-| `src/test/pure.test.js` | 17 | Plain node env — `roleOf`, `climbGradeSortValue`, `matchesClimbQuery`, `sortClimbs` from `App.jsx` |
+| `src/test/pure.test.js` | 17 | Plain node env — `roleOf` (`lib/roles.js`), `climbGradeSortValue`/`matchesClimbQuery`/`sortClimbs` (`lib/climbs.js`) |
 | `src/test/App.navigation.test.jsx` | 12 | jsdom + `@testing-library/react` — `App()`'s navigation state machine: role-gated tabs, Walls drill-down/back, tab re-tap-to-root, the search stack, `leaderboardReturnTab`, plus the §14.9/§14.8 regression tests |
 
 **Frontend coverage is partial** (§14.11a done — infra, pure functions, the
 navigation state machine; §14.11b — forms, derived state, data-driven and
-pointer-driven components — waits for §14.16's split).
+pointer-driven components — unblocked now that §14.16's split has landed,
+but not yet started).
 
 `server/worker.test.js` sets `process.env.NODE_ENV = "test"` at the top —
 this is what makes importing `worker.js` skip binding a real socket and
@@ -608,14 +636,16 @@ guarded on `typeof Element !== "undefined"`.
 
 ## 10. Common edits — recipes
 
-**Add a wall** → `WALLS` in `src/App.jsx:71`. Then seed climbs for it with
+**Add a wall** → `WALLS` in `src/constants.js`. Then seed climbs for it with
 `setType: "reset"` (via the Walls-root `+`, or by hand in `climbs.json`).
 `currentClimbsOnly` shows *everything* for a wall with no reset on record.
 
-**Add a screen** → write the component in `App.jsx`, render it from the
+**Add a screen** → write the component in its own file under `src/screens/`
+(import shared bits from `src/lib/`/`src/constants.js`/`src/styles.js`, never
+from `App.jsx` — see §7), import it into `App.jsx`, render it from the
 `content` useMemo switch, add a branch to the `topBarTitle`/`showBack` ladder
-(~2913), and add its state to `App()` + the useMemo dep array. Lift any state
-that should survive unmounting.
+(`src/App.jsx` ~line 627), and add its state to `App()` + the useMemo dep
+array. Lift any state that should survive unmounting.
 
 **Add an API route** → `server/worker.js` only, **above** the `express.static`
 fallback. Pick middleware from §5.1. Add tests to `worker.test.js`.
@@ -674,8 +704,8 @@ or rejects it on the Approve tab. Approving sets `climb.name` only —
 
 | Thing | Where the stub is |
 |---|---|
-| Logbook screen | `handleOpenLogbook` is `() => {}` (App.jsx:2486); button renders |
-| Climb filters — grade range & setter | `ClimbsFilterForm` (801) — sort/reset/backfill are wired up; grade-range and setter fields still render but don't filter |
+| Logbook screen | `handleOpenLogbook` is `() => {}` (`src/App.jsx`); button renders |
+| Climb filters — grade range & setter | `ClimbsFilterForm` (`src/screens/ClimbsFilterForm.jsx`) — sort/reset/backfill are wired up; grade-range and setter fields still render but don't filter |
 | Recent Activity feed | `RECENT_ACTIVITY_PLACEHOLDERS` — five dead rows on Home |
 | Wall management UI | No create/rename/delete wall; `WALLS` is hardcoded |
 | Explicit archive tool | `archived` field reserved for it |
@@ -981,10 +1011,11 @@ failure modes that take it down until someone notices.
 
 ### 13.8 Code quality — P2
 
-- [x] **P2 ✅ `src/App.jsx` is 3,943 lines** → **DECIDED: Option A — split by screen, §14.16.** holding 31 components, all styles,
-  and all navigation. Splitting by screen into `src/screens/` with a shared
-  `styles.js` would not require adding a router.
-- [~] **P2 ✅ The `styles` object is ~900 lines** → **PARTLY: §14.16 extracts it to `src/styles.js`; the pseudo-selector limitation is only removed by CSS Modules (§14.10 Option B, deferred).** of inline style objects — the
+- [x] **P2 ✅ `src/App.jsx` is 3,943 lines** → **DONE: Option A — split by screen, §14.16.** held 31 components, all styles,
+  and all navigation. Now split into `src/screens/`, `src/components/`,
+  `src/lib/`, `src/constants.js`, and a shared `src/styles.js`; no router
+  added — `App.jsx` is 761 lines, App() only.
+- [~] **P2 ✅ The `styles` object is ~900 lines** → **PARTLY: §14.16 extracted it to `src/styles.js` (done, 2026-08-10); the pseudo-selector limitation is only removed by CSS Modules (§14.10 Option B, deferred).** of inline style objects — the
   root cause of the missing hover/focus/media-query capabilities above. CSS
   modules or plain CSS with the existing custom properties would fix all three
   at once.
@@ -1072,13 +1103,13 @@ implement 13.2-a+b using Option B."*
 | 13.3-c Client trusts localStorage | P1 | ✅ **DONE 2026-08-10** — `GET /api/me` called on mount, verified in a real browser. See §14.8. ⚠️ Mid-session expiry still unhandled — tracked as a separate open item |
 | 13.6-a/b Loading & error states | P1 | ✅ **DONE 2026-08-10** — Option B: `useFetch` hook + `<Async>` wrapper, `apiSend` for writes, url-keyed `apiCache` cleared on every mutation. Verified against a real browser (§14.9). |
 | 13.7-a/b Keyboard access | P1 | ✅ **DONE 2026-08-10** — global `:focus-visible` ring in `index.css`; `ArchiveSection`'s expander + wall rows are real `<button>`s now. See §14.10 |
-| 13.9-a Zero frontend tests | P1 | 🟡 **IN PROGRESS 2026-08-10** — Option B, component-level coverage. Infra + blockers done, plus priorities 1-2 (pure functions, `App()` state machine) and both named regression tests — 46 new frontend tests. **Priorities 3-6 (forms, derived state, data-driven/pointer-driven screens) deliberately wait for §14.16's split**, per this item's own ordering note. **Unblocks §14.10 Option B (CSS Modules)** once fully done. See §14.11 |
+| 13.9-a Zero frontend tests | P1 | 🟡 **IN PROGRESS 2026-08-10** — Option B, component-level coverage. Infra + blockers done, plus priorities 1-2 (pure functions, `App()` state machine) and both named regression tests — 46 new frontend tests. **Priorities 3-6 (forms, derived state, data-driven/pointer-driven screens) were deliberately held for §14.16's split, per this item's own ordering note — the split is now done, so they're unblocked but not yet started.** **Unblocks §14.10 Option B (CSS Modules)** once fully done. See §14.11 |
 | 13.2-f/g Error handler & health check | P1 | ⏸️ **DEFERRED: Option C** (Derrick, 2026-08-10) — build after §14.3 lands. **Stopgap (`NODE_ENV=production` in the systemd unit) DONE 2026-08-10** — see §14.12. Error handler + health check itself still open |
 | 13.7-c/d/e/f A11y cluster | P2 | ✅ **DONE 2026-08-10** — Option C, full closure: 6 icon-only buttons labelled, `role="alert"`/`role="status"` on form messages, tab-order leak fixed, `LogAscentSheet` is a real trapped/labelled dialog with focus restore, `StarRatingInput` is keyboard-operable (`role="slider"`, arrow/Home/End). See §14.13 |
 | 13.9-b CI | P2 | ✅ **DONE 2026-08-10** — `.github/workflows/ci.yml` (test + build). Option A, no linter. See §14.14 |
 | 13.9-c Linter | P2 | ❌ **Not being built** (Derrick, 2026-08-10) — considered and declined as part of §14.14. Stays open in §13.9 |
 | 13.1-c/d/e Security hardening | P2 | ✅ **DONE 2026-08-10** — helmet (CSP deferred), CORS defaults to same-origin only, timing-safe token compare. See §14.15 |
-| 13.8-a/b Split `App.jsx` | P2 | ✅ **DECIDED: Option A — split by screen, shared `styles.js`** (Derrick, 2026-08-10) — not yet started. **Unblocks a 4-item chain.** See §14.16 |
+| 13.8-a/b Split `App.jsx` | P2 | ✅ **DONE 2026-08-10** — Option A: split by screen, shared `styles.js`. **Unblocks a 4-item chain.** See §14.16 |
 | 13.3-d/e/f/g Climb validation | P2 | ✅ **DONE 2026-08-10** — setDate, setterGrade, grade, setter existence all validated; grade lookup now case-insensitive. See §14.17 |
 | 13.4-h/i Debounce & refetch | P2 | ✅ **DONE 2026-08-10** — Option A: 300ms debounce on the user search, `useFetch`'s `apiCache` fixes refetch-on-mount for `GradeBarChart`/`Leaderboard` for free. See §14.18 |
 | 13.8-c/f Shared grades + dev port | P2 | ✅ **DONE 2026-08-10** — `shared/grades.js` extracted, both sides import it; `vite.config.js` reads `PORT` via `loadEnv`. See §14.19 |
@@ -2173,8 +2204,10 @@ component-level coverage). Build §14.11, then revisit this.
 > already tolerates a missing body per §14.9's design; supports a
 > `{ networkError: true }` route for the 401-vs-network-error test).
 >
-> **§14.11b — not started.** Priorities 3-6 (forms, derived state,
-> data-driven screens, pointer-driven components) come after §14.16.
+> **§14.11b — not started.** §14.16's split is done, so the blocker is
+> cleared; priorities 3-6 (forms, derived state, data-driven screens,
+> pointer-driven components) can now proceed against the new per-file
+> import paths without being rewritten twice.
 
 Backlog ref: §13.9 item 1. All 168 existing tests cover the server;
 `src/App.jsx` (3,943 lines, 31 components) has none.
@@ -2608,12 +2641,36 @@ but don't record the item as fully closed until the migration lands.
 
 ---
 
-### 14.16 — Split `App.jsx`  `P2`  ✅ decided
+### 14.16 — Split `App.jsx`  `P2`  ✅ done
 
 > ## ✅ DECISION: build **Option A — split by screen, one shared `styles.js`**
 > Chosen by Derrick, 2026-08-10. Option B (split + CSS Modules in one pass) and
 > Option C (leave it) are recorded as **rejected**. Option A is explicitly a
 > **staging post**, not the end state — CSS Modules follows later via §14.10.
+>
+> **DONE 2026-08-10.** Landed as one commit rather than per-screen (rule 3
+> below was written when this was expected to be riskier than it turned out
+> to be — §14.11a's state-machine tests already covered the navigation core,
+> and the move was verified end-to-end: `npm test` — all 263 tests, including
+> the pre-existing 168 server tests — and `npm run build` both pass against
+> the split tree before committing). Structure matches the proposed layout
+> below exactly, with two naming deviations: the grade helpers
+> (`bucketGradeCounts`, `climbBucketGrade`, `climbDisplayGrade`,
+> `composeSetterGrade`) landed in `lib/climbs.js` rather than a separate
+> `lib/grades.js` (they're climb-shape helpers, not the `GRADE_OPTIONS`/
+> `GRADE_BUCKETS` constants, which already lived in `shared/grades.js` since
+> §14.19 and weren't touched by this split), and `roleOf` got its own
+> `lib/roles.js`. `lib/fetch.js` holds `useFetch`/`apiSend`/`clearApiCache`
+> (§14.9). Dead code deleted per rule 4: `PlaceholderScreen` and the stale
+> root-level `App.jsx`. `src/App.jsx` is now 761 lines (App() only); the full
+> split totals 4,520 lines across `App.jsx` + `styles.js` + `constants.js` +
+> `lib/` (4 files) + `components/` (9 files) + `screens/` (14 files) — the
+> line-count growth over the original 4,442-line file is import/export
+> boilerplate, not new logic. `src/test/App.navigation.test.jsx` and
+> `src/test/pure.test.js` updated for the new import paths
+> (`clearApiCache` from `lib/fetch.js`; `roleOf` from `lib/roles.js`;
+> `climbGradeSortValue`/`matchesClimbQuery`/`sortClimbs` from `lib/climbs.js`).
+> **Unblocks §14.11b, §14.10 Option B, and §14.14** (see the chain below).
 
 Backlog refs: §13.8 items 1 and 2.
 
