@@ -6,6 +6,13 @@ import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
+import { gradeToBucket, bucketCounts, climbBucketGrade } from "../shared/grades.js";
+
+// Re-exported so existing call sites (and worker.test.js's imports) don't
+// need to change — see shared/grades.js for the actual implementations,
+// shared with src/App.jsx so client and server can never drift apart on
+// grade bucketing/parsing (§14.19).
+export { gradeToBucket, climbBucketGrade };
 
 // ---------------------------------------------------------------------------
 // The actual Express API, plus static-serving the built frontend in
@@ -1268,33 +1275,6 @@ app.delete("/api/users/:username/ascents/:ascentId/comment", authenticate, requi
   res.json({ success: true });
 });
 
-// Buckets a grade string ("V4", "vb", "V11") into one of the Profile
-// page's pyramid categories, or null if it doesn't parse as a V-grade.
-export function gradeToBucket(grade) {
-  if (!grade) return null;
-  const trimmed = grade.trim().toUpperCase();
-  if (trimmed === "VB") return "VB";
-
-  const match = trimmed.match(/^V(\d+)$/);
-  if (!match) return null;
-
-  const n = parseInt(match[1], 10);
-  return n >= 10 ? "V10+" : `V${n}`;
-}
-
-// A climb's grade for pyramid-bucketing purposes: the confirmed grade if
-// it has one, otherwise its setterGrade — bucketed by the top end of a
-// range (e.g. "V2-4" buckets as V4) since that's the harder, more
-// conservative read of the setter's guess.
-export function climbBucketGrade(climb) {
-  if (climb.grade) return climb.grade;
-  const setterGrade = climb.setterGrade || "";
-  const dashIndex = setterGrade.indexOf("-");
-  return dashIndex === -1 ? setterGrade : `V${setterGrade.slice(dashIndex + 1)}`;
-}
-
-const GRADE_BUCKETS = ["VB", ...Array.from({ length: 10 }, (_, n) => `V${n}`), "V10+"];
-
 // The Profile page's grade pyramid: how many logged ascents fall in each
 // V-grade bucket. Prefers the grade the user typed on the ascent itself;
 // falls back to the climb's own bucket grade (looked up by wallId+name,
@@ -1314,18 +1294,14 @@ app.get("/api/users/:username/grade-counts", async (req, res) => {
     bucketGradeByKey[climbKey(climb.wallId, climb.setterName)] = climbBucketGrade(climb);
   });
 
-  const counts = Object.fromEntries(GRADE_BUCKETS.map((g) => [g, 0]));
-
-  for (const ascent of user.ascents || []) {
-    const grade =
+  const grades = (user.ascents || []).map(
+    (ascent) =>
       (ascent.grade && ascent.grade.trim()) ||
       bucketGradeByKey[climbKey(ascent.wallId, ascent.climbName)] ||
-      "";
-    const bucket = gradeToBucket(grade);
-    if (bucket) counts[bucket] += 1;
-  }
+      ""
+  );
 
-  res.json({ counts: GRADE_BUCKETS.map((grade) => ({ grade, count: counts[grade] })) });
+  res.json({ counts: bucketCounts(grades) });
 });
 
 // A single climb's Info page: how many logged ascents put its grade as
@@ -1345,17 +1321,13 @@ app.get("/api/climbs/grade-distribution", async (req, res) => {
 
   const targetKey = climbKey(numericWallId, setterName);
   const users = await readUsers();
-  const counts = Object.fromEntries(GRADE_BUCKETS.map((g) => [g, 0]));
+  const grades = users.flatMap((user) =>
+    (user.ascents || [])
+      .filter((ascent) => climbKey(ascent.wallId, ascent.climbName) === targetKey)
+      .map((ascent) => ascent.grade)
+  );
 
-  for (const user of users) {
-    for (const ascent of user.ascents || []) {
-      if (climbKey(ascent.wallId, ascent.climbName) !== targetKey) continue;
-      const bucket = gradeToBucket(ascent.grade);
-      if (bucket) counts[bucket] += 1;
-    }
-  }
-
-  res.json({ counts: GRADE_BUCKETS.map((grade) => ({ grade, count: counts[grade] })) });
+  res.json({ counts: bucketCounts(grades) });
 });
 
 // The Home page's grade pyramid: how many *currently active* climbs (this
@@ -1364,14 +1336,9 @@ app.get("/api/climbs/grade-distribution", async (req, res) => {
 // climbed what — it's what's actually up on the walls right now.
 app.get("/api/climbs/grade-counts", async (req, res) => {
   const climbs = await readClimbs();
-  const counts = Object.fromEntries(GRADE_BUCKETS.map((g) => [g, 0]));
+  const grades = currentClimbsOnly(climbs).map(climbBucketGrade);
 
-  for (const climb of currentClimbsOnly(climbs)) {
-    const bucket = gradeToBucket(climbBucketGrade(climb));
-    if (bucket) counts[bucket] += 1;
-  }
-
-  res.json({ counts: GRADE_BUCKETS.map((grade) => ({ grade, count: counts[grade] })) });
+  res.json({ counts: bucketCounts(grades) });
 });
 
 // Serves the built frontend (see DIST_DIR above) so this one server/port can

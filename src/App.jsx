@@ -20,6 +20,13 @@ import {
   Check,
   Tag,
 } from "lucide-react";
+import {
+  GRADE_OPTIONS,
+  bucketCounts,
+  climbBucketGrade,
+  climbDisplayGrade,
+  composeSetterGrade,
+} from "../shared/grades.js";
 
 // ---------------------------------------------------------------------------
 // Boilerplate mobile-style web app
@@ -401,7 +408,7 @@ function ListScreen({
         {visibleClimbs.length > 0 && (
           <GradeBarChart
             title={`${visibleClimbs.length} climbs`}
-            counts={bucketGradeCounts(visibleClimbs.map(climbBucketGrade))}
+            counts={bucketCounts(visibleClimbs.map(climbBucketGrade))}
           />
         )}
         <div style={styles.climbsFilterRow}>
@@ -874,17 +881,6 @@ function ClimbsFilterForm({
   );
 }
 
-// A setter's rough grade guess at set time is a bottom/top pair (e.g.
-// "V2" to "V4") — collapsed into the single string stored as a climb's
-// setterGrade: just the grade itself when bottom and top match ("V6"), or
-// "V2-4"/"V3-4" style when they don't. Mirrored server-side by
-// climbBucketGrade in server/worker.js, which parses this same shape back
-// apart for grade-pyramid bucketing.
-function composeSetterGrade(bottom, top) {
-  if (bottom === top) return bottom;
-  return `${bottom}-${top.replace(/^V/, "")}`;
-}
-
 // Opened from the "+" button on a wall's Climbs page (moderators/setters
 // only) — wallId/resetDate are fixed, no wall picker. Every climb saved
 // here is stored server-side as a "backfill" (see POST /api/climbs) — the
@@ -1202,44 +1198,6 @@ function NewWallForm({ walls, onSave }) {
     </div>
   );
 }
-
-const GRADE_BUCKETS = ["VB", ...Array.from({ length: 10 }, (_, n) => `V${n}`), "V10+"];
-
-// Client-side mirror of gradeToBucket in server/index.js, for charts built
-// from climbs already in memory rather than from a counts endpoint.
-function bucketGradeCounts(grades) {
-  const counts = Object.fromEntries(GRADE_BUCKETS.map((g) => [g, 0]));
-
-  for (const raw of grades) {
-    if (!raw) continue;
-    const trimmed = raw.trim().toUpperCase();
-    if (trimmed === "VB") {
-      counts.VB += 1;
-      continue;
-    }
-    const match = trimmed.match(/^V(\d+)$/);
-    if (!match) continue;
-    const n = parseInt(match[1], 10);
-    counts[n >= 10 ? "V10+" : `V${n}`] += 1;
-  }
-
-  return GRADE_BUCKETS.map((grade) => ({ grade, count: counts[grade] }));
-}
-
-// The grade to show/bucket for a climb: its confirmed grade if it has one,
-// otherwise its setterGrade — bucketed by the top end of a range (e.g.
-// "V2-4" reads as V4) since that's the harder, more conservative read of
-// the setter's guess. Mirrors climbBucketGrade in server/worker.js.
-function climbBucketGrade(climb) {
-  if (climb.grade) return climb.grade;
-  const setterGrade = climb.setterGrade || "";
-  const dashIndex = setterGrade.indexOf("-");
-  return dashIndex === -1 ? setterGrade : `V${setterGrade.slice(dashIndex + 1)}`;
-}
-
-// The grade text a climb row shows: confirmed grade if set, otherwise its
-// setterGrade range/guess as-is (e.g. "V2-4", not collapsed to one end).
-const climbDisplayGrade = (climb) => climb.grade || climb.setterGrade;
 
 // Numeric read of a climb's grade for sorting — VB sorts below V0, and a
 // climb with no readable grade at all sorts to the very end regardless of
@@ -2399,7 +2357,6 @@ function StarRatingInput({ value, onChange, invalid }) {
 // Full-width bottom sheet for logging an ascent. Slides up from behind the
 // climb action bar. Attempts (total and this session) are always included
 // in what gets saved, via POST /api/ascents (see App's handleSubmitAscent).
-const GRADE_OPTIONS = ["VB", ...Array.from({ length: 12 }, (_, n) => `V${n}`)];
 
 // Up to 5 ascentClaims live on the climb itself (see server/worker.js), one
 // slot per ordinal. Whoever logs an ascent while a slot is still open gets
