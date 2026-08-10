@@ -616,9 +616,11 @@ or rejects it on the Approve tab. Approving sets `climb.name` only —
    arrays, which store usernames as strings. Follows now actually populate
    those arrays, so this *is* a live bug waiting to happen.
 6. **Base64 images inline in JSON.** Avatars and climb photos are stored as
-   data URLs directly in `users.json` / `climbs.json`. `climbs.json` is already
-   1.1 MB. Body limit is 5 MB. This will not scale — real file storage is the
-   eventual fix.
+   data URLs directly in `users.json` / `climbs.json`. One oversized test photo
+   was stripped and `compression` added (§14.5 step 1), so `climbs.json` is
+   back down to ~86 KB for now — but nothing stops the next real upload from
+   growing it the same way. Body limit is 5 MB. This will not scale — real
+   file storage (§14.5 step 2, not yet built) is the eventual fix.
 7. **`writeUsers` / `writeClimbs` are read-modify-write with no locking.**
    Concurrent writes can lose data.
 8. **Duplicate `setterName`s are rejected across all history**, not just the
@@ -1024,7 +1026,7 @@ implement 13.2-a+b using Option B."*
 | 13.2-c+d Atomic writes & locking | P0 | ✅ **DECIDED: Option D — migrate to SQLite** (Derrick, 2026-08-10) — not yet started |
 | 13.2-e Hot-swap is a no-op | P0 | ✅ **DONE 2026-08-10** — Option (ii), `server/index.js`/`index.test.js` deleted, `worker.js` binds `PORT` directly |
 | 13.1-b Login rate limiting | P0 | ✅ **DECIDED: Option B — hand-rolled dual-key limiter** (Derrick, 2026-08-10) — not yet started. **Depends on §14.3.1(ii).** See §14.4 |
-| 13.4-a/b/c Payload trio | P1 | ✅ **DECIDED: immediate fix + Option B (files on disk)** (Derrick, 2026-08-10) — not yet started. **Do the 30-min part first; zero migration cost only if done now.** See §14.5 |
+| 13.4-a/b/c Payload trio | P1 | ✅ **Step 1 DONE 2026-08-10** — picturetest climb deleted, `compression` added. **Step 2 (Option B, files on disk) not started.** See §14.5 |
 | 13.3-a Ascent validation | P1 | ✅ **DECIDED: Option B — allow repeats, count distinct** (Derrick, 2026-08-10) — not yet started. See §14.6 |
 | 13.3-b Stale `ascentCount` | P1 | ✅ **DECIDED: Option B — derive on read, drop the stored field** (Derrick, 2026-08-10) — not yet started. **Build together with §14.6.** See §14.7 |
 | 13.3-c Client trusts localStorage | P1 | ✅ **DECIDED: Option A — `GET /api/me` on mount** (Derrick, 2026-08-10) — not yet started. See §14.8. ⚠️ Leaves mid-session expiry unhandled — tracked as a separate open item |
