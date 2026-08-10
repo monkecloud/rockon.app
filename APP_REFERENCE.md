@@ -55,7 +55,7 @@ npm install
 npm run dev:all   # Vite UI (:5173) + Express API (:25100) — normal dev loop
 npm run dev       # UI only
 npm run server    # API only
-npm test          # vitest run — all 197 tests
+npm test          # vitest run — all 202 tests
 npx vitest run server/worker.test.js       # one file
 npx vitest run -t "POST /api/ascents"      # one describe/test by name
 npm run build     # frontend → dist/
@@ -267,6 +267,7 @@ Base: `/api`. All bodies/responses JSON. Auth is the httpOnly `session` cookie
 | POST | `/api/signup` | — | `{username, password, name?}` → `{user}`. 409 if taken (case-insensitive). Sets cookie. Rate-limited per IP — every attempt counts, success included (§14.4) |
 | POST | `/api/login` | — | `{username, password}` → `{user, needsPasswordReset?}`. Empty `passwordHash` ⇒ lets you in with `needsPasswordReset: true`. Compares against a dummy hash when the user doesn't exist so timing doesn't leak which usernames are registered. Rate-limited per IP+username, cleared on success (§14.4) |
 | POST | `/api/logout` | session | Clears the token server-side **and** the cookie |
+| GET | `/api/me` | session | `{user}` — "who am I?", called by the client on mount to verify the cached session against the cookie (§14.8) |
 
 ### 5.3 Own account (`requireSelf`)
 
@@ -575,11 +576,11 @@ covers brute-force/spam, not weak passwords.
 
 ## 9. Tests
 
-`npm test` — vitest, 197 tests.
+`npm test` — vitest, 202 tests.
 
 | File | Tests | Approach |
 |---|---|---|
-| `server/worker.test.js` | 197 | Mocks `fs/promises` with an in-memory store; drives `app` through supertest. Covers every route, every middleware, every pure helper |
+| `server/worker.test.js` | 202 | Mocks `fs/promises` with an in-memory store; drives `app` through supertest. Covers every route, every middleware, every pure helper |
 
 **No frontend tests.** `src/App.jsx` is untested (tracked in §14.11).
 
@@ -1053,7 +1054,7 @@ implement 13.2-a+b using Option B."*
 | 13.4-a/b/c Payload trio | P1 | ✅ **Step 1 DONE 2026-08-10** — picturetest climb deleted, `compression` added. **Step 2 (Option B, files on disk) not started.** See §14.5 |
 | 13.3-a Ascent validation | P1 | ✅ **DONE 2026-08-10** — validate-then-mutate, `isLoggable`, repeats allowed but counted distinct across all 5 call sites. See §14.6 |
 | 13.3-b Stale `ascentCount` | P1 | ✅ **DONE 2026-08-10** — dropped the stored field entirely, derived on read via `computeAscentCount`+`currentClimbKeys`. See §14.7 |
-| 13.3-c Client trusts localStorage | P1 | ✅ **DECIDED: Option A — `GET /api/me` on mount** (Derrick, 2026-08-10) — not yet started. See §14.8. ⚠️ Leaves mid-session expiry unhandled — tracked as a separate open item |
+| 13.3-c Client trusts localStorage | P1 | ✅ **DONE 2026-08-10** — `GET /api/me` called on mount, verified in a real browser. See §14.8. ⚠️ Mid-session expiry still unhandled — tracked as a separate open item |
 | 13.6-a/b Loading & error states | P1 | ✅ **DECIDED: Option B — `useFetch` hook + `<Async>` wrapper** (Derrick, 2026-08-10) — not yet started. See §14.9 |
 | 13.7-a/b Keyboard access | P1 | ✅ **DECIDED: Option A — global `:focus-visible` rule + fix the `<div onClick>`s** (Derrick, 2026-08-10) — not yet started. See §14.10. ⚠️ Closes 2 of 9 a11y items only |
 | 13.9-a Zero frontend tests | P1 | ✅ **DECIDED: Option B — component-level coverage** (Derrick, 2026-08-10) — not yet started. **Unblocks §14.10 Option B (CSS Modules).** See §14.11 |
