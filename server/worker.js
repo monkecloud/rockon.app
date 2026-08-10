@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import compression from "compression";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -105,6 +106,11 @@ export const app = express();
 // falls back to whether *this* connection is actually TLS (it never is;
 // this server only ever speaks plain HTTP, TLS is the proxy's job).
 app.set("trust proxy", "loopback");
+// gzips every response over Express's default 1kb threshold — GET /api/climbs
+// is by far the biggest payload in the app (it's the whole current climb
+// list, re-fetched after every ascent/comment mutation), so this matters most
+// there.
+app.use(compression());
 // credentials: true + reflecting the request origin (rather than "*") is
 // required for the session cookie to travel on cross-origin requests — e.g.
 // if the client ever isn't served through the Vite dev proxy that makes
