@@ -1055,7 +1055,7 @@ implement 13.2-a+b using Option B."*
 | 13.3-a Ascent validation | P1 | ✅ **DONE 2026-08-10** — validate-then-mutate, `isLoggable`, repeats allowed but counted distinct across all 5 call sites. See §14.6 |
 | 13.3-b Stale `ascentCount` | P1 | ✅ **DONE 2026-08-10** — dropped the stored field entirely, derived on read via `computeAscentCount`+`currentClimbKeys`. See §14.7 |
 | 13.3-c Client trusts localStorage | P1 | ✅ **DONE 2026-08-10** — `GET /api/me` called on mount, verified in a real browser. See §14.8. ⚠️ Mid-session expiry still unhandled — tracked as a separate open item |
-| 13.6-a/b Loading & error states | P1 | ✅ **DECIDED: Option B — `useFetch` hook + `<Async>` wrapper** (Derrick, 2026-08-10) — not yet started. See §14.9 |
+| 13.6-a/b Loading & error states | P1 | ✅ **DONE 2026-08-10** — Option B: `useFetch` hook + `<Async>` wrapper, `apiSend` for writes, url-keyed `apiCache` cleared on every mutation. Verified against a real browser (§14.9). |
 | 13.7-a/b Keyboard access | P1 | ✅ **DECIDED: Option A — global `:focus-visible` rule + fix the `<div onClick>`s** (Derrick, 2026-08-10) — not yet started. See §14.10. ⚠️ Closes 2 of 9 a11y items only |
 | 13.9-a Zero frontend tests | P1 | ✅ **DECIDED: Option B — component-level coverage** (Derrick, 2026-08-10) — not yet started. **Unblocks §14.10 Option B (CSS Modules).** See §14.11 |
 | 13.2-f/g Error handler & health check | P1 | ⏸️ **DEFERRED: Option C** (Derrick, 2026-08-10) — build after §14.3 lands. **Stopgap (`NODE_ENV=production` in the systemd unit) DONE 2026-08-10** — see §14.12. Error handler + health check itself still open |
@@ -1065,7 +1065,7 @@ implement 13.2-a+b using Option B."*
 | 13.1-c/d/e Security hardening | P2 | ✅ **DONE 2026-08-10** — helmet (CSP deferred), CORS defaults to same-origin only, timing-safe token compare. See §14.15 |
 | 13.8-a/b Split `App.jsx` | P2 | ✅ **DECIDED: Option A — split by screen, shared `styles.js`** (Derrick, 2026-08-10) — not yet started. **Unblocks a 4-item chain.** See §14.16 |
 | 13.3-d/e/f/g Climb validation | P2 | ✅ **DONE 2026-08-10** — setDate, setterGrade, grade, setter existence all validated; grade lookup now case-insensitive. See §14.17 |
-| 13.4-h/i Debounce & refetch | P2 | ✅ **DECIDED: Option A** (Derrick, 2026-08-10) — not yet started. **Build inside §14.9's `useFetch`.** See §14.18 |
+| 13.4-h/i Debounce & refetch | P2 | ✅ **DONE 2026-08-10** — Option A: 300ms debounce on the user search, `useFetch`'s `apiCache` fixes refetch-on-mount for `GradeBarChart`/`Leaderboard` for free. See §14.18 |
 | 13.8-c/f Shared grades + dev port | P2 | ✅ **DONE 2026-08-10** — `shared/grades.js` extracted, both sides import it; `vite.config.js` reads `PORT` via `loadEnv`. See §14.19 |
 | 13.8-e `WALLS` hardcoded | P2 | ✅ **DECIDED: fold into §14.3 as a `walls` table** (Derrick, 2026-08-10) — not a standalone item. See §14.3.2 |
 | 13.5-a/b/c + 13.3-h Data-model cleanups | P2/P3 | ✅ **DECIDED: Option A — fold all four into §14.3** (Derrick, 2026-08-10). See §14.20. ⚠️ `createdAt` is lost for every ascent logged before the migration |
@@ -1890,9 +1890,43 @@ network error does not.**
 
 ### 14.9 — Loading & error states  `P1`  ✅ decided
 
-> ## ✅ DECISION: build **Option B — `useFetch` hook + `<Async>` wrapper**
+> ## ✅ DONE 2026-08-10 — built Option B: `useFetch` + `<Async>` + `apiSend`
 > Chosen by Derrick, 2026-08-10. Option A (per-screen state triples) and
 > Option C (fix the empty-state bug only) are recorded as **rejected**.
+>
+> **What shipped.** `useFetch(url, { skip })` — a `Map`-backed url-keyed cache
+> (`apiCache`), loading/error/retry state, and a `nonce` to force a refetch —
+> now backs every GET in `App.jsx`: `Leaderboard`, `FollowListScreen`,
+> `GradeBarChart` (endpoint mode), `ManageRolesScreen`, `GradesScreen`,
+> `ApproveClimbsScreen`, both setter dropdowns, `/api/archive`, and the
+> top-level climbs fetch in `App()`. `apiSend(url, { method, body,
+> onUnauthorized })` replaced every hand-rolled POST/DELETE `fetch` (signup,
+> login, settings, create climb, follow/unfollow, log ascent, delete
+> comment) and calls `clearApiCache()` on every successful write — see
+> §14.18 part 2. `<Async>` renders a shared loading/error+retry UI for
+> anything not worth a bespoke skeleton.
+>
+> **Step 1 (the actual bug) is fixed**: `App()`'s top-level `climbs` is now
+> `climbsFetch.data?.climbs ?? null` (via `useFetch("/api/climbs")`, not a
+> bespoke `fetchClimbs`), so `climbsByWall` is genuinely `null` until the
+> first fetch resolves — `ListScreen` already had the `null`-vs-`[]` branch
+> from an earlier fix; this closes the one remaining path (`climbsByWall`
+> itself, plus two unguarded reads of it) that could still see a plain `{}`.
+>
+> **§14.8's deferred 401 gap is now closed**: `callSettingsApi` passes
+> `onUnauthorized: () => setCurrentUser(null)` to `apiSend`, so a session
+> that expires/gets reset mid-Settings-edit drops back to the login screen
+> instead of showing a stale logged-in form against a cookie the server no
+> longer honors. (`callAuthApi`/signup/login intentionally do **not** wire
+> `onUnauthorized` — a 401 there means "wrong password," not "your session
+> expired," and would incorrectly no-op against a user who was never logged
+> in.)
+>
+> Verified with the full backend suite (217/217) plus a real-browser
+> Playwright pass: signup, wall→climb browsing (confirming no more stuck
+> "Loading climbs…"), logging an ascent, expanding the Archive tab, the
+> debounced user search, a Settings update, and session persistence across a
+> reload — all through `useFetch`/`apiSend`, no regressions.
 
 Backlog refs: §13.6 items 1 and 2. Also collapses §13.8 "repeated fetch
 boilerplate" and provides the home for §14.8's deferred 401 interceptor.
@@ -2632,9 +2666,21 @@ Confirming a grade with differing case finds the climb.
 
 ### 14.18 — Search debounce & refetch-on-mount  `P2`  ✅ decided
 
-> ## ✅ DECISION: build **Option A**
+> ## ✅ DONE 2026-08-10 — built Option A
 > Chosen by Derrick, 2026-08-10. Option B (HTTP `ETag`/`Cache-Control`) and
 > Option C (defer everything to SQLite) are recorded as **rejected for now** —
+>
+> **Part 1** (debounce): shipped exactly as specified below — a 300ms
+> `setTimeout` wrapping the existing `cancelled`-guarded effect in
+> `SearchScreen`, `onUserResultsChange` still correctly left out of the
+> dependency array.
+>
+> **Part 2** (refetch-on-mount): folded into §14.9's `useFetch` as planned —
+> the url-keyed `apiCache` `Map` means switching Home → Walls → Home no
+> longer re-requests the leaderboard or grade pyramid, and `apiSend` clears
+> the whole cache on every successful mutation (coarse, as decided — logging
+> an ascent refreshes the leaderboard, both grade pyramids, and the grade
+> distribution without enumerating any of them).
 > B is a sensible follow-on *after* §14.3.
 >
 > 🚨 **Build this inside §14.9's `useFetch`, not as a separate change.** §14.9
