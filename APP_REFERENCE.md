@@ -55,7 +55,7 @@ npm install
 npm run dev:all   # Vite UI (:5173) + Express API (:25100) — normal dev loop
 npm run dev       # UI only
 npm run server    # API only
-npm test          # vitest run — all 217 tests
+npm test          # vitest run — all 263 tests (217 server + 46 frontend)
 npx vitest run server/worker.test.js       # one file
 npx vitest run -t "POST /api/ascents"      # one describe/test by name
 npm run build     # frontend → dist/
@@ -576,18 +576,33 @@ covers brute-force/spam, not weak passwords.
 
 ## 9. Tests
 
-`npm test` — vitest, 217 tests.
+`npm test` — vitest, 263 tests.
 
 | File | Tests | Approach |
 |---|---|---|
 | `server/worker.test.js` | 217 | Mocks `fs/promises` with an in-memory store; drives `app` through supertest. Covers every route, every middleware, every pure helper |
+| `shared/grades.test.js` | 17 | Plain node env — pure functions, no DOM. Every export of `shared/grades.js`, including the `composeSetterGrade`/`parseSetterGrade` round-trip |
+| `src/test/pure.test.js` | 17 | Plain node env — `roleOf`, `climbGradeSortValue`, `matchesClimbQuery`, `sortClimbs` from `App.jsx` |
+| `src/test/App.navigation.test.jsx` | 12 | jsdom + `@testing-library/react` — `App()`'s navigation state machine: role-gated tabs, Walls drill-down/back, tab re-tap-to-root, the search stack, `leaderboardReturnTab`, plus the §14.9/§14.8 regression tests |
 
-**No frontend tests.** `src/App.jsx` is untested (tracked in §14.11).
+**Frontend coverage is partial** (§14.11a done — infra, pure functions, the
+navigation state machine; §14.11b — forms, derived state, data-driven and
+pointer-driven components — waits for §14.16's split).
 
 `server/worker.test.js` sets `process.env.NODE_ENV = "test"` at the top —
 this is what makes importing `worker.js` skip binding a real socket and
 touching the real JSON files. (`server/index.js`/`index.test.js`, the old
 primary-process proxy and its 30 tests, were deleted per §14.3.1(ii).)
+
+**Frontend tests run in `jsdom`, server tests run in plain `node`** —
+`vite.config.js`'s `test.environment` defaults to `"node"` (so
+`server/*.test.js` needs nothing special); any file under `src/` that needs
+a DOM opts in itself via a `// @vitest-environment jsdom` comment as its
+first line (vitest 4 dropped `environmentMatchGlobs`, the mechanism an
+earlier draft of this doc assumed). `src/test/setup.js` loads for every
+test file regardless of environment, so its jsdom-only stubs
+(`setPointerCapture`/`releasePointerCapture`, `localStorage`/cleanup) are
+guarded on `typeof Element !== "undefined"`.
 
 ---
 
@@ -1057,7 +1072,7 @@ implement 13.2-a+b using Option B."*
 | 13.3-c Client trusts localStorage | P1 | ✅ **DONE 2026-08-10** — `GET /api/me` called on mount, verified in a real browser. See §14.8. ⚠️ Mid-session expiry still unhandled — tracked as a separate open item |
 | 13.6-a/b Loading & error states | P1 | ✅ **DONE 2026-08-10** — Option B: `useFetch` hook + `<Async>` wrapper, `apiSend` for writes, url-keyed `apiCache` cleared on every mutation. Verified against a real browser (§14.9). |
 | 13.7-a/b Keyboard access | P1 | ✅ **DONE 2026-08-10** — global `:focus-visible` ring in `index.css`; `ArchiveSection`'s expander + wall rows are real `<button>`s now. See §14.10 |
-| 13.9-a Zero frontend tests | P1 | ✅ **DECIDED: Option B — component-level coverage** (Derrick, 2026-08-10) — not yet started. **Unblocks §14.10 Option B (CSS Modules).** See §14.11 |
+| 13.9-a Zero frontend tests | P1 | 🟡 **IN PROGRESS 2026-08-10** — Option B, component-level coverage. Infra + blockers done, plus priorities 1-2 (pure functions, `App()` state machine) and both named regression tests — 46 new frontend tests. **Priorities 3-6 (forms, derived state, data-driven/pointer-driven screens) deliberately wait for §14.16's split**, per this item's own ordering note. **Unblocks §14.10 Option B (CSS Modules)** once fully done. See §14.11 |
 | 13.2-f/g Error handler & health check | P1 | ⏸️ **DEFERRED: Option C** (Derrick, 2026-08-10) — build after §14.3 lands. **Stopgap (`NODE_ENV=production` in the systemd unit) DONE 2026-08-10** — see §14.12. Error handler + health check itself still open |
 | 13.7-c/d/e/f A11y cluster | P2 | ✅ **DONE 2026-08-10** — Option C, full closure: 6 icon-only buttons labelled, `role="alert"`/`role="status"` on form messages, tab-order leak fixed, `LogAscentSheet` is a real trapped/labelled dialog with focus restore, `StarRatingInput` is keyboard-operable (`role="slider"`, arrow/Home/End). See §14.13 |
 | 13.9-b CI | P2 | ✅ **DONE 2026-08-10** — `.github/workflows/ci.yml` (test + build). Option A, no linter. See §14.14 |
@@ -2092,15 +2107,74 @@ component-level coverage). Build §14.11, then revisit this.
 
 ---
 
-### 14.11 — Frontend test coverage  `P1`  ✅ decided
+### 14.11 — Frontend test coverage  `P1`  🟡 in progress (part 1 of 2 done)
 
-> ## ✅ DECISION: build **Option B — component-level tests, broad coverage**
+> ## 🟡 IN PROGRESS 2026-08-10 — building Option B: component-level tests,
+> broad coverage
 > Chosen by Derrick, 2026-08-10. Option A (state machine only) and Option C
 > (Playwright E2E) are recorded as **rejected for now** — C remains sensible
 > *later*, once CI exists (§13.9).
 >
 > 🔗 **This unblocks §14.10 Option B (CSS Modules)**, which touches every
 > component's markup and currently has no safety net.
+>
+> **Split into two sessions deliberately, per this item's own ordering
+> note below**: infra + blockers + priorities 1-2 (§14.11a) landed first,
+> *before* §14.16's split; priorities 3-6 (§14.11b) wait until after it, so
+> tests aren't rewritten twice for the same import-path move.
+>
+> **§14.11a — done.** All three blockers cleared: `jsdom` +
+> `@testing-library/react`/`user-event`/`jest-dom` installed;
+> `vite.config.js`'s `test` block added (`environment: "node"` by default —
+> **`environmentMatchGlobs` doesn't exist in vitest 4**, contrary to this
+> doc's original snippet below, so `src/` test files opt into jsdom
+> individually via a `// @vitest-environment jsdom` comment instead, exactly
+> the fallback this section already named); `src/test/setup.js` stubs
+> `setPointerCapture`/`releasePointerCapture`, guarded on `typeof Element !==
+> "undefined"` since the same setup file also loads for `server/*.test.js`
+> (plain node, no DOM) — `vi.stubGlobal`/`localStorage.clear()` reset
+> between tests too. All 31 components (plus `roleOf`, `matchesClimbQuery`,
+> `sortClimbs`, `climbGradeSortValue`, `climbTitleNode`, `useFetch`,
+> `apiSend`, `clearApiCache`) now `export`ed — mechanical, no behavior
+> change.
+>
+> Priority 1 (pure functions): `shared/grades.test.js` (17 tests — the whole
+> `shared/grades.js` module, since §14.19 already made it independently
+> importable) + `src/test/pure.test.js` (17 tests — `roleOf`,
+> `climbGradeSortValue`, `matchesClimbQuery`, `sortClimbs`). **Writing the
+> `sortClimbs` tests caught a real bug**: `climbGradeSortValue`'s own
+> comment promised a climb with no readable grade "sorts to the very end
+> regardless of ascending/descending," but the `gradeDesc` case just negated
+> the ascending comparator, which put `Infinity` (unreadable-grade's sort
+> value) *first* under descending, not last. Fixed with an explicit
+> Infinity-aware comparator for that branch; the failing assertion became
+> the regression test.
+>
+> Priority 2 (`App()` state machine): `src/test/App.navigation.test.jsx` (12
+> tests) — role-gated tab visibility (member/moderator/admin), Walls
+> drill-down + Back, re-tapping the active Walls tab popping to root,
+> re-tapping the active Search tab popping the stack (not clearing the
+> query — an incorrect assumption in an early draft of this test, corrected
+> against the actual `handleTabPress` code), `leaderboardReturnTab`, and
+> both of this section's own "write these first" regressions (§14.9's
+> zero-climbs empty state, §14.8's 401-vs-network-error distinction).
+>
+> ⚠️ **One non-obvious infra gotcha, worth recording**: `useFetch`'s
+> `apiCache` (§14.9) is a module-level `Map`, so it persists across every
+> `render(<App/>)` within a test file. Without clearing it
+> (`clearApiCache()`, now exported) in `beforeEach`, a later test's mocked
+> response for a URL an earlier test already hit — e.g. *every* test mounts
+> `<App/>` on the Home tab, which fetches `/api/users/leaderboard` whether
+> or not that test cares — gets silently shadowed by the earlier test's
+> stale cached response. Symptom: a test passes in isolation
+> (`vitest run -t "..."`) but fails when the full suite runs. `src/test/mockFetch.js`
+> is the shared route-table fetch mock built for this (defaults every
+> unlisted GET to a harmless empty 200, since every `useFetch` consumer
+> already tolerates a missing body per §14.9's design; supports a
+> `{ networkError: true }` route for the 401-vs-network-error test).
+>
+> **§14.11b — not started.** Priorities 3-6 (forms, derived state,
+> data-driven screens, pointer-driven components) come after §14.16.
 
 Backlog ref: §13.9 item 1. All 168 existing tests cover the server;
 `src/App.jsx` (3,943 lines, 31 components) has none.
