@@ -128,6 +128,129 @@ function saveToStorage(key, value) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Data fetching (§14.9, §14.18). Two helpers, not one: reads go through
+// useFetch/<Async>, writes go through apiSend. Before this, every fetch()
+// call in this file ended in .catch(console.error) — nothing reached the
+// user, so a downed server, dropped wifi, or a 500 all rendered as either a
+// blank screen or (worse) a permanently-"loading" one. See the null-vs-[]
+// note on ListScreen/App() for the specific bug that motivated this: `[]`
+// is not a safe "still loading" sentinel because it's indistinguishable
+// from a successful fetch that returned nothing.
+// ---------------------------------------------------------------------------
+
+// A tiny URL-keyed cache so switching tabs and back doesn't re-request data
+// that's already in flight or already loaded — e.g. Home -> Walls -> Home
+// used to re-fetch the leaderboard and grade pyramid every time, because
+// the `content` useMemo in App() unmounts the old screen. Invalidation is
+// deliberately coarse: apiSend() below clears the whole cache after any
+// successful mutation, rather than tracking which keys a given write
+// affects. A precise scheme is where stale-data bugs breed, and at this
+// app's scale the extra refetch after a write costs nothing.
+const apiCache = new Map(); // url -> { data }
+
+function clearApiCache() {
+  apiCache.clear();
+}
+
+// Fetches `url` (GET) on mount and whenever `url`/`skip` changes, exposing
+// { data, loading, error, retry }. `data` is null until the first
+// successful response — that's the "unknown, not yet fetched" state; once a
+// fetch resolves, `data` becomes whatever the server returned (which may
+// itself be an empty list — a *known* empty result, not a loading one).
+// Never conflate the two, in this hook or in what reads it.
+function useFetch(url, { skip = false } = {}) {
+  const cached = apiCache.get(url);
+  const [state, setState] = useState(() =>
+    cached ? { data: cached.data, loading: false, error: null } : { data: null, loading: !skip, error: null }
+  );
+  const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    if (skip) return;
+    // A cache hit on a later mount (e.g. re-visiting a tab) skips the
+    // network round-trip entirely rather than showing a loading flash for
+    // data already on hand.
+    if (nonce === 0 && apiCache.has(url)) {
+      setState({ data: apiCache.get(url).data, loading: false, error: null });
+      return;
+    }
+
+    let cancelled = false;
+    setState((s) => ({ ...s, loading: true, error: null }));
+    fetch(url)
+      .then((res) =>
+        res.ok ? res.json() : res.json().then((d) => Promise.reject(d.error || `HTTP ${res.status}`))
+      )
+      .then((data) => {
+        apiCache.set(url, { data });
+        if (!cancelled) setState({ data, loading: false, error: null });
+      })
+      .catch((err) => {
+        if (!cancelled) setState({ data: null, loading: false, error: String(err) });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `skip` and
+    // `nonce` are read above but only `url` should re-trigger the base
+    // fetch; `nonce` incrementing (via retry()) is what re-runs it on
+    // demand, and including `skip` would refetch on every skip toggle.
+  }, [url]);
+
+  return { ...state, retry: () => setNonce((n) => n + 1) };
+}
+
+// Renders one of three branches consistently, including a retry button on
+// error — the single most useful thing this adds over the status quo. A
+// phone that briefly drops wifi mid-session used to need a full app reload
+// to recover from any failed fetch; now it needs one tap.
+function Async({ loading, error, retry, loadingFallback, children }) {
+  if (loading) return loadingFallback ?? <p style={styles.placeholderText}>Loading…</p>;
+  if (error) {
+    return (
+      <div style={styles.asyncError}>
+        <p style={styles.formError}>{error}</p>
+        <button type="button" style={styles.retryButton} onClick={retry}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+  return children;
+}
+
+// Every write (POST/DELETE) in the app goes through this instead of a
+// bespoke try/fetch/catch — unifies what callAuthApi/callSettingsApi were
+// already informally doing. Returns { success, data, error } and, on
+// success, clears the read cache above so the next screen that needs
+// affected data refetches it (see the coarse-invalidation note).
+async function apiSend(url, { method = "POST", body, onUnauthorized } = {}) {
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      // A 401 here means the session expired *during* use (not at mount —
+      // see GET /api/me in App() for that case, §14.8) — the one gap that
+      // item's own writeup flagged as still open. Closing it is one line
+      // now that every write funnels through here.
+      if (res.status === 401 && onUnauthorized) onUnauthorized();
+      return { success: false, error: data.error || "Something went wrong." };
+    }
+
+    clearApiCache();
+    return { success: true, data };
+  } catch (err) {
+    console.error(`Failed to reach ${url}:`, err);
+    return { success: false, error: "Couldn't reach the server. Is it running?" };
+  }
+}
+
 const RECENT_ACTIVITY_PLACEHOLDERS = [1, 2, 3, 4, 5];
 
 // Podium block heights, tallest in the middle (1st place) — left-to-right
@@ -138,17 +261,26 @@ const PODIUM_HEIGHTS = { 1: 64, 2: 44, 3: 30 };
 // descending, zero-ascent users excluded server-side). onSelectUser opens
 // that user's profile the same way tapping a Search result does.
 function Leaderboard({ onSelectUser }) {
-  const [users, setUsers] = useState(null);
-
-  useEffect(() => {
-    fetch("/api/users/leaderboard")
-      .then((res) => res.json())
-      .then((data) => setUsers(data.users || []))
-      .catch((err) => console.error("Failed to load /api/users/leaderboard:", err));
-  }, []);
+  const { data, loading, error, retry } = useFetch("/api/users/leaderboard");
+  const users = data?.users;
 
   // Nothing to show yet (still loading) or nobody's logged an ascent yet —
-  // no placeholder podium, just omit the section entirely.
+  // no placeholder podium, just omit the section entirely, same as before
+  // §14.9. A genuine fetch failure is the one case now surfaced (with
+  // retry) rather than silently vanishing forever.
+  if (loading) return null;
+  if (error) {
+    return (
+      <div style={styles.gradeChartWrapper}>
+        <div style={styles.asyncError}>
+          <p style={styles.formError}>{error}</p>
+          <button type="button" style={styles.retryButton} onClick={retry}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (!users || users.length === 0) return null;
 
   // Display order is 2nd/1st/3rd; skip a slot entirely if fewer than 3
@@ -384,10 +516,14 @@ function ListScreen({
   selectedItem,
   selectedSubItem,
   climbsByWall,
+  climbsError,
+  onRetryClimbs,
   onSelectItem,
   onSelectSubItem,
   archiveExpanded,
   archiveWalls,
+  archiveError,
+  onRetryArchive,
   onToggleArchive,
   onSelectArchiveWall,
   onOpenFilter,
@@ -398,7 +534,7 @@ function ListScreen({
   const [climbSearch, setClimbSearch] = useState("");
 
   if (selectedItem && selectedSubItem) {
-    const climb = (climbsByWall[selectedItem.id] || []).find((c) => c.setterName === selectedSubItem);
+    const climb = (climbsByWall?.[selectedItem.id] || []).find((c) => c.setterName === selectedSubItem);
     const title = climb ? climbTitleNode(climb) : "Loading…";
     const subtitle = climb ? `Set by ${climb.setter}` : undefined;
 
@@ -406,8 +542,14 @@ function ListScreen({
   }
 
   if (selectedItem) {
-    const climbs = climbsByWall[selectedItem.id] || [];
-    const visibleClimbs = climbs.filter((climb) =>
+    // climbsByWall is null until GET /api/climbs resolves at all (see
+    // App()); climbsByWall[id] being undefined vs [] then distinguishes
+    // "this wall genuinely has no current climbs" from "haven't fetched
+    // yet" — conflating the two (both used to read as climbs.length === 0)
+    // made a wall with zero current climbs show "Loading climbs…" forever
+    // (§14.9).
+    const wallClimbs = climbsByWall ? climbsByWall[selectedItem.id] || [] : null;
+    const visibleClimbs = (wallClimbs || []).filter((climb) =>
       climb.setType === "reset"
         ? showResetClimbs
         : climb.setType === "backfill"
@@ -439,11 +581,22 @@ function ListScreen({
             <Filter size={18} />
           </button>
         </div>
-        {climbs.length === 0 ? (
+        {climbsError ? (
+          <div style={styles.asyncError}>
+            <p style={styles.formError}>{climbsError}</p>
+            <button type="button" style={styles.retryButton} onClick={onRetryClimbs}>
+              Retry
+            </button>
+          </div>
+        ) : wallClimbs === null ? (
           <p style={styles.placeholderText}>Loading climbs…</p>
         ) : filteredClimbs.length === 0 ? (
           <p style={styles.placeholderText}>
-            {climbSearch.trim() ? `No climbs match "${climbSearch}".` : "No climbs match your filters."}
+            {climbSearch.trim()
+              ? `No climbs match "${climbSearch}".`
+              : wallClimbs.length === 0
+                ? "No climbs on this wall yet."
+                : "No climbs match your filters."}
           </p>
         ) : (
           <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
@@ -477,7 +630,7 @@ function ListScreen({
           <button key={item.id} style={styles.wallRow} onClick={() => onSelectItem(item)}>
             <div>
               <p style={styles.listTitle}>{item.title}</p>
-              <p style={styles.listMeta}>{(climbsByWall[item.id] || []).length} climbs</p>
+              <p style={styles.listMeta}>{(climbsByWall?.[item.id] || []).length} climbs</p>
             </div>
             <ChevronRight size={18} color="var(--color-text-muted)" />
           </button>
@@ -485,6 +638,8 @@ function ListScreen({
         <ArchiveSection
           expanded={archiveExpanded}
           walls={archiveWalls}
+          error={archiveError}
+          onRetry={onRetryArchive}
           onToggle={onToggleArchive}
           onSelectWall={onSelectArchiveWall}
         />
@@ -507,7 +662,7 @@ const WALL_NAME_BY_ID = Object.fromEntries(WALLS.map((wall) => [wall.id, wall.na
 // survives ListScreen unmounting — e.g. switching tabs away and back, or
 // drilling into a wall/climb and backing out — instead of resetting every
 // time this component remounts.
-function ArchiveSection({ expanded, walls, onToggle, onSelectWall }) {
+function ArchiveSection({ expanded, walls, error, onRetry, onToggle, onSelectWall }) {
   return (
     <>
       <div style={styles.archiveBar} onClick={onToggle}>
@@ -520,7 +675,14 @@ function ArchiveSection({ expanded, walls, onToggle, onSelectWall }) {
       </div>
 
       {expanded &&
-        (walls === null ? (
+        (error ? (
+          <div style={{ ...styles.asyncError, padding: "16px 20px" }}>
+            <p style={styles.formError}>{error}</p>
+            <button type="button" style={styles.retryButton} onClick={onRetry}>
+              Retry
+            </button>
+          </div>
+        ) : walls === null ? (
           <p style={{ ...styles.placeholderText, padding: "16px 20px" }}>Loading…</p>
         ) : walls.length === 0 ? (
           <p style={{ ...styles.placeholderText, padding: "16px 20px" }}>No archived climbs yet.</p>
@@ -615,6 +777,10 @@ function SearchScreen({
     );
   }, [climbs, trimmedQuery]);
 
+  // Debounced (300ms) so typing a full query doesn't fire a request per
+  // keystroke — "cubesnail" was nine requests, eight already stale on
+  // arrival (§14.18 part 1). `cancelled` still guards against an
+  // out-of-order response landing after a newer query has superseded it.
   useEffect(() => {
     if (mode !== "users" || !trimmedQuery) {
       onUserResultsChange([]);
@@ -622,15 +788,18 @@ function SearchScreen({
     }
 
     let cancelled = false;
-    fetch(`/api/users/search?q=${encodeURIComponent(trimmedQuery)}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (!cancelled) onUserResultsChange(data.users || []);
-      })
-      .catch((err) => console.error("Failed to search users:", err));
+    const timer = setTimeout(() => {
+      fetch(`/api/users/search?q=${encodeURIComponent(trimmedQuery)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled) onUserResultsChange(data.users || []);
+        })
+        .catch((err) => console.error("Failed to search users:", err));
+    }, 300);
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [mode, trimmedQuery]);
 
@@ -766,45 +935,28 @@ function UserProfileScreen({ user, currentUser, onFollow, onUnfollow, onViewFoll
 // tappable counts. Same row shape/style as SearchScreen's "Users" results —
 // tapping a row opens that person's own UserProfileScreen in turn.
 function FollowListScreen({ username, type, onSelectUser }) {
-  const [users, setUsers] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setUsers(null);
-    fetch(`/api/users/${encodeURIComponent(username)}/${type}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (!cancelled) setUsers(data.users || []);
-      })
-      .catch((err) => console.error(`Failed to load ${type}:`, err));
-    return () => {
-      cancelled = true;
-    };
-  }, [username, type]);
-
-  if (users === null) return null;
-
-  if (users.length === 0) {
-    return (
-      <div style={styles.screen}>
-        <p style={styles.placeholderText}>No {type} yet.</p>
-      </div>
-    );
-  }
+  const { data, loading, error, retry } = useFetch(`/api/users/${encodeURIComponent(username)}/${type}`);
+  const users = data?.users;
 
   return (
     <div style={styles.screen}>
-      <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
-        {users.map((u) => (
-          <button key={u.username} style={styles.wallRow} onClick={() => onSelectUser(u)}>
-            <div>
-              <p style={styles.listTitle}>{u.username}</p>
-              {u.name && <p style={styles.listMeta}>{u.name}</p>}
-            </div>
-            <ChevronRight size={18} color="var(--color-text-muted)" />
-          </button>
-        ))}
-      </div>
+      <Async loading={loading} error={error} retry={retry}>
+        {users && users.length === 0 ? (
+          <p style={styles.placeholderText}>No {type} yet.</p>
+        ) : (
+          <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
+            {(users || []).map((u) => (
+              <button key={u.username} style={styles.wallRow} onClick={() => onSelectUser(u)}>
+                <div>
+                  <p style={styles.listTitle}>{u.username}</p>
+                  {u.name && <p style={styles.listMeta}>{u.name}</p>}
+                </div>
+                <ChevronRight size={18} color="var(--color-text-muted)" />
+              </button>
+            ))}
+          </div>
+        )}
+      </Async>
     </div>
   );
 }
@@ -901,18 +1053,12 @@ function NewClimbForm({ wallId, resetDate, onSave }) {
   const [gradeBottom, setGradeBottom] = useState("VB");
   const [gradeTop, setGradeTop] = useState("VB");
   const [setter, setSetter] = useState("");
-  const [setters, setSetters] = useState([]);
+  const { data: settersData } = useFetch("/api/users/setters");
+  const setters = settersData?.setters || [];
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [isBackfill, setIsBackfill] = useState(false);
   const [backfillDate, setBackfillDate] = useState(() => new Date().toISOString().slice(0, 10));
-
-  useEffect(() => {
-    fetch("/api/users/setters")
-      .then((res) => res.json())
-      .then((data) => setSetters(data.setters || []))
-      .catch((err) => console.error("Failed to load /api/users/setters:", err));
-  }, []);
 
   const handlePhotoChange = (e) => {
     const file = e.target.files?.[0];
@@ -1059,18 +1205,12 @@ function NewWallForm({ walls, onSave }) {
   const [gradeBottom, setGradeBottom] = useState("VB");
   const [gradeTop, setGradeTop] = useState("VB");
   const [setter, setSetter] = useState("");
-  const [setters, setSetters] = useState([]);
+  const { data: settersData } = useFetch("/api/users/setters");
+  const setters = settersData?.setters || [];
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [selectedWallId, setSelectedWallId] = useState(walls?.[0]?.id ?? "");
   const [setDate, setSetDate] = useState(() => new Date().toISOString().slice(0, 10));
-
-  useEffect(() => {
-    fetch("/api/users/setters")
-      .then((res) => res.json())
-      .then((data) => setSetters(data.setters || []))
-      .catch((err) => console.error("Failed to load /api/users/setters:", err));
-  }, []);
 
   const handlePhotoChange = (e) => {
     const file = e.target.files?.[0];
@@ -1312,19 +1452,29 @@ function climbTitleNode(climb) {
 // preferring the grade typed on the ascent and falling back to the
 // climb's own bucket grade when that was left blank).
 function GradeBarChart({ title, endpoint, counts: providedCounts }) {
-  const [fetchedCounts, setFetchedCounts] = useState(null);
+  const { data, error, retry } = useFetch(endpoint, { skip: !endpoint });
+  const counts = providedCounts ?? data?.counts ?? null;
 
-  useEffect(() => {
-    if (!endpoint) return;
-    setFetchedCounts(null);
-    fetch(endpoint)
-      .then((res) => res.json())
-      .then((data) => setFetchedCounts(data.counts || []))
-      .catch((err) => console.error(`Failed to load ${endpoint}:`, err));
-  }, [endpoint]);
-
-  const counts = providedCounts ?? fetchedCounts;
-  if (!counts) return null;
+  if (!counts) {
+    // A real fetch failure (endpoint mode only — in-memory `counts` can't
+    // fail) gets a visible retry instead of the chart just never appearing;
+    // still-loading stays silent, same as before §14.9 (a skeleton here is
+    // §14.21d, not this item).
+    if (endpoint && error) {
+      return (
+        <div style={styles.gradeChartWrapper}>
+          {title && <p style={styles.gradeChartTitle}>{title}</p>}
+          <div style={styles.asyncError}>
+            <p style={styles.formError}>{error}</p>
+            <button type="button" style={styles.retryButton} onClick={retry}>
+              Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  }
 
   const maxCount = Math.max(1, ...counts.map((c) => c.count));
   const trackHeight = 80;
@@ -1856,6 +2006,7 @@ const ROLE_FILTER_TABS = [
 // change anyone's role via GET/POST /api/users(/:username/role) — grants
 // and revokes moderator/admin access.
 function ManageRolesScreen() {
+  const { data: usersData, loading, error: fetchError, retry } = useFetch("/api/users");
   const [users, setUsers] = useState(null);
   // Role dropdowns no longer save on change — they stage a pick here, and
   // Save (below) is what actually POSTs the ones that differ from the
@@ -1867,22 +2018,16 @@ function ManageRolesScreen() {
   const [resettingUsername, setResettingUsername] = useState(null);
   const [activeRoleTab, setActiveRoleTab] = useState("moderator");
 
+  // Mirrors useFetch's data into local state so a save below can patch it
+  // in place for instant feedback, rather than waiting on a refetch (apiSend
+  // does clear the cache on success, so a later natural refetch picks up
+  // the same change too).
   useEffect(() => {
-    fetch("/api/users")
-      .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
-      .then(({ ok, data }) => {
-        if (!ok) {
-          setError(data.error || "Couldn't load users.");
-          return;
-        }
-        setUsers(data.users);
-        setPendingRoles(Object.fromEntries(data.users.map((u) => [u.username, roleOf(u)])));
-      })
-      .catch((err) => {
-        console.error("Failed to load /api/users:", err);
-        setError("Couldn't reach the server. Is it running?");
-      });
-  }, []);
+    if (usersData?.users) {
+      setUsers(usersData.users);
+      setPendingRoles(Object.fromEntries(usersData.users.map((u) => [u.username, roleOf(u)])));
+    }
+  }, [usersData]);
 
   const handleRoleSelect = (username, role) => {
     setPendingRoles((prev) => ({ ...prev, [username]: role }));
@@ -1898,60 +2043,43 @@ function ManageRolesScreen() {
     setSavingAll(true);
     setError("");
     setSuccessMessage("");
-    try {
-      const results = await Promise.all(
-        changedUsernames.map((username) =>
-          fetch(`/api/users/${encodeURIComponent(username)}/role`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ role: pendingRoles[username] }),
-          }).then((res) => res.json().then((data) => ({ ok: res.ok, data, username })))
-        )
+    const results = await Promise.all(
+      changedUsernames.map((username) =>
+        apiSend(`/api/users/${encodeURIComponent(username)}/role`, {
+          body: { role: pendingRoles[username] },
+        }).then((result) => ({ ...result, username }))
+      )
+    );
+
+    const succeeded = results.filter((r) => r.success);
+    const failed = results.filter((r) => !r.success);
+
+    if (succeeded.length) {
+      setUsers((prev) =>
+        prev.map((u) => succeeded.find((r) => r.username === u.username)?.data.user ?? u)
       );
-
-      const succeeded = results.filter((r) => r.ok);
-      const failed = results.filter((r) => !r.ok);
-
-      if (succeeded.length) {
-        setUsers((prev) =>
-          prev.map((u) => succeeded.find((r) => r.username === u.username)?.data.user ?? u)
-        );
-      }
-
-      if (failed.length) {
-        const names = failed.map((f) => f.data.error || f.username).join(", ");
-        setError(`Couldn't save ${failed.length} role${failed.length === 1 ? "" : "s"}: ${names}`);
-      } else {
-        setSuccessMessage(`Saved ${succeeded.length} role change${succeeded.length === 1 ? "" : "s"}.`);
-      }
-    } catch (err) {
-      console.error("Failed to save roles:", err);
-      setError("Couldn't reach the server. Is it running?");
-    } finally {
-      setSavingAll(false);
     }
+
+    if (failed.length) {
+      const names = failed.map((f) => f.error || f.username).join(", ");
+      setError(`Couldn't save ${failed.length} role${failed.length === 1 ? "" : "s"}: ${names}`);
+    } else {
+      setSuccessMessage(`Saved ${succeeded.length} role change${succeeded.length === 1 ? "" : "s"}.`);
+    }
+    setSavingAll(false);
   };
 
   const handleResetPassword = async (username) => {
     setResettingUsername(username);
     setError("");
     setSuccessMessage("");
-    try {
-      const res = await fetch(`/api/users/${encodeURIComponent(username)}/reset-password`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Couldn't reset that password.");
-        return;
-      }
+    const result = await apiSend(`/api/users/${encodeURIComponent(username)}/reset-password`);
+    if (!result.success) {
+      setError(result.error);
+    } else {
       setSuccessMessage(`${username}'s password was reset — they'll be prompted to set a new one at next login.`);
-    } catch (err) {
-      console.error("Failed to reset password:", err);
-      setError("Couldn't reach the server. Is it running?");
-    } finally {
-      setResettingUsername(null);
     }
+    setResettingUsername(null);
   };
 
   const visibleUsers = (users || []).filter((user) =>
@@ -1981,7 +2109,15 @@ function ManageRolesScreen() {
 
       {error && <p style={styles.formError}>{error}</p>}
       {successMessage && <p style={styles.formSuccess}>{successMessage}</p>}
-      {users === null && !error && <p style={styles.placeholderText}>Loading…</p>}
+      {users === null && loading && <p style={styles.placeholderText}>Loading…</p>}
+      {users === null && fetchError && (
+        <div style={styles.asyncError}>
+          <p style={styles.formError}>{fetchError}</p>
+          <button type="button" style={styles.retryButton} onClick={retry}>
+            Retry
+          </button>
+        </div>
+      )}
       <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
         {visibleUsers.map((user) => (
           <div key={user.username} style={styles.adminUserRow}>
@@ -2043,50 +2179,41 @@ function ManageRolesScreen() {
 // on POST /api/climbs/grade. Picking a grade and tapping the checkmark
 // confirms it and drops the row from this list.
 function GradesScreen() {
+  const { data: climbsData, loading, error: fetchError, retry } = useFetch("/api/climbs/needs-grade");
   const [climbs, setClimbs] = useState(null);
   const [error, setError] = useState("");
   const [gradeByKey, setGradeByKey] = useState({});
   const [savingKey, setSavingKey] = useState(null);
 
   useEffect(() => {
-    fetch("/api/climbs/needs-grade")
-      .then((res) => res.json())
-      .then((data) => setClimbs(data.climbs || []))
-      .catch((err) => {
-        console.error("Failed to load /api/climbs/needs-grade:", err);
-        setError("Couldn't reach the server. Is it running?");
-      });
-  }, []);
+    if (climbsData) setClimbs(climbsData.climbs || []);
+  }, [climbsData]);
 
   const handleConfirmGrade = async (climb, key, grade) => {
     setSavingKey(key);
     setError("");
-    try {
-      const res = await fetch("/api/climbs/grade", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallId: climb.wallId, setterName: climb.setterName, grade }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Couldn't set that grade.");
-        return;
-      }
+    const result = await apiSend("/api/climbs/grade", {
+      body: { wallId: climb.wallId, setterName: climb.setterName, grade },
+    });
+    if (!result.success) {
+      setError(result.error);
+    } else {
       setClimbs((prev) =>
         prev.filter((c) => c.wallId !== climb.wallId || c.setterName !== climb.setterName)
       );
-    } catch (err) {
-      console.error("Failed to set grade:", err);
-      setError("Couldn't reach the server. Is it running?");
-    } finally {
-      setSavingKey(null);
     }
+    setSavingKey(null);
   };
 
   return (
     <div style={styles.screen}>
-      {error && <p style={styles.formError}>{error}</p>}
-      {climbs === null && !error && <p style={styles.placeholderText}>Loading…</p>}
+      {(error || fetchError) && <p style={styles.formError}>{error || fetchError}</p>}
+      {climbs === null && loading && <p style={styles.placeholderText}>Loading…</p>}
+      {climbs === null && fetchError && (
+        <button type="button" style={styles.retryButton} onClick={retry}>
+          Retry
+        </button>
+      )}
       {climbs !== null && climbs.length === 0 && (
         <p style={styles.placeholderText}>No climbs waiting on a final grade.</p>
       )}
@@ -2148,39 +2275,24 @@ function GradesScreen() {
 // that one proposal. The climb's setterName (its immutable identity) never
 // changes either way.
 function ApproveClimbsScreen() {
+  const { data: climbsData, loading, error: fetchError, retry } = useFetch("/api/climbs/needs-name-approval");
   const [climbs, setClimbs] = useState(null);
   const [error, setError] = useState("");
   const [savingId, setSavingId] = useState(null);
 
   useEffect(() => {
-    fetch("/api/climbs/needs-name-approval")
-      .then((res) => res.json())
-      .then((data) => setClimbs(data.climbs || []))
-      .catch((err) => {
-        console.error("Failed to load /api/climbs/needs-name-approval:", err);
-        setError("Couldn't reach the server. Is it running?");
-      });
-  }, []);
+    if (climbsData) setClimbs(climbsData.climbs || []);
+  }, [climbsData]);
 
   const handleResolveProposal = async (climb, proposal, action) => {
     setSavingId(proposal.id);
     setError("");
-    try {
-      const res = await fetch("/api/climbs/approve-name", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          wallId: climb.wallId,
-          setterName: climb.setterName,
-          proposalId: proposal.id,
-          action,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Couldn't resolve that proposal.");
-        return;
-      }
+    const result = await apiSend("/api/climbs/approve-name", {
+      body: { wallId: climb.wallId, setterName: climb.setterName, proposalId: proposal.id, action },
+    });
+    if (!result.success) {
+      setError(result.error);
+    } else {
       setClimbs((prev) =>
         action === "approve"
           ? prev.filter((c) => c.wallId !== climb.wallId || c.setterName !== climb.setterName)
@@ -2192,18 +2304,19 @@ function ApproveClimbsScreen() {
               )
               .filter((c) => c.pendingNames.length > 0)
       );
-    } catch (err) {
-      console.error("Failed to resolve name proposal:", err);
-      setError("Couldn't reach the server. Is it running?");
-    } finally {
-      setSavingId(null);
     }
+    setSavingId(null);
   };
 
   return (
     <div style={styles.screen}>
-      {error && <p style={styles.formError}>{error}</p>}
-      {climbs === null && !error && <p style={styles.placeholderText}>Loading…</p>}
+      {(error || fetchError) && <p style={styles.formError}>{error || fetchError}</p>}
+      {climbs === null && loading && <p style={styles.placeholderText}>Loading…</p>}
+      {climbs === null && fetchError && (
+        <button type="button" style={styles.retryButton} onClick={retry}>
+          Retry
+        </button>
+      )}
       {climbs !== null && climbs.length === 0 && (
         <p style={styles.placeholderText}>No pending name proposals.</p>
       )}
@@ -2561,7 +2674,11 @@ export default function App() {
   // resetting. viewingArchiveWallId is which wall's archived-climbs page
   // (ArchiveWallScreen) is currently open, if any.
   const [archiveExpanded, setArchiveExpanded] = useState(false);
-  const [archiveWalls, setArchiveWalls] = useState(null);
+  // Lazy — only actually fetches once the section is first expanded
+  // (skip: !archiveExpanded), and useFetch's own cache means re-collapsing
+  // and re-expanding doesn't re-request it.
+  const archiveFetch = useFetch("/api/archive", { skip: !archiveExpanded });
+  const archiveWalls = archiveFetch.data?.walls ?? null;
   const [viewingArchiveWallId, setViewingArchiveWallId] = useState(null);
   // Moderator-only "add" flow from the Climbs page — not wired up to
   // anything yet, just the page shell and a placeholder form.
@@ -2612,19 +2729,11 @@ export default function App() {
   // looked up within that group by its (wall-unique) name. Re-fetched after
   // logging an ascent so a newly-added comment shows up immediately (see
   // handleSubmitAscent below).
-  const [climbs, setClimbs] = useState([]);
-
-  const fetchClimbs = () =>
-    fetch("/api/climbs")
-      .then((res) => res.json())
-      .then((data) => setClimbs(data.climbs || []))
-      .catch((err) => console.error("Failed to load /api/climbs:", err));
-
-  useEffect(() => {
-    fetchClimbs();
-  }, []);
+  const climbsFetch = useFetch("/api/climbs");
+  const climbs = climbsFetch.data?.climbs ?? null;
 
   const climbsByWall = useMemo(() => {
+    if (!climbs) return null;
     const map = {};
     climbs.forEach((climb) => {
       if (!map[climb.wallId]) map[climb.wallId] = [];
@@ -2635,7 +2744,7 @@ export default function App() {
 
   const selectedClimb =
     selectedListItem && selectedSubItem
-      ? (climbsByWall[selectedListItem.id] || []).find((c) => c.setterName === selectedSubItem)
+      ? (climbsByWall?.[selectedListItem.id] || []).find((c) => c.setterName === selectedSubItem)
       : null;
 
   // Whichever climb the Climb-detail UI (image, comments, action bar) is
@@ -2684,27 +2793,10 @@ export default function App() {
   }, []);
 
   const callAuthApi = async (endpoint, credentials) => {
-    try {
-      const res = await fetch(`/api/${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(credentials),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        return { success: false, error: data.error || "Something went wrong." };
-      }
-
-      setCurrentUser(data.user);
-      return { success: true, needsPasswordReset: !!data.needsPasswordReset };
-    } catch (err) {
-      console.error(`Failed to reach /api/${endpoint}:`, err);
-      return {
-        success: false,
-        error: "Couldn't reach the server. Is it running?",
-      };
-    }
+    const result = await apiSend(`/api/${endpoint}`, { body: credentials });
+    if (!result.success) return result;
+    setCurrentUser(result.data.user);
+    return { success: true, needsPasswordReset: !!result.data.needsPasswordReset };
   };
 
   const handleSignup = (credentials) => callAuthApi("signup", credentials);
@@ -2732,50 +2824,29 @@ export default function App() {
   // server sends back (it stays in sync with localStorage via the effect
   // above) and pop back to the Settings list.
   const callSettingsApi = async (path, body) => {
-    try {
-      const res = await fetch(`/api/users/${encodeURIComponent(currentUser.username)}${path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        return { success: false, error: data.error || "Something went wrong." };
-      }
-
-      if (data.user) setCurrentUser(data.user);
-      setSettingsOption(null);
-      return { success: true };
-    } catch (err) {
-      console.error(`Failed to reach /api/users/.../${path}:`, err);
-      return { success: false, error: "Couldn't reach the server. Is it running?" };
-    }
+    const result = await apiSend(`/api/users/${encodeURIComponent(currentUser.username)}${path}`, {
+      body,
+      // A 401 here means the session cookie no longer checks out (expired,
+      // reset, etc. — see the /api/me verification effect above) — close
+      // the gap that left the UI showing a stale logged-in Settings form
+      // against a session the server no longer honors (§14.8/§14.9).
+      onUnauthorized: () => setCurrentUser(null),
+    });
+    if (!result.success) return result;
+    if (result.data.user) setCurrentUser(result.data.user);
+    setSettingsOption(null);
+    return { success: true };
   };
 
   // Used by NewClimbForm's Save button (see the "+" flow on a wall's Climbs
   // page). On success, refetches the wall's climbs so the new one shows up
   // immediately and pops back out of the creation form.
   const handleCreateClimb = async (fields) => {
-    try {
-      const res = await fetch("/api/climbs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fields),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        return { success: false, error: data.error || "Something went wrong." };
-      }
-
-      await fetchClimbs();
-      setCreatingClimb(false);
-      return { success: true };
-    } catch (err) {
-      console.error("Failed to create climb:", err);
-      return { success: false, error: "Couldn't reach the server. Is it running?" };
-    }
+    const result = await apiSend("/api/climbs", { body: fields });
+    if (!result.success) return result;
+    climbsFetch.retry();
+    setCreatingClimb(false);
+    return { success: true };
   };
 
   const handleUpdateAvatar = (avatarUrl) => callSettingsApi("/avatar", { avatarUrl });
@@ -2861,26 +2932,22 @@ export default function App() {
   // object this patches) rather than refetching.
   const handleFollowToggle = async (targetUsername, follow) => {
     if (!currentUser) return;
-    try {
-      const res = await fetch(
-        `/api/users/${encodeURIComponent(targetUsername)}/${follow ? "follow" : "unfollow"}`,
-        { method: "POST" }
-      );
-      const data = await res.json();
-      if (!res.ok) return;
-      setSearchStack((prev) =>
-        prev.map((entry) =>
-          entry.kind === "profile" && entry.user.username === targetUsername
-            ? {
-                ...entry,
-                user: { ...entry.user, isFollowing: data.isFollowing, followersCount: data.followersCount },
-              }
-            : entry
-        )
-      );
-    } catch (err) {
-      console.error(`Failed to ${follow ? "follow" : "unfollow"} ${targetUsername}:`, err);
-    }
+    const result = await apiSend(
+      `/api/users/${encodeURIComponent(targetUsername)}/${follow ? "follow" : "unfollow"}`,
+      {}
+    );
+    if (!result.success) return;
+    const data = result.data;
+    setSearchStack((prev) =>
+      prev.map((entry) =>
+        entry.kind === "profile" && entry.user.username === targetUsername
+          ? {
+              ...entry,
+              user: { ...entry.user, isFollowing: data.isFollowing, followersCount: data.followersCount },
+            }
+          : entry
+      )
+    );
   };
 
   const handleViewArchivedClimb = (climb) => {
@@ -2891,14 +2958,7 @@ export default function App() {
   };
 
   const handleToggleArchive = () => {
-    const next = !archiveExpanded;
-    setArchiveExpanded(next);
-    if (next && archiveWalls === null) {
-      fetch("/api/archive")
-        .then((res) => res.json())
-        .then((data) => setArchiveWalls(data.walls || []))
-        .catch((err) => console.error("Failed to load /api/archive:", err));
-    }
+    setArchiveExpanded((prev) => !prev);
   };
 
   // Tapping the Walls tab while already on it pops all the way back to the
@@ -2950,33 +3010,19 @@ export default function App() {
     const isDisabledArchivedClimb = viewingArchivedClimb && !viewingArchivedClimb.loggable;
     if (!currentUser || !activeClimb || isDisabledArchivedClimb) return;
 
-    try {
-      await fetch("/api/ascents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          wallId: activeClimb.wallId,
-          climbName: activeClimb.setterName,
-          ...fields,
-        }),
-      });
-      await fetchClimbs();
-    } catch (err) {
-      console.error("Failed to save ascent:", err);
-    }
+    await apiSend("/api/ascents", {
+      body: { wallId: activeClimb.wallId, climbName: activeClimb.setterName, ...fields },
+    });
+    climbsFetch.retry();
   };
 
   const handleDeleteComment = async (ascentId) => {
     if (!currentUser) return;
 
-    try {
-      await fetch(`/api/users/${encodeURIComponent(currentUser.username)}/ascents/${ascentId}/comment`, {
-        method: "DELETE",
-      });
-      await fetchClimbs();
-    } catch (err) {
-      console.error("Failed to delete comment:", err);
-    }
+    await apiSend(`/api/users/${encodeURIComponent(currentUser.username)}/ascents/${ascentId}/comment`, {
+      method: "DELETE",
+    });
+    climbsFetch.retry();
   };
 
   const content = useMemo(() => {
@@ -2989,7 +3035,7 @@ export default function App() {
             // The reset date for the wall being added to — every current
             // climb on that wall shares the same setDate for its "reset"
             // entry, so the first one found is enough.
-            const wallClimbs = climbsByWall[selectedListItem.id] || [];
+            const wallClimbs = climbsByWall?.[selectedListItem.id] || [];
             const resetDate =
               wallClimbs.find((c) => c.setType === "reset")?.setDate ??
               wallClimbs[0]?.setDate ??
@@ -3048,6 +3094,8 @@ export default function App() {
             selectedItem={selectedListItem}
             selectedSubItem={selectedSubItem}
             climbsByWall={climbsByWall}
+            climbsError={climbsFetch.error}
+            onRetryClimbs={climbsFetch.retry}
             onSelectItem={handleSelectListItem}
             onSelectSubItem={handleSelectSubItem}
             archiveExpanded={archiveExpanded}
@@ -4049,6 +4097,23 @@ const styles = {
     fontSize: 13,
     color: "var(--color-danger)",
     margin: 0,
+  },
+  asyncError: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 12,
+    padding: "24px 20px",
+  },
+  retryButton: {
+    padding: "8px 20px",
+    borderRadius: 8,
+    border: "1px solid var(--color-border-strong)",
+    background: "var(--color-surface-4)",
+    color: "var(--color-text-primary)",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
   },
   tabBar: {
     position: "absolute",
