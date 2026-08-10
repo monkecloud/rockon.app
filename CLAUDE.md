@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Read this first
+
+`APP_REFERENCE.md` in the repo root is the full map of this app: product
+requirements, every API route with its auth, every React component, the
+`App()` navigation state machine, the data model, footguns, and recipes for
+common edits. **Read it before making non-trivial changes**, and **update it
+whenever you add a screen, route, or field** — it is meant to stay accurate.
+This file (CLAUDE.md) is the short version; that one is the detail.
+
 ## What this is
 
 A mobile-oriented React climbing-gym app: bottom tab bar (Home, Walls, Search,
