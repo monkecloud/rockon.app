@@ -72,81 +72,49 @@ Tests set `NODE_ENV=test` themselves at the top of each test file.
 
 ## 3. Architecture
 
-### 3.1 Process model — primary + hot-swapped worker
+### 3.1 Process model — one process, systemd-supervised
 
-> ⚠️ **This section describes the code as it stands today, and is slated for
-> deletion.** §14.3.1 Option (ii) was chosen on 2026-08-10: the primary process
-> is being removed and `worker.js` will bind `PORT` directly, with systemd as
-> the only supervisor. Rewrite this section when that lands. The reason the
-> hot-swap is going away is in §14.3.1 — in short, it invalidates a cache that
-> does not exist.
-
-Two Node processes with a deliberate split. **Do not merge them or add routes
-to `index.js`.**
+`server/worker.js` is the whole backend: the Express app (all `/api/*`
+routes), plus static-serving `dist/` in production. It binds `PORT` (25100 by
+default) directly. There is no separate primary/proxy process.
 
 ```
                    ┌─────────────────────────────────────────┐
-  client ────────► │  server/index.js   (the "primary")      │
-   :25100          │  • owns PORT 25100, never closes it     │
-                   │  • plain http reverse proxy             │
-                   │  • forks + supervises workers           │
-                   └────────────┬────────────────────────────┘
-                                │ proxies to activeWorkerPort
-                                ▼
-                   ┌─────────────────────────────────────────┐
-                   │  server/worker.js  (the actual API)     │
-                   │  • Express app, all /api/* routes       │
-                   │  • listens on port 0 (OS-assigned)      │
-                   │  • serves dist/ in production           │
+  client ────────► │  server/worker.js                       │
+   :25100          │  • owns PORT 25100 directly              │
+                   │  • Express app, all /api/* routes        │
+                   │  • serves dist/ in production            │
                    └─────────────────────────────────────────┘
 ```
 
-**The hot-reload cycle** — this is the unusual part:
+**This used to be two processes.** An earlier design had `server/index.js` as
+a "primary" that forked `worker.js` as a child and hot-swapped traffic to a
+brand-new worker on every `climbs.json` write, on the theory that this let
+writes take effect with zero dropped connections. §14.3.1 (2026-08-10) found
+that theory didn't hold: **there was no module-level cache anywhere in
+`worker.js` for that swap to invalidate** — every read already hit disk fresh
+via `readClimbs`/`readUsers` regardless, so the restart changed nothing
+observable. It cost a process spawn per write and was the root cause of two
+P0 bugs (a dead active worker 502'd forever; a pending worker dying before
+`ready` wedged every future restart — see the git history around
+`server/index.js`'s removal for the full analysis). Deleting the primary
+removed that bug class outright rather than patching it.
 
-1. Worker writes `climbs.json` → `writeClimbs()` sends `{type:"climbs-updated"}`
-   over IPC.
-2. Primary forks a *brand-new* worker.
-3. New worker binds port 0, sends `{type:"ready", port}`.
-4. Primary atomically swaps `activeWorkerPort` to the new one.
-5. Primary sends `{type:"shutdown"}` to the old worker; it stops accepting new
-   connections, finishes in-flight requests, exits. Force-killed after 15s
-   (`OLD_WORKER_KILL_TIMEOUT_MS`).
+`deploy/climbing-app.service`'s `Restart=always` is now the only supervisor.
+**The consequence you still design around:** a crash-and-restart wipes any
+in-memory state. Sessions and everything else persist to disk (`users.json` /
+`climbs.json`) — don't rely on a module-level variable surviving a request.
 
-Because the primary's listening socket on 25100 never closes, **zero connections
-drop**. Overlapping updates coalesce via `restartQueued` — one extra restart,
-not a pile of workers.
-
-Workers are `child_process.fork()`, **not** the `cluster` module, on purpose:
-cluster round-robins the listening socket across workers, which fights the
-"exactly one active worker, chosen by us" design.
-
-**The consequence you must design around:** any `climbs.json` write wipes all
-worker memory. **Nothing may live in a module-level variable and be expected to
-survive a request** — sessions included. Persist to disk or don't keep it.
-
-### 3.2 `server/index.js` — exported functions
-
-| Function | What it does |
-|---|---|
-| `startWorker()` | Fork a worker as `pendingWorker`; if one is already pending, set `restartQueued` instead |
-| `handleWorkerMessage(worker, msg)` | Handles `climbs-updated` (→ `startWorker`) and `ready` (→ promote to active, retire old, drain `restartQueued`) |
-| `retireWorker(worker)` | Send `shutdown`, arm a 15s force-kill timer, clear it on exit |
-| `shutdown()` | Kill both workers and exit — wired to SIGINT/SIGTERM so forked children don't orphan |
-| `getState()` | Test-only snapshot of `{activeWorker, activeWorkerPort, pendingWorker, restartQueued}` |
-| `proxy` | The `http.Server`. Returns 503 before any worker is ready, 502 on proxy error |
-
-Guarded by `process.env.NODE_ENV !== "test"`: the initial `startWorker()`,
-`proxy.listen(PORT)`, and the signal handlers.
-
-### 3.3 Dev vs production routing
+### 3.2 Dev vs production routing
 
 - **Dev** (`npm run dev:all`): Vite on `:5173` serves the UI and proxies `/api`
-  → `localhost:25100` (see `vite.config.js`). `host: true` = reachable on LAN.
-- **Production** (`npm start`): worker serves `dist/` as static files and falls
-  back to `dist/index.html` for any non-`/api` GET (client-side navigation).
-  One port total.
+  → `localhost:25100`, this same process (see `vite.config.js`). `host: true`
+  = reachable on LAN.
+- **Production** (`npm start`): the worker serves `dist/` as static files and
+  falls back to `dist/index.html` for any non-`/api` GET (client-side
+  navigation). One process, one port, total.
 
-### 3.4 Cookie security / reverse proxies
+### 3.3 Cookie security / reverse proxies
 
 `app.set("trust proxy", "loopback")` + `secure: req.secure` in
 `setSessionCookie` means the same process can serve **both** plain HTTP on the
@@ -587,14 +555,14 @@ invalidates the previous token), no CSRF token beyond `sameSite: lax`.
 
 | File | Tests | Approach |
 |---|---|---|
-| `server/worker.test.js` | 138 | Mocks `fs/promises` with an in-memory store; drives `app` through supertest. Covers every route, every middleware, every pure helper |
-| `server/index.test.js` | 30 | Mocks `child_process.fork`; drives `startWorker` / `handleWorkerMessage` / `retireWorker` / `shutdown` / `proxy` directly |
+| `server/worker.test.js` | 168 | Mocks `fs/promises` with an in-memory store; drives `app` through supertest. Covers every route, every middleware, every pure helper |
 
-**No frontend tests.** `src/App.jsx` is untested.
+**No frontend tests.** `src/App.jsx` is untested (tracked in §14.11).
 
-Each test file sets `process.env.NODE_ENV = "test"` at the top — this is what
-makes importing `index.js`/`worker.js` skip forking real processes, binding
-sockets, and touching the real JSON files.
+`server/worker.test.js` sets `process.env.NODE_ENV = "test"` at the top —
+this is what makes importing `worker.js` skip binding a real socket and
+touching the real JSON files. (`server/index.js`/`index.test.js`, the old
+primary-process proxy and its 30 tests, were deleted per §14.3.1(ii).)
 
 ---
 
@@ -1054,7 +1022,7 @@ implement 13.2-a+b using Option B."*
 | 13.1-a Data files in git | P0 | ⏸️ **Deferred** by Derrick, 2026-08-10 — "will deal with it later" |
 | 13.2-a+b Worker crash recovery | P0 | ❌ **CANCELLED** 2026-08-10 — superseded by §14.3.1(ii); the code it patches is being deleted |
 | 13.2-c+d Atomic writes & locking | P0 | ✅ **DECIDED: Option D — migrate to SQLite** (Derrick, 2026-08-10) — not yet started |
-| 13.2-e Hot-swap is a no-op | P0 | ✅ **DECIDED: Option (ii) — delete the primary process** (Derrick, 2026-08-10) — not yet started |
+| 13.2-e Hot-swap is a no-op | P0 | ✅ **DONE 2026-08-10** — Option (ii), `server/index.js`/`index.test.js` deleted, `worker.js` binds `PORT` directly |
 | 13.1-b Login rate limiting | P0 | ✅ **DECIDED: Option B — hand-rolled dual-key limiter** (Derrick, 2026-08-10) — not yet started. **Depends on §14.3.1(ii).** See §14.4 |
 | 13.4-a/b/c Payload trio | P1 | ✅ **DECIDED: immediate fix + Option B (files on disk)** (Derrick, 2026-08-10) — not yet started. **Do the 30-min part first; zero migration cost only if done now.** See §14.5 |
 | 13.3-a Ascent validation | P1 | ✅ **DECIDED: Option B — allow repeats, count distinct** (Derrick, 2026-08-10) — not yet started. See §14.6 |
@@ -1063,9 +1031,9 @@ implement 13.2-a+b using Option B."*
 | 13.6-a/b Loading & error states | P1 | ✅ **DECIDED: Option B — `useFetch` hook + `<Async>` wrapper** (Derrick, 2026-08-10) — not yet started. See §14.9 |
 | 13.7-a/b Keyboard access | P1 | ✅ **DECIDED: Option A — global `:focus-visible` rule + fix the `<div onClick>`s** (Derrick, 2026-08-10) — not yet started. See §14.10. ⚠️ Closes 2 of 9 a11y items only |
 | 13.9-a Zero frontend tests | P1 | ✅ **DECIDED: Option B — component-level coverage** (Derrick, 2026-08-10) — not yet started. **Unblocks §14.10 Option B (CSS Modules).** See §14.11 |
-| 13.2-f/g Error handler & health check | P1 | ⏸️ **DEFERRED: Option C** (Derrick, 2026-08-10) — build after §14.3 lands. **One-line stopgap available now — see §14.12.** |
+| 13.2-f/g Error handler & health check | P1 | ⏸️ **DEFERRED: Option C** (Derrick, 2026-08-10) — build after §14.3 lands. **Stopgap (`NODE_ENV=production` in the systemd unit) DONE 2026-08-10** — see §14.12. Error handler + health check itself still open |
 | 13.7-c/d/e/f A11y cluster | P2 | ✅ **DECIDED: Option C — full P2 closure** (Derrick, 2026-08-10) — not yet started. See §14.13. **Contains a 15-min fix worth pulling forward.** |
-| 13.9-b CI | P2 | ✅ **DECIDED: Option A — CI only, no linter** (Derrick, 2026-08-10) — not yet started. **Build before the other §14 items.** See §14.14 |
+| 13.9-b CI | P2 | ✅ **DONE 2026-08-10** — `.github/workflows/ci.yml` (test + build). Option A, no linter. See §14.14 |
 | 13.9-c Linter | P2 | ❌ **Not being built** (Derrick, 2026-08-10) — considered and declined as part of §14.14. Stays open in §13.9 |
 | 13.1-c/d/e Security hardening | P2 | ✅ **DECIDED: Option B — headers + CORS now, CSP deferred** (Derrick, 2026-08-10) — not yet started. See §14.15 |
 | 13.8-a/b Split `App.jsx` | P2 | ✅ **DECIDED: Option A — split by screen, shared `styles.js`** (Derrick, 2026-08-10) — not yet started. **Unblocks a 4-item chain.** See §14.16 |
@@ -1321,18 +1289,16 @@ It is not free, either. It fires on every climb creation and every ascent
 logged with an `ascentClaim`, costing a process spawn plus a drain cycle each
 time — and **it is the sole cause of both P0 bugs in §14.2.**
 
-> ## ✅ DECISION: build **Option (ii)** — delete the primary process
-> Chosen by Derrick, 2026-08-10. Options (i) and (iii) are recorded as
-> **rejected** — do not build them. Consequences: §14.2 is cancelled,
-> `server/index.js` and `server/index.test.js` (30 tests) are deleted, and
-> **§3.1 of this document becomes obsolete and must be rewritten** when this
-> lands.
+> ## ✅ DONE 2026-08-10 — built Option (ii): deleted the primary process
+> Chosen by Derrick, 2026-08-10, built the same day. Options (i) and (iii) were
+> **rejected**. `server/index.js` and `server/index.test.js` (30 tests) are
+> deleted; §14.2 is cancelled. §3.1 of this document has been rewritten.
 >
-> **Acceptance criteria:** `npm start` serves the API and `dist/` on `PORT`
-> from a single process; a `climbs.json` write no longer forks anything;
-> `npm test` passes with `index.test.js` removed; systemd `Restart=always`
-> is the only supervisor; README §"Running it persistently" and CLAUDE.md
-> §Architecture are updated to match.
+> **Acceptance criteria — all met:** `npm start` serves the API and `dist/` on
+> `PORT` from a single process; a `climbs.json` write no longer forks anything;
+> `npm test` passes (168 tests, `index.test.js` removed); systemd
+> `Restart=always` is the only supervisor; README §"Running it persistently"
+> and CLAUDE.md §Architecture updated to match.
 
 Three ways forward.
 
@@ -2411,7 +2377,7 @@ Two things to check on this codebase specifically:
 
 - **HSTS + dual HTTP/HTTPS serving.** This app deliberately serves plain HTTP
   on the LAN *and* HTTPS through a reverse proxy from the same process (see
-  §3.4). Browsers ignore HSTS received over plain HTTP, so LAN access is
+  §3.3). Browsers ignore HSTS received over plain HTTP, so LAN access is
   unaffected — but confirm rather than assume, since breaking LAN access is a
   silent, confusing failure.
 - **`Cross-Origin-Resource-Policy`.** helmet defaults to `same-origin`. Fine
