@@ -16,12 +16,23 @@ npm install
 ## Run it
 
 This app has two parts: the Vite dev server (the UI) and a small Express
-API server (stores users in `server/users.json`, shared across everyone
-hitting this server). Run both at once:
+API server (stores everything in a SQLite database, `server/climbing.db`,
+shared across everyone hitting this server). Run both at once:
 
 ```bash
 npm run dev:all
 ```
+
+**First run only:** the database starts empty (just the 4 walls). Populate
+it from the bundled seed data with:
+
+```bash
+node scripts/migrate-json-to-sqlite.js
+```
+
+Re-runnable — it wipes and reseeds every table from `server/users.json` /
+`server/climbs.json` each time, so run it again any time you want to reset
+back to the seed data.
 
 Then open the local URL Vite prints (usually `http://localhost:5173`).
 
@@ -110,30 +121,27 @@ Wi-Fi.
 
 ## Notes
 
-- **Climbs are stored server-side** in `server/climbs.json` — each has a
-  `wallId`, `setterName` (the name given at creation, unique within a wall
-  and immutable after — climbs have **no id of their own**, so `wallId` +
-  `setterName` is the key ascents/comments/front-end lookups reference a
-  climb by), `name` (the confirmed display name — starts equal to
-  `setterName`, but can change if a naming-rights proposal is approved, see
-  below; not unique, never a key), `setterGrade` (the setter's rough guess,
-  given at creation, immutable after), `grade` (the confirmed final grade,
-  blank until an admin sets it), `setter`, `ascentClaims` (up to 5,
-  first/second/.../fifth-ascent credit), `pendingNames` (queued
-  naming-rights proposals awaiting moderator/setter approval — see below),
-  and a `comments` array of seeded sample comments. `GET /api/climbs` merges
-  those seeded comments with any
-  comments users have left while logging an ascent (see below), so the
-  Comments page shows both. Each climb also tracks which "set" put it up:
-  `setId` (shared by every climb put up on the same wall in the same
-  event), `setDate`, and `setType` (`"reset"` — the whole wall comes down
-  and gets replaced — or `"backfill"` — new climbs go up without taking
-  anything down), plus `archived` (reserved for a future tool, not
-  currently trusted by the server). `GET /api/climbs` only returns each
-  wall's *current* climbs — its most recent reset plus any backfills on
-  top of it — via `currentClimbsOnly()` in `server/worker.js`; older resets
-  are left out of that list but visible on the Archive tab
-  (`GET /api/archive`).
+- **Climbs are stored server-side** in the SQLite database (`climbs` table,
+  see `server/db.js`) — each has a `wallId`, `setterName` (the name given at
+  creation, unique within a wall and immutable after — climbs have a real id
+  now, but `wallId` + `setterName` is still the key ascents/front-end
+  lookups reference a climb by), `name` (the confirmed display name — starts
+  equal to `setterName`, but can change if a naming-rights proposal is
+  approved, see below; not unique, never a key), `setterGrade` (the setter's
+  rough guess, given at creation, immutable after), `grade` (the confirmed
+  final grade, blank until an admin sets it), `setter`, `ascentClaims` (up
+  to 5, first/second/.../fifth-ascent credit), `pendingNames` (queued
+  naming-rights proposals awaiting moderator/setter approval — see below).
+  A climb's comments are purely ascent-derived — whatever climbers wrote
+  while logging an ascent (see below); there's no separate seeded-comments
+  concept any more. Each climb also tracks which "set" put it up: `setId`
+  (shared by every climb put up on the same wall in the same event),
+  `setDate`, and `setType` (`"reset"` — the whole wall comes down and gets
+  replaced — or `"backfill"` — new climbs go up without taking anything
+  down). `GET /api/climbs` only returns each wall's *current* climbs — its
+  most recent reset plus any backfills on top of it — via
+  `currentClimbsOnly()` in `server/worker.js`; older resets are left out of
+  that list but visible on the Archive tab (`GET /api/archive`).
 - **Moderator/setter/admin tooling**: a moderator or setter can add a new
   climb (`POST /api/climbs` — always stored as a `"backfill"`; there's
   still no UI for a full wall `"reset"`, that stays hand/script-edited) and,
@@ -152,43 +160,51 @@ Wi-Fi.
   (`POST /api/users/:username/reset-password`). Roles are plain booleans
   (`isModerator`/`isSetter`/`isAdmin`) on the user record; `admin` sets all
   three.
-- **Users are stored server-side** in `server/users.json`. Passwords are
-  hashed with bcrypt before they're written — the server owner never sees
-  plain-text passwords, only a one-way hash. Login/signup issue a random
-  session token, stored on the user record and handed to the browser as an
+- **Users are stored server-side** in the SQLite database (`users` table).
+  Passwords are hashed with bcrypt before they're written — the server
+  owner never sees plain-text passwords, only a one-way hash. Login/signup
+  issue a random session token, stored in the `sessions` table (with real
+  expiry, unlike the account record) and handed to the browser as an
   httpOnly cookie; every route that acts "as" a user re-derives that
-  identity from the cookie (see `authenticate` in `server/worker.js`)
-  rather than trusting a username in the URL/body/query. Still a toy auth
-  system in other respects (no rate limiting, no email verification, one
-  active session per user since logging in again overwrites the previous
-  token), so treat it as a prototype rather than something to expose
-  publicly as-is. Each user record also has an optional display `name`
-  (collected at signup, separate from `username`), `followers`/`following`
-  (arrays of usernames, currently unused by anything), `ascents` (a list of
-  logged climbs), and `ascentCount` (a maintained counter — only ascents
-  against still-current climbs count, not `ascents.length`) — all
-  empty/zero on signup. The Profile tab shows `name` under the username,
+  identity from the cookie via an indexed session lookup (see
+  `authenticate` in `server/worker.js`) rather than trusting a username in
+  the URL/body/query. Login and signup are rate-limited (dual-key IP +
+  username on login, IP-only on signup) against brute-force/spam — still a
+  toy auth system in other respects (no email verification, no password-
+  strength check, one active session per user since logging in again
+  overwrites the previous token), so treat it as a prototype rather than
+  something to expose publicly as-is. Each user record also has an
+  optional display `name` (collected at signup, separate from `username`),
+  followers/following (a real `follows` table now — used by the Profile
+  tab's follower/following counts and lists), and `ascents` (a list of
+  logged climbs) — all empty on signup. `ascentCount` is **not** stored on
+  the user at all; it's derived fresh on every read (distinct current
+  climbs logged, not `ascents.length`), so a wall reset can never leave it
+  stale for anyone. The Profile tab shows `name` under the username,
   follower/following counts, and a grade pyramid
   (`GET /api/users/:username/grade-counts`), from the `user` object
   returned by signup/login (see `toClientUser` in `server/worker.js`).
   Ascents are appended via `POST /api/ascents`, called from the "Log
   ascent" bottom sheet on the Climb page. Each ascent has a `wallId` +
-  `climbName` (climbs have no id of their own — see above), `starRating`
+  `climbName` (resolved to the climb's real id server-side), `starRating`
   (min half a star), `grade`, a `comment`, and optionally
-  `attempts`/`attemptsThisSession`, plus an optional ascent-claim slot. A
-  non-empty `comment` shows up on that climb's Comments page, attributed to
-  the logging user, and can be deleted by its author
-  (`DELETE /api/users/:username/ascents/:ascentId/comment`).
+  `attempts`/`attemptsThisSession`, plus an optional ascent-claim slot.
+  Repeats are allowed (the same climb can be logged more than once), but
+  every derived count (a climb's ascent count, average rating, grade
+  pyramids) counts distinct climbs/users, never ascent rows, so a repeat
+  can't skew anything. A non-empty `comment` shows up on that climb's
+  Comments page, attributed to the logging user, and can be deleted by its
+  author (`DELETE /api/users/:username/ascents/:ascentId/comment`).
 - The logged-in *session* is also kept client-side in `localStorage`
   purely so a page refresh doesn't log you out — the server-side cookie is
-  the actual source of truth.
+  the actual source of truth, and the client verifies against it
+  (`GET /api/me`) on every app mount.
 - **Settings** (from the Profile tab's "Settings" button) lets a logged-in
   user change their profile picture, username, or password, via
   `POST /api/users/:username/avatar`, `/username`, and `/password`
   respectively. The avatar is uploaded as a base64 data URL and stored
   directly on the user record (`avatarUrl`) — fine at prototype scale, but
   a real app would upload to file storage instead of inlining images into
-  users.json. Changing username doesn't cascade into other users'
-  `followers`/`following` arrays, which reference usernames by string —
-  not an issue yet since nothing populates those arrays.
+  the database. Changing username can't strand a stale reference anywhere
+  — follows/ascents reference the user's id, not their username string.
 - Styling is plain inline styles, no CSS framework required.

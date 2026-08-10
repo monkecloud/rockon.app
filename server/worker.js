@@ -2,11 +2,11 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
-import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
+import { db, withTransaction } from "./db.js";
 import {
   GRADE_OPTIONS,
   gradeToBucket,
@@ -24,33 +24,30 @@ export { gradeToBucket, climbBucketGrade };
 // ---------------------------------------------------------------------------
 // The actual Express API, plus static-serving the built frontend in
 // production. Binds the real PORT itself and is the only process in this
-// app — see APP_REFERENCE.md §14.3.1 for why the old primary/worker
-// hot-swap (a separate process.js proxying to a forked worker, restarted on
-// every climbs.json write) was removed: there was never a module-level
-// cache for that restart to invalidate, so it cost a process spawn per
-// write for no observable benefit. systemd's `Restart=always` (see
-// deploy/climbing-app.service) is the only supervisor now.
+// app — see APP_REFERENCE.md §14.3.1 for the primary/worker hot-swap this
+// replaced.
 //
-// Minimal API server for the Profile tab's sign-up/login.
-//
-// Users are stored in users.json on disk, next to this file — a stand-in
-// for a real database. Because this lives on the server (not the browser),
-// every client hitting this server shares the same user list.
+// The datastore is SQLite (server/db.js), not hand-rolled JSON files
+// (§14.3) — see APP_REFERENCE.md §14.3 for the full history of why: a
+// crash mid `fs.writeFile` could truncate users.json/climbs.json, and two
+// interleaved requests had no isolation from each other and could lose
+// one's changes. node:sqlite's DatabaseSync is synchronous, so a request
+// handler's read-modify-write has no `await` point in the middle for
+// another request to interleave through, and every multi-row mutation is
+// wrapped in withTransaction (real BEGIN/COMMIT/ROLLBACK) so it's
+// all-or-nothing.
 //
 // Passwords are hashed with bcrypt before they're ever written to disk —
-// the server owner (or anyone who reads users.json) sees only a one-way
-// hash, never the plain-text password.
+// the server owner (or anyone who reads the database file) sees only a
+// one-way hash, never the plain-text password.
 //
-// Every login/signup issues a random session token, stored on the user
-// record (users.json) and handed to the browser as an httpOnly cookie. From
-// then on, every request that acts "as" a user (updating settings, logging
-// an ascent, changing roles, ...) is authenticated off that cookie via the
-// `authenticate` middleware below, rather than trusting a username the
-// client puts in the URL/body/query — the latter used to be this API's
-// entire auth story, letting anyone impersonate anyone by naming them.
-// Tokens live in users.json, not in memory, because nothing about this
-// process's lifetime is guaranteed — a crash and systemd restart wipes
-// memory the same way the old worker-recycling design used to.
+// Every login/signup issues a random session token, stored in the
+// `sessions` table (with real server-side expiry — the old users.json
+// sessionToken field never had any) and handed to the browser as an
+// httpOnly cookie. From then on, every request that acts "as" a user
+// (updating settings, logging an ascent, changing roles, ...) is
+// authenticated off that cookie via the `authenticate` middleware below,
+// rather than trusting a username the client puts in the URL/body/query.
 //
 // Still a toy auth system in some respects (no email verification, one
 // active session per user at a time since logging in again overwrites the
@@ -60,37 +57,13 @@ export { gradeToBucket, climbBucketGrade };
 // password-strength enforcement, so a weak-but-not-guessed password on an
 // account isn't caught by anything here.
 //
-// Each user record also has an optional display `name` (set at signup,
-// separate from `username`), tracks `followers` and `following` (arrays of
-// usernames, kept in sync with each other by POST /api/users/:username/
-// follow and /unfollow below), and `ascents` (a list of logged climbs,
-// empty on signup). Ascents are appended via POST /api/ascents (see below),
-// which the "Log ascent" bottom sheet in the app calls. Each entry looks
-// like:
-//   {
-//     id: string,                 // uuid, used to target this ascent's comment for deletion
-//     wallId: number,             // which wall the climb is on
-//     climbName: string,          // climbs have no id of their own — see
-//                                 // readClimbs() below — so wallId +
-//                                 // setterName is the key that identifies
-//                                 // a climb (climbName here holds that
-//                                 // setterName, not the mutable display name)
-//     starRating: number,        // e.g. 1-5
-//     grade: string,             // e.g. "V4"
-//     comment: string,
-//     logAttempts: boolean,      // whether the user chose to log attempts
-//     attempts: number | null,          // total attempts, null if not logged
-//     attemptsThisSession: number | null,
-//   }
-// A user's ascentCount is *not* stored on the record and *not* just
+// A user's ascentCount is *not* stored anywhere and *not* just
 // ascents.length: it's derived fresh on every read (see computeAscentCount,
 // currentClimbKeys) as the number of DISTINCT climbs — not ascent rows —
 // logged against a climb that's still part of its wall's current set (see
 // currentClimbsOnly below). Deriving it on read rather than storing it is
 // what makes it structurally impossible for a wall reset to leave it stale
-// (§14.7) — the old stored-counter design only recomputed it for whichever
-// user next logged an ascent, so every other user's count silently kept
-// reporting pre-reset climbs as current until they happened to log again.
+// (§14.7).
 // ---------------------------------------------------------------------------
 
 // bcrypt encodes the cost in the hash itself, so raising this doesn't
@@ -105,8 +78,6 @@ const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DATA_FILE = path.join(__dirname, "users.json");
-const CLIMBS_FILE = path.join(__dirname, "climbs.json");
 // `npm run build`'s output — only present once someone's actually built the
 // app. In dev, nothing ever requests this worker for anything but /api (the
 // Vite dev server on 5173 serves the UI and only proxies /api here — see
@@ -144,13 +115,9 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
 // Defaults to *no* CORS headers at all (same-origin only), which matches how
 // this app is actually deployed: the worker serves dist/ itself in
-// production, and Vite's dev proxy makes dev same-origin too, so
-// credentials: true + reflecting any Origin used to be pure speculation
-// ("if the client ever isn't served through the proxy") with no live use —
-// and speculative but real exposure, since sameSite: "lax" is the only thing
-// stopping it from being exploitable, and that's one cookie-config change
-// away from not being true. Set ALLOWED_ORIGINS (comma-separated) if a
-// cross-origin client is ever actually needed.
+// production, and Vite's dev proxy makes dev same-origin too. Set
+// ALLOWED_ORIGINS (comma-separated) if a cross-origin client is ever
+// actually needed.
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())
@@ -162,20 +129,6 @@ app.use(express.json({ limit: "5mb" }));
 
 export function generateSessionToken() {
   return crypto.randomBytes(32).toString("hex");
-}
-
-// Constant-time session-token comparison, used everywhere a cookie's token
-// is checked against a stored one (authenticate, resolveSessionUser) instead
-// of === . Be honest about what this fixes and what it doesn't: authenticate
-// still finds the matching user via a linear Array.find scan, so the
-// *position* of the match in users.json still leaks through timing
-// regardless of how each individual comparison is done — this closes the
-// per-comparison side channel, not the scan itself. The real fix is an
-// indexed session lookup (§14.3's sessions table); this is the 20-minute
-// partial measure worth taking now anyway.
-function tokensMatch(a, b) {
-  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
 // No cookie-parser dependency in this project, so parse the one header we
@@ -210,19 +163,184 @@ export function setSessionCookie(req, res, token) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Row <-> API shape mapping. The database uses snake_case columns; every
+// route below works with the app's existing camelCase shape so route bodies
+// (validation, business rules) stay close to what they were pre-migration.
+// ---------------------------------------------------------------------------
+
+function mapUserRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    username: row.username,
+    name: row.name || "",
+    passwordHash: row.password_hash || "",
+    avatarUrl: row.avatar_url || "",
+    isModerator: !!row.is_moderator,
+    isSetter: !!row.is_setter,
+    isAdmin: !!row.is_admin,
+  };
+}
+
+function mapClimbRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    wallId: row.wall_id,
+    setterName: row.setter_name,
+    name: row.name,
+    setterGrade: row.setter_grade,
+    grade: row.grade || "",
+    setter: row.setter,
+    photoUrl: row.photo_url || "",
+    setId: row.set_id,
+    setDate: row.set_date,
+    setType: row.set_type,
+  };
+}
+
+function mapAscentRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    wallId: row.wall_id,
+    climbName: row.setter_name, // joined in from climbs — see queries below
+    starRating: row.star_rating,
+    grade: row.grade || "",
+    comment: row.comment || "",
+    attempts: row.attempts,
+    attemptsThisSession: row.attempts_this_session,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Prepared statements — compiled once at module load rather than per call.
+// ---------------------------------------------------------------------------
+
+const stmt = {
+  getUserByUsername: db.prepare("SELECT * FROM users WHERE username = ?"), // COLLATE NOCASE on the column
+  getUserById: db.prepare("SELECT * FROM users WHERE id = ?"),
+  getUserBySessionToken: db.prepare(`
+    SELECT users.* FROM users
+    JOIN sessions ON sessions.user_id = users.id
+    WHERE sessions.token = ? AND sessions.expires_at > datetime('now')
+  `),
+  insertUser: db.prepare(
+    "INSERT INTO users (username, name, password_hash) VALUES (?, ?, ?)"
+  ),
+  updateUserName: db.prepare("UPDATE users SET name = ? WHERE id = ?"),
+  updateUserAvatar: db.prepare("UPDATE users SET avatar_url = ? WHERE id = ?"),
+  updateUsername: db.prepare("UPDATE users SET username = ? WHERE id = ?"),
+  updateUserPassword: db.prepare("UPDATE users SET password_hash = ? WHERE id = ?"),
+  updateUserRole: db.prepare(
+    "UPDATE users SET is_moderator = ?, is_setter = ?, is_admin = ? WHERE id = ?"
+  ),
+  searchUsers: db.prepare(
+    "SELECT * FROM users WHERE username LIKE ? OR name LIKE ? ORDER BY username"
+  ),
+  allUsers: db.prepare("SELECT * FROM users ORDER BY username"),
+  setterUsers: db.prepare("SELECT * FROM users WHERE is_setter = 1 ORDER BY username"),
+
+  insertSession: db.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)"),
+  deleteSessionsForUser: db.prepare("DELETE FROM sessions WHERE user_id = ?"),
+
+  countFollowers: db.prepare("SELECT COUNT(*) AS n FROM follows WHERE followee_id = ?"),
+  countFollowing: db.prepare("SELECT COUNT(*) AS n FROM follows WHERE follower_id = ?"),
+  isFollowing: db.prepare(
+    "SELECT 1 FROM follows WHERE follower_id = ? AND followee_id = ? LIMIT 1"
+  ),
+  addFollow: db.prepare("INSERT OR IGNORE INTO follows (follower_id, followee_id) VALUES (?, ?)"),
+  removeFollow: db.prepare("DELETE FROM follows WHERE follower_id = ? AND followee_id = ?"),
+  followerRows: db.prepare(`
+    SELECT users.* FROM follows JOIN users ON users.id = follows.follower_id
+    WHERE follows.followee_id = ? ORDER BY users.username
+  `),
+  followingRows: db.prepare(`
+    SELECT users.* FROM follows JOIN users ON users.id = follows.followee_id
+    WHERE follows.follower_id = ? ORDER BY users.username
+  `),
+
+  allClimbs: db.prepare("SELECT * FROM climbs ORDER BY id"),
+  getClimbById: db.prepare("SELECT * FROM climbs WHERE id = ?"),
+  getClimbByWallAndSetterName: db.prepare(
+    "SELECT * FROM climbs WHERE wall_id = ? AND setter_name = ?" // COLLATE NOCASE on the column
+  ),
+  insertClimb: db.prepare(`
+    INSERT INTO climbs (wall_id, setter_name, name, setter_grade, grade, setter, photo_url, set_id, set_date, set_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `),
+  updateClimbGrade: db.prepare("UPDATE climbs SET grade = ? WHERE id = ?"),
+  updateClimbName: db.prepare("UPDATE climbs SET name = ? WHERE id = ?"),
+
+  allAscentClaims: db.prepare("SELECT * FROM ascent_claims ORDER BY climb_id, ordinal"),
+  claimsForClimb: db.prepare("SELECT * FROM ascent_claims WHERE climb_id = ? ORDER BY ordinal"),
+  countClaims: db.prepare("SELECT COUNT(*) AS n FROM ascent_claims WHERE climb_id = ?"),
+  insertClaim: db.prepare(
+    "INSERT INTO ascent_claims (climb_id, ordinal, name, pass) VALUES (?, ?, ?, ?)"
+  ),
+
+  allNameProposals: db.prepare("SELECT * FROM name_proposals ORDER BY climb_id, created_at"),
+  proposalById: db.prepare("SELECT * FROM name_proposals WHERE id = ? AND climb_id = ?"),
+  insertProposal: db.prepare(
+    "INSERT INTO name_proposals (id, climb_id, name, claimed_by) VALUES (?, ?, ?, ?)"
+  ),
+  deleteProposal: db.prepare("DELETE FROM name_proposals WHERE id = ?"),
+  deleteProposalsForClimb: db.prepare("DELETE FROM name_proposals WHERE climb_id = ?"),
+  climbIdsWithProposals: db.prepare("SELECT DISTINCT climb_id FROM name_proposals"),
+
+  insertAscent: db.prepare(`
+    INSERT INTO ascents (id, user_id, climb_id, star_rating, grade, comment, attempts, attempts_this_session, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `),
+  ascentsForUser: db.prepare(`
+    SELECT ascents.*, climbs.wall_id, climbs.setter_name FROM ascents
+    JOIN climbs ON climbs.id = ascents.climb_id
+    WHERE ascents.user_id = ? ORDER BY ascents.rowid
+  `),
+  distinctClimbIdsForUser: db.prepare(
+    "SELECT DISTINCT climb_id FROM ascents WHERE user_id = ?"
+  ),
+  ascentById: db.prepare("SELECT * FROM ascents WHERE id = ? AND user_id = ?"),
+  clearAscentComment: db.prepare("UPDATE ascents SET comment = '' WHERE id = ?"),
+  // Every ascent ever logged against a climb, oldest first (rowid order),
+  // across all users — the shape withAscentStats/grade-distribution need.
+  allAscentsForClimb: db.prepare(`
+    SELECT ascents.*, users.username FROM ascents
+    JOIN users ON users.id = ascents.user_id
+    WHERE ascents.climb_id = ? ORDER BY ascents.rowid
+  `),
+  allAscentsWithUserAndClimb: db.prepare(`
+    SELECT ascents.*, users.username, climbs.wall_id, climbs.setter_name FROM ascents
+    JOIN users ON users.id = ascents.user_id
+    JOIN climbs ON climbs.id = ascents.climb_id
+    ORDER BY ascents.rowid
+  `),
+};
+
+// Constant-time-in-practice: sessions are looked up by an indexed primary
+// key (sessions.token) rather than scanned linearly the way users.json's
+// sessionToken field used to be — this is the "real fix" the old
+// tokensMatch() comparison called out as only a partial measure for (see
+// git history / APP_REFERENCE.md §14.15). A SQLite index lookup's timing
+// doesn't depend on *where* in a scan the match would have been, so there's
+// no separate constant-time comparison needed on top of it.
+function getUserBySessionToken(token) {
+  return mapUserRow(stmt.getUserBySessionToken.get(token));
+}
+
 // Populates req.user (the full server-side user record, incl. passwordHash
 // — never sent back as-is, see toClientUser) from the session cookie. This
 // is the one source of truth for "who is making this request" from here on;
 // route handlers should never trust a username handed to them via
 // params/body/query instead.
-export async function authenticate(req, res, next) {
+export function authenticate(req, res, next) {
   const token = getCookie(req, SESSION_COOKIE);
   if (!token) {
     return res.status(401).json({ error: "Not logged in." });
   }
 
-  const users = await readUsers();
-  const user = users.find((u) => u.sessionToken && tokensMatch(u.sessionToken, token));
+  const user = getUserBySessionToken(token);
   if (!user) {
     return res.status(401).json({ error: "Session expired. Please log in again." });
   }
@@ -235,10 +353,10 @@ export async function authenticate(req, res, next) {
 // still want to know who (if anyone) is viewing — e.g. so a profile lookup
 // can report whether the viewer already follows this user — rather than
 // hard-failing the request when there's no session.
-export async function resolveSessionUser(req, users) {
+export function resolveSessionUser(req) {
   const token = getCookie(req, SESSION_COOKIE);
   if (!token) return null;
-  return users.find((u) => u.sessionToken && tokensMatch(u.sessionToken, token)) || null;
+  return getUserBySessionToken(token);
 }
 
 // For routes shaped as /api/users/:username/... that act on one account —
@@ -266,156 +384,53 @@ export function requireModeratorOrSetter(req, res, next) {
   next();
 }
 
-export async function readUsers() {
-  let users;
-  try {
-    const raw = await fs.readFile(DATA_FILE, "utf-8");
-    users = JSON.parse(raw);
-  } catch (err) {
-    if (err.code === "ENOENT") return [];
-    throw err;
-  }
+// ---------------------------------------------------------------------------
+// Climb helpers. Ascent counts, average star ratings, and user comments
+// aren't stored on the climb itself — they're derived from ascents on every
+// request rather than kept in sync on the climb row. Climbs have a real id
+// now (§14.3), but wallId + setterName is still the externally-visible
+// identity ascents/comments/front-end lookups reference a climb by.
+// ---------------------------------------------------------------------------
 
-  // Backfill ids on ascents logged before ascent ids existed, so every
-  // ascent (and the comment derived from it) can be addressed individually
-  // — e.g. for deleting a single comment.
-  let backfilled = false;
-  for (const user of users) {
-    for (const ascent of user.ascents || []) {
-      if (!ascent.id) {
-        ascent.id = crypto.randomUUID();
-        backfilled = true;
-      }
-    }
-  }
+export const climbKey = (wallId, name) => `${wallId}::${name}`;
 
-  if (backfilled) await writeUsers(users);
-
-  return users;
+function getAllClimbs() {
+  return stmt.allClimbs.all().map(mapClimbRow);
 }
 
-export async function writeUsers(users) {
-  await fs.writeFile(DATA_FILE, JSON.stringify(users, null, 2));
-}
-
-// climbs.json itself is read-only from the API's point of view for now —
-// it's seeded/hand-edited data, read on request. User-submitted comments
-// don't live here: they come from the `comment` field on logged ascents in
-// users.json and get merged in by withAscentStats() below.
-//
-// Each wall gets a new "set" of climbs periodically — either a **reset**
-// (every old climb on that wall comes down, replaced by the new set) or a
-// **backfill** (new climbs go up alongside whatever's already there,
-// nothing comes down). Every climb record tracks which set put it up:
-//   {
-//     wallId: number,
-//     setterName: string,    // the name given when the climb went up,
-//                             // unique within a wall, immutable — this is
-//                             // the actual key everything (ascents,
-//                             // comments, grading) references the climb
-//                             // by, see the note below
-//     name: string,          // the confirmed display name — starts equal
-//                             // to setterName, but can change later if a
-//                             // first-ascent naming proposal is approved
-//                             // (see pendingNames/POST /api/climbs/approve-name).
-//                             // Not unique — never trust it as a key.
-//     setterGrade: string,   // the setter's rough guess at the grade,
-//                            // given when the climb goes up — either a
-//                            // single grade ("V6") or a range ("V2-4"),
-//                            // never user-editable after creation
-//     grade: string,         // the confirmed final grade ("V6"), always a
-//                            // single grade — "" until a setter/moderator
-//                            // sets it via POST /api/climbs/grade. Only
-//                            // settable once this climb is no longer
-//                            // "current" (i.e. a newer reset has gone up
-//                            // on its wall — see needsGrade below)
-//     setter: string,         // a username (see GET /api/users/setters and
-//                            // toSetterListEntry) — not just a display
-//                            // name, though it's never validated against
-//                            // an actual account server-side
-//     photoUrl: string,      // base64 data URL from the New Climb form's
-//                            // photo picker, stored inline same as user
-//                            // avatars — "" if no photo was chosen. Older
-//                            // seeded climbs won't have this field at all.
-//     comments: [...],       // seeded sample comments; see withAscentStats
-//     setId: string,         // uuid shared by every climb put up in the same event
-//     setDate: string,       // "YYYY-MM-DD", the day this set went up
-//     setType: "reset" | "backfill",
-//     archived: boolean,     // maintained for a future moderator tool to
-//                            // hand-flip; GET /api/climbs below doesn't
-//                            // trust it, it derives currency itself (see
-//                            // currentClimbsOnly)
-//     ascentClaims: [{ name: string, pass: boolean }],  // up to 5, set at
-//                            // creation via POST /api/climbs — who got the
-//                            // first/second/.../fifth ascent, or a "pass"
-//                            // if that slot was never named. Older seeded
-//                            // climbs won't have this field at all.
-//     pendingNames: [{ id: string, name: string, claimedBy: string }],
-//                            // Naming-rights proposals: whenever a logged
-//                            // ascent fills in any ascentClaims name (see
-//                            // POST /api/ascents), that name is also queued
-//                            // here awaiting a moderator/setter's approval
-//                            // (see GET /api/climbs/needs-name-approval and
-//                            // POST /api/climbs/approve-name). Approving one
-//                            // sets `name` to it and discards the rest of
-//                            // the queue; rejecting one just discards it.
-//   }
-// Climbs have no id of their own: wallId + setterName is the key everything
-// else (ascents, comments) references them by, since setterName — unlike
-// the mutable, renameable `name` — is guaranteed unique within a wall.
-// Both "backfill" and "reset" sets go up via POST /api/climbs below
-// (moderator/setter-only) — there's still no endpoint to explicitly archive
-// a climb; a reset archives everything older than it implicitly, via
-// currentClimbsOnly.
-export async function readClimbs() {
-  let climbs;
-  try {
-    const raw = await fs.readFile(CLIMBS_FILE, "utf-8");
-    climbs = JSON.parse(raw);
-  } catch (err) {
-    if (err.code === "ENOENT") return [];
-    throw err;
+// Attaches ascentClaims/pendingNames to a list of mapped climbs — one bulk
+// query for each (grouped in JS by climb_id) rather than N+1 per-climb
+// queries, since every route that lists climbs needs both.
+function attachClaimsAndProposals(climbs) {
+  const claimsByClimbId = new Map();
+  for (const row of stmt.allAscentClaims.all()) {
+    const list = claimsByClimbId.get(row.climb_id) || [];
+    list.push({ name: row.name, pass: !!row.pass });
+    claimsByClimbId.set(row.climb_id, list);
   }
-
-  // Backfill climbs seeded before setterGrade/grade existed (they only had
-  // a single `difficulty`). Treat that value as already-confirmed — these
-  // climbs predate the setter-grade/final-grade distinction entirely, so
-  // there's nothing to leave "pending" for a setter/moderator to fill in.
-  let backfilled = false;
-  for (const climb of climbs) {
-    if (climb.setterGrade === undefined && climb.difficulty !== undefined) {
-      climb.setterGrade = climb.difficulty;
-      climb.grade = climb.difficulty;
-      delete climb.difficulty;
-      backfilled = true;
-    }
-    // Climbs seeded before the setterName/name split had only a single
-    // `name`, which was both the immutable key and the display text — treat
-    // it as the setterName, unchanged, with nothing pending approval yet.
-    if (climb.setterName === undefined) {
-      climb.setterName = climb.name;
-      backfilled = true;
-    }
-    if (climb.pendingNames === undefined) {
-      climb.pendingNames = [];
-      backfilled = true;
-    }
+  const proposalsByClimbId = new Map();
+  for (const row of stmt.allNameProposals.all()) {
+    const list = proposalsByClimbId.get(row.climb_id) || [];
+    list.push({ id: row.id, name: row.name, claimedBy: row.claimed_by });
+    proposalsByClimbId.set(row.climb_id, list);
   }
-  if (backfilled) await writeClimbs(climbs);
-
-  return climbs;
-}
-
-export async function writeClimbs(climbs) {
-  await fs.writeFile(CLIMBS_FILE, JSON.stringify(climbs, null, 2));
+  return climbs.map((climb) => ({
+    ...climb,
+    ascentClaims: claimsByClimbId.get(climb.id) || [],
+    pendingNames: proposalsByClimbId.get(climb.id) || [],
+  }));
 }
 
 // A wall's "current" climbs are whatever went up in its most recent reset,
 // plus any backfills on top of that reset (backfills never take anything
 // down, so they keep layering onto the same current set until the next
 // reset). Everything from before that reset is left out here — that's the
-// "archived sets" the app doesn't have a view for yet, but this is the
-// query that view would eventually use.
+// "archived sets" §14.3.2 groupIntoCycles/archivedClimbsByWall handle.
+//
+// This stays a JS traversal over all climbs rather than a SQL window-
+// function query: the "latest reset per wall, then everything >= that date"
+// rule is simple as a loop and already thoroughly tested; forcing it into a
+// single SQL expression buys nothing here and risks a subtler bug.
 export function currentClimbsOnly(climbs) {
   const latestResetDateByWall = {};
   for (const climb of climbs) {
@@ -516,20 +531,144 @@ export function archivedClimbsByWall(climbs) {
   return Object.values(byWall);
 }
 
-// Shape of the `user` object sent to the client after signup/login — never
-// includes passwordHash, and reduces followers/following to counts since
-// that's all the Profile tab currently needs to render. `ascentCount` is no
-// longer stored on the user record (§14.7) — the caller computes it fresh
-// via computeAscentCount(user.ascents, currentClimbKeys(climbs)) and passes
-// it in, so it can never go stale after a wall reset the way the old stored
-// counter did.
+// The Set of climbKey()s for every currently-active climb — the shape
+// computeAscentCount and the serializers below need. Computed once per
+// request and passed around rather than rebuilt per user: rebuilding it
+// inside a per-user loop (e.g. the leaderboard, or toSearchResultEntry
+// called once per search result) would turn an O(n) endpoint into O(n·m).
+export function currentClimbKeys(climbs) {
+  return new Set(currentClimbsOnly(climbs).map((c) => climbKey(c.wallId, c.setterName)));
+}
+
+// A user's ascentCount: how many DISTINCT climbs (not ascent rows) a user
+// has logged against a climb that's still part of its wall's current set.
+// Distinct, not row count, because repeat ascents of the same climb are
+// allowed (§14.6) and must not inflate this. `currentKeys` is the Set from
+// currentClimbKeys(climbs) above; this is not stored on the user record
+// (§14.7) — it's derived fresh on every read specifically so a wall reset
+// can never leave it stale. `climbsById` maps a climb id to its
+// {wallId, setterName} for building the key — see computeAscentCountForUser
+// below, which is what routes actually call.
+function computeAscentCount(userId, currentKeys, climbsById) {
+  const distinctKeys = new Set();
+  for (const row of stmt.distinctClimbIdsForUser.all(userId)) {
+    const climb = climbsById.get(row.climb_id);
+    if (!climb) continue;
+    const key = climbKey(climb.wallId, climb.setterName);
+    if (currentKeys.has(key)) distinctKeys.add(key);
+  }
+  return distinctKeys.size;
+}
+
+// Bundles what every ascentCount computation needs so call sites don't each
+// re-fetch/re-index climbs: the current-climb-key Set, and a climb-id ->
+// {wallId, setterName} map (ascents only store climb_id).
+function buildAscentCountContext() {
+  const climbs = getAllClimbs();
+  const currentKeys = currentClimbKeys(climbs);
+  const climbsById = new Map(climbs.map((c) => [c.id, c]));
+  return { currentKeys, climbsById };
+}
+
+function ascentCountForUser(userId, ctx) {
+  return computeAscentCount(userId, ctx.currentKeys, ctx.climbsById);
+}
+
+// The Set of climbKey()s a new ascent can currently be logged against: every
+// currently-active climb, plus every climb in the most recently-archived
+// cycle per wall (once a wall resets, the just-superseded cycle stays
+// loggable for a while rather than being cut off instantly — see
+// GET /api/archive's `loggable` flag, which this is shared with).
+function loggableClimbKeys(climbs) {
+  const currentKeys = currentClimbKeys(climbs);
+  const archivedFlat = archivedClimbsByWall(climbs).flatMap((wall) => wall.climbs);
+  const archivedLoggableKeys = currentClimbKeys(archivedFlat);
+  return new Set([...currentKeys, ...archivedLoggableKeys]);
+}
+
+// Whether a new ascent may currently be logged against this climb — see
+// loggableClimbKeys above. Used by POST /api/ascents; GET /api/archive
+// computes the same Set in bulk for many climbs at once rather than calling
+// this per-climb.
+export function isLoggable(climb, climbs) {
+  return loggableClimbKeys(climbs).has(climbKey(climb.wallId, climb.setterName));
+}
+
+// Ascent stats (ascentCount, averageStars) and merged comments for a list
+// of climbs — computed fresh from the ascents table on every request rather
+// than kept in sync on the climb row.
+export function withAscentStats(climbs) {
+  // Per climb id: a Map of username -> that user's most-recent ascent
+  // against it. Repeats are allowed (climbers legitimately resend/reclimb a
+  // project), but must count once per user, not once per row — a climb
+  // logged five times by one person is 1 ascent, not 5 (§14.6). Rows come
+  // back in rowid (insertion) order, so later occurrences in this loop
+  // overwrite earlier ones in the Map, leaving each user's most recent
+  // entry.
+  const latestAscentByUserByClimbId = new Map();
+  const userCommentsByClimbId = new Map();
+
+  for (const row of stmt.allAscentsWithUserAndClimb.all()) {
+    const byUser = latestAscentByUserByClimbId.get(row.climb_id) || new Map();
+    byUser.set(row.username, row);
+    latestAscentByUserByClimbId.set(row.climb_id, byUser);
+
+    // Comments are deliberately unaffected by the dedupe above — every
+    // repeat's comment still shows on the Info page. That's a log of
+    // visits, not a vote, so repeats are correct there.
+    const comment = row.comment && row.comment.trim();
+    if (comment) {
+      const list = userCommentsByClimbId.get(row.climb_id) || [];
+      list.push({ id: `ascent-${row.id}`, ascentId: row.id, author: row.username, text: comment });
+      userCommentsByClimbId.set(row.climb_id, list);
+    }
+  }
+
+  return climbs.map((climb) => {
+    const byUser = latestAscentByUserByClimbId.get(climb.id);
+    const userComments = userCommentsByClimbId.get(climb.id) || [];
+
+    let starSum = 0;
+    let starCount = 0;
+    if (byUser) {
+      for (const row of byUser.values()) {
+        if (row.star_rating) {
+          starSum += row.star_rating;
+          starCount += 1;
+        }
+      }
+    }
+
+    return {
+      ...climb,
+      // Distinct users, not ascent rows (§14.6) — otherwise one person
+      // repeat-logging a climb inflates its ascent count for everyone.
+      ascentCount: byUser ? byUser.size : 0,
+      // One rating per user — their most recent (§14.6) — so a single
+      // climber can't skew a climb's average by rating it repeatedly.
+      averageStars: starCount ? starSum / starCount : 0,
+      // No seeded comments carried across in the migration (§14.20 —
+      // vestigial, no new climb has had one since creation moved to
+      // POST /api/climbs), so this is purely ascent-derived now.
+      comments: userComments,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Serializers — what actually crosses the wire. Unchanged in shape from
+// before the migration; ascentCount is computed by the caller (see
+// buildAscentCountContext/ascentCountForUser) and passed in rather than
+// read off the user object, so it can never go stale.
+// ---------------------------------------------------------------------------
+
 export function toClientUser(user, ascentCount = 0) {
   return {
     username: user.username,
     name: user.name || "",
     avatarUrl: user.avatarUrl || "",
-    followersCount: (user.followers || []).length,
-    followingCount: (user.following || []).length,
+    followersCount: stmt.countFollowers.get(user.id).n,
+    followingCount: stmt.countFollowing.get(user.id).n,
     ascentCount,
     isModerator: !!user.isModerator,
     isSetter: !!user.isSetter,
@@ -537,8 +676,6 @@ export function toClientUser(user, ascentCount = 0) {
   };
 }
 
-// Shape of a user row in the admin-only "Manage roles" list — no password,
-// no followers/following, just enough to show and change someone's role.
 export function toRoleListEntry(user) {
   return {
     username: user.username,
@@ -549,27 +686,21 @@ export function toRoleListEntry(user) {
   };
 }
 
-// Shape of a user row in the public Search tab's "Users" results — just
-// enough to display a match and open a read-only profile view for them
-// (see UserProfileScreen client-side), nothing account-sensitive. Also
-// backs the followers/following list endpoints below. `viewer` is whoever
-// is making the request (see resolveSessionUser) — null when logged out,
-// in which case isFollowing is always false. `ascentCount` — see the note
-// on toClientUser above; same deal here.
 export function toSearchResultEntry(user, viewer, ascentCount = 0) {
+  const isFollowing = Boolean(
+    viewer && stmt.isFollowing.get(viewer.id, user.id)
+  );
   return {
     username: user.username,
     name: user.name || "",
     avatarUrl: user.avatarUrl || "",
-    followersCount: (user.followers || []).length,
-    followingCount: (user.following || []).length,
+    followersCount: stmt.countFollowers.get(user.id).n,
+    followingCount: stmt.countFollowing.get(user.id).n,
     ascentCount,
-    isFollowing: Boolean(viewer && (user.followers || []).includes(viewer.username)),
+    isFollowing,
   };
 }
 
-// Shape of a user row in the New Climb form's Setter dropdown — just
-// enough to label an option, nothing account-sensitive.
 export function toSetterListEntry(user) {
   return { username: user.username, name: user.name || "" };
 }
@@ -677,30 +808,28 @@ app.post("/api/signup", async (req, res) => {
     return sendRateLimited(res, waitMs);
   }
 
-  const users = await readUsers();
-  // Case-insensitive so "Cubesnail" and "cubesnail" can't both exist.
-  const exists = users.some((u) => u.username.toLowerCase() === username.toLowerCase());
-  if (exists) {
+  // Case-insensitive uniqueness comes from the users.username column's
+  // COLLATE NOCASE (see server/db.js) — "Cubesnail" and "cubesnail" can't
+  // both exist.
+  if (stmt.getUserByUsername.get(username)) {
     recordRateLimitFailure(rateLimitKeys);
     return res.status(409).json({ error: "That username is already taken." });
   }
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
   const sessionToken = generateSessionToken();
-  const user = {
-    username,
-    passwordHash,
-    sessionToken,
-    name: name ? name.trim() : "",
-    followers: [],
-    following: [],
-    ascents: [],
-  };
-  users.push(user);
-  await writeUsers(users);
+
+  const userId = withTransaction(() => {
+    const result = stmt.insertUser.run(username, name ? name.trim() : "", passwordHash);
+    const id = Number(result.lastInsertRowid);
+    const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_MS).toISOString();
+    stmt.insertSession.run(sessionToken, id, expiresAt);
+    return id;
+  });
   recordRateLimitFailure(rateLimitKeys);
 
   setSessionCookie(req, res, sessionToken);
+  const user = mapUserRow(stmt.getUserById.get(userId));
   res.json({ user: toClientUser(user, 0) });
 });
 
@@ -721,22 +850,23 @@ app.post("/api/login", async (req, res) => {
     return sendRateLimited(res, waitMs);
   }
 
-  const users = await readUsers();
-  // Case-insensitive, same as the uniqueness check at signup — "Cubesnail"
-  // and "cubesnail" refer to the same account.
-  const user = users.find((u) => u.username.toLowerCase() === username.toLowerCase());
+  const user = mapUserRow(stmt.getUserByUsername.get(username));
 
-  // An empty passwordHash means the account password was reset
-  // (e.g. hand-added to users.json) — let anyone in as that user, but flag
-  // the client to immediately prompt for a real password before continuing.
+  // An empty passwordHash means the account password was reset (e.g. by an
+  // admin) — let anyone in as that user, but flag the client to immediately
+  // prompt for a real password before continuing.
   if (user && !user.passwordHash) {
-    user.sessionToken = generateSessionToken();
-    await writeUsers(users);
+    const sessionToken = generateSessionToken();
+    withTransaction(() => {
+      stmt.deleteSessionsForUser.run(user.id);
+      const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_MS).toISOString();
+      stmt.insertSession.run(sessionToken, user.id, expiresAt);
+    });
     recordRateLimitSuccess(rateLimitKeys);
-    setSessionCookie(req, res, user.sessionToken);
-    const currentKeys = currentClimbKeys(await readClimbs());
+    setSessionCookie(req, res, sessionToken);
+    const ctx = buildAscentCountContext();
     return res.json({
-      user: toClientUser(user, computeAscentCount(user.ascents, currentKeys)),
+      user: toClientUser(user, ascentCountForUser(user.id, ctx)),
       needsPasswordReset: true,
     });
   }
@@ -756,28 +886,31 @@ app.post("/api/login", async (req, res) => {
 
   // Opportunistic rehash: a successful login is the one moment we hold the
   // plaintext password, so it's the only place a hash created under an
-  // older, lower SALT_ROUNDS can be upgraded.
+  // older, lower SALT_ROUNDS can be upgraded. bcrypt.hash is async, so this
+  // happens before the (fully synchronous) transaction below rather than
+  // inside it — DatabaseSync has no `await` point to interleave through
+  // regardless, so there's no atomicity lost by doing it first.
   if (bcrypt.getRounds(user.passwordHash) < SALT_ROUNDS) {
     user.passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+    stmt.updateUserPassword.run(user.passwordHash, user.id);
   }
 
-  user.sessionToken = generateSessionToken();
-  await writeUsers(users);
+  const sessionToken = generateSessionToken();
+  withTransaction(() => {
+    stmt.deleteSessionsForUser.run(user.id);
+    const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_MS).toISOString();
+    stmt.insertSession.run(sessionToken, user.id, expiresAt);
+  });
   recordRateLimitSuccess(rateLimitKeys);
-  setSessionCookie(req, res, user.sessionToken);
-  const currentKeys = currentClimbKeys(await readClimbs());
-  res.json({ user: toClientUser(user, computeAscentCount(user.ascents, currentKeys)) });
+  setSessionCookie(req, res, sessionToken);
+  const ctx = buildAscentCountContext();
+  res.json({ user: toClientUser(user, ascentCountForUser(user.id, ctx)) });
 });
 
 // Clears the session both server-side (so the old token can't be replayed)
 // and client-side (drops the cookie).
-app.post("/api/logout", authenticate, async (req, res) => {
-  const users = await readUsers();
-  const user = users.find((u) => u.username === req.user.username);
-  if (user) {
-    user.sessionToken = "";
-    await writeUsers(users);
-  }
+app.post("/api/logout", authenticate, (req, res) => {
+  stmt.deleteSessionsForUser.run(req.user.id);
   res.clearCookie(SESSION_COOKIE, { path: "/" });
   res.json({ success: true });
 });
@@ -788,52 +921,37 @@ app.post("/api/logout", authenticate, async (req, res) => {
 // cached at last page load. 401 means "the cookie says you're logged out";
 // the client must not conflate that with a network error, or a phone with
 // patchy gym wifi would get logged out on every blip (§14.8).
-app.get("/api/me", authenticate, async (req, res) => {
-  const currentKeys = currentClimbKeys(await readClimbs());
-  res.json({ user: toClientUser(req.user, computeAscentCount(req.user.ascents, currentKeys)) });
+app.get("/api/me", authenticate, (req, res) => {
+  const ctx = buildAscentCountContext();
+  res.json({ user: toClientUser(req.user, ascentCountForUser(req.user.id, ctx)) });
 });
 
 // The Settings-page actions below all require a valid session cookie
 // (see `authenticate`) belonging to the same account named in the URL
 // (see `requireSelf`) — no longer just trusting the :username in the URL.
 
-app.post("/api/users/:username/name", authenticate, requireSelf, async (req, res) => {
-  const { username } = req.params;
+app.post("/api/users/:username/name", authenticate, requireSelf, (req, res) => {
   const { name } = req.body || {};
-
-  const users = await readUsers();
-  const user = users.find((u) => u.username === username);
-  if (!user) {
-    return res.status(404).json({ error: "User not found." });
-  }
-
-  user.name = (name || "").trim();
-  await writeUsers(users);
-  const currentKeys = currentClimbKeys(await readClimbs());
-  res.json({ user: toClientUser(user, computeAscentCount(user.ascents, currentKeys)) });
+  stmt.updateUserName.run((name || "").trim(), req.user.id);
+  const user = mapUserRow(stmt.getUserById.get(req.user.id));
+  const ctx = buildAscentCountContext();
+  res.json({ user: toClientUser(user, ascentCountForUser(user.id, ctx)) });
 });
 
-app.post("/api/users/:username/avatar", authenticate, requireSelf, async (req, res) => {
-  const { username } = req.params;
+app.post("/api/users/:username/avatar", authenticate, requireSelf, (req, res) => {
   const { avatarUrl } = req.body || {};
 
   if (!avatarUrl) {
     return res.status(400).json({ error: "An image is required." });
   }
 
-  const users = await readUsers();
-  const user = users.find((u) => u.username === username);
-  if (!user) {
-    return res.status(404).json({ error: "User not found." });
-  }
-
-  user.avatarUrl = avatarUrl;
-  await writeUsers(users);
-  const currentKeys = currentClimbKeys(await readClimbs());
-  res.json({ user: toClientUser(user, computeAscentCount(user.ascents, currentKeys)) });
+  stmt.updateUserAvatar.run(avatarUrl, req.user.id);
+  const user = mapUserRow(stmt.getUserById.get(req.user.id));
+  const ctx = buildAscentCountContext();
+  res.json({ user: toClientUser(user, ascentCountForUser(user.id, ctx)) });
 });
 
-app.post("/api/users/:username/username", authenticate, requireSelf, async (req, res) => {
+app.post("/api/users/:username/username", authenticate, requireSelf, (req, res) => {
   const { username } = req.params;
   const { newUsername } = req.body || {};
   const trimmed = (newUsername || "").trim();
@@ -842,61 +960,47 @@ app.post("/api/users/:username/username", authenticate, requireSelf, async (req,
     return res.status(400).json({ error: "A new username is required." });
   }
 
-  const users = await readUsers();
-  const user = users.find((u) => u.username === username);
-  if (!user) {
-    return res.status(404).json({ error: "User not found." });
-  }
-
-  // Case-insensitive, same as signup, so "Cubesnail" and "cubesnail" can't
-  // both exist — but a pure case change on your own name (e.g. "cube" ->
-  // "Cube") is still allowed, hence the exact-match self-exclusion below.
-  const trimmedLower = trimmed.toLowerCase();
-  const isOwnUsername = trimmed === username;
-  const isTakenByOther = users.some(
-    (u) => u.username !== username && u.username.toLowerCase() === trimmedLower
-  );
-  if (!isOwnUsername && isTakenByOther) {
+  // Case-insensitive, same as signup (COLLATE NOCASE on the column) — but a
+  // pure case change on your own name (e.g. "cube" -> "Cube") is still
+  // allowed, hence excluding a match against the caller's own row (by id,
+  // not by string-equality against the URL param — "Cube" !== "cube" would
+  // otherwise make the self-exclusion never fire on exactly the case-change
+  // request it exists for).
+  const existing = stmt.getUserByUsername.get(trimmed);
+  if (existing && existing.id !== req.user.id) {
     return res.status(409).json({ error: "That username is already taken." });
   }
 
-  // Note: this doesn't cascade into other users' `followers`/`following`
-  // arrays, which reference usernames by string — acceptable for now since
-  // nothing populates those arrays yet.
-  user.username = trimmed;
-  await writeUsers(users);
-  const currentKeys = currentClimbKeys(await readClimbs());
-  res.json({ user: toClientUser(user, computeAscentCount(user.ascents, currentKeys)) });
+  // Note: usernames aren't denormalized anywhere else (follows/ascents all
+  // reference user id), so unlike the old JSON version, this never risked
+  // leaving other users' followers/following arrays pointing at a stale name.
+  stmt.updateUsername.run(trimmed, req.user.id);
+  const user = mapUserRow(stmt.getUserById.get(req.user.id));
+  const ctx = buildAscentCountContext();
+  res.json({ user: toClientUser(user, ascentCountForUser(user.id, ctx)) });
 });
 
 app.post("/api/users/:username/password", authenticate, requireSelf, async (req, res) => {
-  const { username } = req.params;
   const { currentPassword, newPassword } = req.body || {};
 
   if (!newPassword) {
     return res.status(400).json({ error: "New password is required." });
   }
 
-  const users = await readUsers();
-  const user = users.find((u) => u.username === username);
-  if (!user) {
-    return res.status(404).json({ error: "User not found." });
-  }
-
   // Accounts with no password set yet (see /api/login) can go straight to
   // setting a new one, since there's nothing to verify against.
-  if (user.passwordHash) {
+  if (req.user.passwordHash) {
     if (!currentPassword) {
       return res.status(400).json({ error: "Current password is required." });
     }
-    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    const isMatch = await bcrypt.compare(currentPassword, req.user.passwordHash);
     if (!isMatch) {
       return res.status(401).json({ error: "Current password is incorrect." });
     }
   }
 
-  user.passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-  await writeUsers(users);
+  const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  stmt.updateUserPassword.run(newHash, req.user.id);
   res.json({ success: true });
 });
 
@@ -908,27 +1012,25 @@ app.post("/api/users/:username/password", authenticate, requireSelf, async (req,
 // button).
 const ROLES = ["member", "moderator", "setter", "admin"];
 
-app.get("/api/users", authenticate, requireAdmin, async (req, res) => {
-  const users = await readUsers();
+app.get("/api/users", authenticate, requireAdmin, (req, res) => {
+  const users = stmt.allUsers.all().map(mapUserRow);
   res.json({ users: users.map(toRoleListEntry) });
 });
 
 // Backs the Search tab's "Users" mode — public (unlike GET /api/users
 // above, which is admin-only and returns roles), matches on username or
 // display name, case-insensitive substring.
-app.get("/api/users/search", async (req, res) => {
+app.get("/api/users/search", (req, res) => {
   const q = (req.query.q || "").toString().trim().toLowerCase();
   if (!q) return res.json({ users: [] });
 
-  const users = await readUsers();
-  const viewer = await resolveSessionUser(req, users);
-  const matches = users.filter(
-    (u) => u.username.toLowerCase().includes(q) || (u.name || "").toLowerCase().includes(q)
-  );
+  const viewer = resolveSessionUser(req);
+  const like = `%${q}%`;
+  const matches = stmt.searchUsers.all(like, like).map(mapUserRow);
 
-  const currentKeys = currentClimbKeys(await readClimbs());
+  const ctx = buildAscentCountContext();
   res.json({
-    users: matches.map((u) => toSearchResultEntry(u, viewer, computeAscentCount(u.ascents, currentKeys))),
+    users: matches.map((u) => toSearchResultEntry(u, viewer, ascentCountForUser(u.id, ctx))),
   });
 });
 
@@ -938,17 +1040,17 @@ app.get("/api/users/search", async (req, res) => {
 // excluded so a brand-new gym doesn't show hollow "0 ascents" podium spots.
 // `limit` defaults to 3 (a podium) but is overridable, clamped to a sane
 // range.
-app.get("/api/users/leaderboard", async (req, res) => {
+app.get("/api/users/leaderboard", (req, res) => {
   const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 3));
 
-  const users = await readUsers();
-  const viewer = await resolveSessionUser(req, users);
-  const currentKeys = currentClimbKeys(await readClimbs());
+  const viewer = resolveSessionUser(req);
+  const users = stmt.allUsers.all().map(mapUserRow);
+  const ctx = buildAscentCountContext();
   // Compute every user's derived ascentCount up front (once each, via the
-  // shared currentKeys Set) so ranking can sort/filter on it directly,
-  // rather than the old stored-field sort that went stale after a reset.
+  // shared ctx) so ranking can sort/filter on it directly, rather than a
+  // stored field that could go stale after a reset.
   const ranked = users
-    .map((u) => ({ user: u, ascentCount: computeAscentCount(u.ascents, currentKeys) }))
+    .map((u) => ({ user: u, ascentCount: ascentCountForUser(u.id, ctx) }))
     .filter((r) => r.ascentCount > 0)
     .sort((a, b) => b.ascentCount - a.ascentCount || a.user.username.localeCompare(b.user.username))
     .slice(0, limit);
@@ -958,84 +1060,65 @@ app.get("/api/users/leaderboard", async (req, res) => {
 
 // Follow/unfollow — the acting user comes from the session cookie (see
 // authenticate), the target from :username in the URL. Both sides of the
-// relationship are kept in sync: A following B adds B to A.following and A
-// to B.followers. Idempotent, so double-clicking Follow/Unfollow (or two
-// tabs racing) can't leave the two arrays out of sync with each other.
-app.post("/api/users/:username/follow", authenticate, async (req, res) => {
+// relationship are one `follows` row, so there's no risk of the two ever
+// disagreeing the way two separately-updated JSON arrays could.
+app.post("/api/users/:username/follow", authenticate, (req, res) => {
   const { username } = req.params;
   if (username === req.user.username) {
     return res.status(400).json({ error: "You can't follow yourself." });
   }
 
-  const users = await readUsers();
-  const target = users.find((u) => u.username === username);
+  const target = mapUserRow(stmt.getUserByUsername.get(username));
   if (!target) {
     return res.status(404).json({ error: "User not found." });
   }
-  const actor = users.find((u) => u.username === req.user.username);
 
-  if (!target.followers) target.followers = [];
-  if (!actor.following) actor.following = [];
-  if (!target.followers.includes(actor.username)) target.followers.push(actor.username);
-  if (!actor.following.includes(target.username)) actor.following.push(target.username);
-
-  await writeUsers(users);
-  res.json({ isFollowing: true, followersCount: target.followers.length });
+  stmt.addFollow.run(req.user.id, target.id); // INSERT OR IGNORE => idempotent
+  res.json({ isFollowing: true, followersCount: stmt.countFollowers.get(target.id).n });
 });
 
-app.post("/api/users/:username/unfollow", authenticate, async (req, res) => {
+app.post("/api/users/:username/unfollow", authenticate, (req, res) => {
   const { username } = req.params;
 
-  const users = await readUsers();
-  const target = users.find((u) => u.username === username);
+  const target = mapUserRow(stmt.getUserByUsername.get(username));
   if (!target) {
     return res.status(404).json({ error: "User not found." });
   }
-  const actor = users.find((u) => u.username === req.user.username);
 
-  target.followers = (target.followers || []).filter((u) => u !== actor.username);
-  actor.following = (actor.following || []).filter((u) => u !== target.username);
-
-  await writeUsers(users);
-  res.json({ isFollowing: false, followersCount: target.followers.length });
+  stmt.removeFollow.run(req.user.id, target.id);
+  res.json({ isFollowing: false, followersCount: stmt.countFollowers.get(target.id).n });
 });
 
 // Public lists backing the tappable follower/following counts on a
 // profile — same row shape as GET /api/users/search, so tapping into one
 // of these results opens UserProfileScreen just like a search result does.
-app.get("/api/users/:username/followers", async (req, res) => {
+app.get("/api/users/:username/followers", (req, res) => {
   const { username } = req.params;
-  const users = await readUsers();
-  const target = users.find((u) => u.username === username);
+  const target = mapUserRow(stmt.getUserByUsername.get(username));
   if (!target) {
     return res.status(404).json({ error: "User not found." });
   }
 
-  const viewer = await resolveSessionUser(req, users);
-  const followers = (target.followers || [])
-    .map((name) => users.find((u) => u.username === name))
-    .filter(Boolean);
-  const currentKeys = currentClimbKeys(await readClimbs());
+  const viewer = resolveSessionUser(req);
+  const followers = stmt.followerRows.all(target.id).map(mapUserRow);
+  const ctx = buildAscentCountContext();
   res.json({
-    users: followers.map((u) => toSearchResultEntry(u, viewer, computeAscentCount(u.ascents, currentKeys))),
+    users: followers.map((u) => toSearchResultEntry(u, viewer, ascentCountForUser(u.id, ctx))),
   });
 });
 
-app.get("/api/users/:username/following", async (req, res) => {
+app.get("/api/users/:username/following", (req, res) => {
   const { username } = req.params;
-  const users = await readUsers();
-  const target = users.find((u) => u.username === username);
+  const target = mapUserRow(stmt.getUserByUsername.get(username));
   if (!target) {
     return res.status(404).json({ error: "User not found." });
   }
 
-  const viewer = await resolveSessionUser(req, users);
-  const following = (target.following || [])
-    .map((name) => users.find((u) => u.username === name))
-    .filter(Boolean);
-  const currentKeys = currentClimbKeys(await readClimbs());
+  const viewer = resolveSessionUser(req);
+  const following = stmt.followingRows.all(target.id).map(mapUserRow);
+  const ctx = buildAscentCountContext();
   res.json({
-    users: following.map((u) => toSearchResultEntry(u, viewer, computeAscentCount(u.ascents, currentKeys))),
+    users: following.map((u) => toSearchResultEntry(u, viewer, ascentCountForUser(u.id, ctx))),
   });
 });
 
@@ -1043,13 +1126,12 @@ app.get("/api/users/:username/following", async (req, res) => {
 // in NewClimbForm client-side. Moderators/setters only see the "+" button
 // that opens that form, but who counts as a setter isn't sensitive on its
 // own (same reasoning as the public search results above).
-app.get("/api/users/setters", async (req, res) => {
-  const users = await readUsers();
-  const setters = users.filter((u) => u.isSetter);
+app.get("/api/users/setters", (req, res) => {
+  const setters = stmt.setterUsers.all().map(mapUserRow);
   res.json({ setters: setters.map(toSetterListEntry) });
 });
 
-app.post("/api/users/:username/role", authenticate, requireAdmin, async (req, res) => {
+app.post("/api/users/:username/role", authenticate, requireAdmin, (req, res) => {
   const { username } = req.params;
   const { role } = req.body || {};
 
@@ -1057,160 +1139,51 @@ app.post("/api/users/:username/role", authenticate, requireAdmin, async (req, re
     return res.status(400).json({ error: "Role must be member, moderator, setter, or admin." });
   }
 
-  const users = await readUsers();
-  const user = users.find((u) => u.username === username);
+  const user = mapUserRow(stmt.getUserByUsername.get(username));
   if (!user) {
     return res.status(404).json({ error: "User not found." });
   }
 
-  user.isModerator = role === "moderator" || role === "admin";
-  user.isSetter = role === "setter" || role === "admin";
-  user.isAdmin = role === "admin";
-  await writeUsers(users);
+  const isModerator = role === "moderator" || role === "admin";
+  const isSetter = role === "setter" || role === "admin";
+  const isAdmin = role === "admin";
+  stmt.updateUserRole.run(isModerator ? 1 : 0, isSetter ? 1 : 0, isAdmin ? 1 : 0, user.id);
 
-  res.json({ user: toRoleListEntry(user) });
+  res.json({ user: toRoleListEntry({ ...user, isModerator, isSetter, isAdmin }) });
 });
 
 // Admin-only: blanks a user's passwordHash, same state as an account that's
 // never had a password set — their next login hits the empty-passwordHash
 // branch in POST /api/login (needsPasswordReset: true) and lets them straight
 // through to set a new one via ChangePasswordForm, no old password needed.
-app.post("/api/users/:username/reset-password", authenticate, requireAdmin, async (req, res) => {
+app.post("/api/users/:username/reset-password", authenticate, requireAdmin, (req, res) => {
   const { username } = req.params;
 
-  const users = await readUsers();
-  const user = users.find((u) => u.username === username);
+  const user = mapUserRow(stmt.getUserByUsername.get(username));
   if (!user) {
     return res.status(404).json({ error: "User not found." });
   }
 
-  user.passwordHash = "";
-  await writeUsers(users);
-
+  stmt.updateUserPassword.run("", user.id);
   res.json({ success: true });
 });
 
-// Ascent counts, average star ratings, and user comments aren't stored on
-// the climb itself — they're derived from every user's `ascents` list, so
-// they're computed fresh on each request rather than kept in sync in
-// climbs.json. A comment left while logging an ascent is surfaced on the
-// climb's Comments page alongside the seeded sample comments. Climbs have
-// no id of their own, so ascents are matched to climbs by wallId + name.
-export const climbKey = (wallId, name) => `${wallId}::${name}`;
+// The walls table replaced the WALLS constant hardcoded in src/App.jsx
+// (§13.8-e) — a climb can no longer reference a wall that doesn't exist
+// (climbs.wall_id is FK-enforced). Not yet consumed client-side; src/App.jsx
+// still has its own hardcoded WALLS array, so this exists for forward
+// compatibility with whoever wires that up.
+app.get("/api/walls", (req, res) => {
+  const walls = db
+    .prepare("SELECT id, name FROM walls ORDER BY display_order")
+    .all()
+    .map((row) => ({ id: row.id, name: row.name }));
+  res.json({ walls });
+});
 
-// The Set of climbKey()s for every currently-active climb — the shape
-// computeAscentCount and the serializers below need. Computed once per
-// request and passed around rather than rebuilt per user: rebuilding it
-// inside a per-user loop (e.g. the leaderboard, or toSearchResultEntry
-// called once per search result) would turn an O(n) endpoint into O(n·m).
-export function currentClimbKeys(climbs) {
-  return new Set(currentClimbsOnly(climbs).map((c) => climbKey(c.wallId, c.setterName)));
-}
-
-// A user's ascentCount (see the User record note above) — how many DISTINCT
-// climbs (not ascent rows) they've logged against a climb that's still part
-// of its wall's current set (see currentClimbsOnly), i.e. not superseded by
-// a newer reset. Distinct, not row count, because repeat ascents of the
-// same climb are allowed (§14.6) and must not inflate this — someone who
-// logs one climb five times has climbed 1 thing, not 5. `currentKeys` is
-// the Set from currentClimbKeys(climbs) above; this is no longer stored on
-// the user record (§14.7) — it's derived fresh on every read specifically
-// so a wall reset can never leave it stale.
-export function computeAscentCount(ascents, currentKeys) {
-  const distinctKeys = new Set();
-  for (const ascent of ascents || []) {
-    const key = climbKey(ascent.wallId, ascent.climbName);
-    if (currentKeys.has(key)) distinctKeys.add(key);
-  }
-  return distinctKeys.size;
-}
-
-// The Set of climbKey()s a new ascent can currently be logged against: every
-// currently-active climb, plus every climb in the most recently-archived
-// cycle per wall (once a wall resets, the just-superseded cycle stays
-// loggable for a while rather than being cut off instantly — see
-// GET /api/archive's `loggable` flag, which this is shared with).
-function loggableClimbKeys(climbs) {
-  const currentKeys = currentClimbKeys(climbs);
-  const archivedFlat = archivedClimbsByWall(climbs).flatMap((wall) => wall.climbs);
-  const archivedLoggableKeys = currentClimbKeys(archivedFlat);
-  return new Set([...currentKeys, ...archivedLoggableKeys]);
-}
-
-// Whether a new ascent may currently be logged against this climb — see
-// loggableClimbKeys above. Used by POST /api/ascents; GET /api/archive
-// computes the same Set in bulk for many climbs at once rather than calling
-// this per-climb.
-export function isLoggable(climb, climbs) {
-  return loggableClimbKeys(climbs).has(climbKey(climb.wallId, climb.setterName));
-}
-
-export async function withAscentStats(climbs) {
-  const users = await readUsers();
-  // Per climb key: a Map of username -> that user's most-recent ascent
-  // against it. Repeats are allowed (climbers legitimately resend/reclimb a
-  // project), but must count once per user, not once per row — a climb
-  // logged five times by one person is 1 ascent, not 5 (§14.6). Ascents are
-  // appended in order, so later occurrences in this loop overwrite earlier
-  // ones in the Map, leaving each user's most recent entry.
-  const latestAscentByUserByKey = {};
-  const userCommentsByKey = {};
-
-  for (const user of users) {
-    for (const ascent of user.ascents || []) {
-      const key = climbKey(ascent.wallId, ascent.climbName);
-      const byUser = (latestAscentByUserByKey[key] ||= new Map());
-      byUser.set(user.username, ascent);
-
-      // Comments are deliberately unaffected by the dedupe above — every
-      // repeat's comment still shows on the Info page. That's a log of
-      // visits, not a vote, so repeats are correct there.
-      const comment = ascent.comment && ascent.comment.trim();
-      if (comment) {
-        const list = userCommentsByKey[key] || [];
-        list.push({
-          id: `ascent-${ascent.id}`,
-          ascentId: ascent.id,
-          author: user.username,
-          text: comment,
-        });
-        userCommentsByKey[key] = list;
-      }
-    }
-  }
-
-  return climbs.map((climb) => {
-    const key = climbKey(climb.wallId, climb.setterName);
-    const byUser = latestAscentByUserByKey[key];
-    const userComments = userCommentsByKey[key] || [];
-
-    let starSum = 0;
-    let starCount = 0;
-    if (byUser) {
-      for (const ascent of byUser.values()) {
-        if (ascent.starRating) {
-          starSum += ascent.starRating;
-          starCount += 1;
-        }
-      }
-    }
-
-    return {
-      ...climb,
-      // Distinct users, not ascent rows (§14.6) — otherwise one person
-      // repeat-logging a climb inflates its ascent count for everyone.
-      ascentCount: byUser ? byUser.size : 0,
-      // One rating per user — their most recent (§14.6) — so a single
-      // climber can't skew a climb's average by rating it repeatedly.
-      averageStars: starCount ? starSum / starCount : 0,
-      comments: [...(climb.comments || []), ...userComments],
-    };
-  });
-}
-
-app.get("/api/climbs", async (req, res) => {
-  const climbs = await readClimbs();
-  res.json({ climbs: await withAscentStats(currentClimbsOnly(climbs)) });
+app.get("/api/climbs", (req, res) => {
+  const climbs = attachClaimsAndProposals(getAllClimbs());
+  res.json({ climbs: withAscentStats(currentClimbsOnly(climbs)) });
 });
 
 // currentClimbsOnly/groupIntoCycles/archivedClimbsByWall all compare setDate
@@ -1238,11 +1211,11 @@ function isValidSetDate(s) {
 // sends setType "reset" — see currentClimbsOnly, which treats a wall's
 // latest "reset"-dated climb as wiping out every older climb's "current"
 // status, so submitting one of these effectively starts a new cycle on
-// that wall without anything needing to be deleted from climbs.json.
-// Submitting several "reset" climbs with the same setDate lands them all
-// in the same cycle (see groupIntoCycles, which groups by date rather than
-// by each climb's own setId).
-app.post("/api/climbs", authenticate, requireModeratorOrSetter, async (req, res) => {
+// that wall without anything needing to be deleted. Submitting several
+// "reset" climbs with the same setDate lands them all in the same cycle
+// (see groupIntoCycles, which groups by date rather than by each climb's
+// own setId).
+app.post("/api/climbs", authenticate, requireModeratorOrSetter, (req, res) => {
   const { wallId, name, setterGrade, setter, setDate, photoUrl, setType } = req.body || {};
 
   const trimmedName = (name || "").trim();
@@ -1270,55 +1243,44 @@ app.post("/api/climbs", authenticate, requireModeratorOrSetter, async (req, res)
     return res.status(400).json({ error: "Set date must be a valid YYYY-MM-DD date." });
   }
 
-  const climbs = await readClimbs();
-  // Climb identity is wallId + setterName (see the note on readClimbs
-  // above), so that pair has to be unique across every climb ever put up on
-  // that wall, current or archived — not just the currently active set.
-  const isDuplicate = climbs.some(
-    (c) => c.wallId === numericWallId && c.setterName.toLowerCase() === trimmedName.toLowerCase()
-  );
-  if (isDuplicate) {
+  // Climb identity is wallId + setterName (case-insensitive, via the
+  // column's COLLATE NOCASE), so that pair has to be unique across every
+  // climb ever put up on that wall, current or archived — not just the
+  // currently active set. UNIQUE(wall_id, setter_name) also enforces this
+  // structurally; this pre-check exists purely to give a friendlier 409
+  // instead of surfacing a raw constraint-violation error.
+  if (stmt.getClimbByWallAndSetterName.get(numericWallId, trimmedName)) {
     return res.status(409).json({ error: "A climb with that name already exists on this wall." });
   }
 
   // Existence only, not the isSetter flag — a climb set by someone who has
   // since lost the flag is still historically correct; requiring isSetter
   // here would make a role change retroactively invalidate history.
-  const users = await readUsers();
-  if (!users.some((u) => u.username === trimmedSetter)) {
+  if (!stmt.getUserByUsername.get(trimmedSetter)) {
     return res.status(400).json({ error: "Unknown setter." });
   }
 
-  const climb = {
-    wallId: numericWallId,
-    setterName: trimmedName,
-    // The confirmed display name starts out the same as setterName — see
-    // pendingNames below and POST /api/climbs/approve-name for how it can
-    // change later.
-    name: trimmedName,
-    setterGrade: trimmedSetterGrade,
-    // Not confirmed yet — see POST /api/climbs/grade, only settable once
-    // this climb is no longer current on its wall.
-    grade: "",
-    setter: trimmedSetter,
-    photoUrl: photoUrl || "",
-    comments: [],
-    setId: crypto.randomUUID(),
-    setDate: setDate || new Date().toISOString().slice(0, 10),
-    setType: setType === "reset" ? "reset" : "backfill",
-    archived: false,
-    // Nobody's climbed a brand-new climb yet — ascentClaims (first ascent,
-    // second ascent, ...) only ever gets filled in via POST /api/ascents,
-    // as ascents actually get logged. See the note there.
-    ascentClaims: [],
-    // Naming-rights proposals from ascent claims, awaiting moderator/setter
-    // approval — see POST /api/ascents and POST /api/climbs/approve-name.
-    pendingNames: [],
-  };
+  const resolvedSetDate = setDate || new Date().toISOString().slice(0, 10);
+  const resolvedSetType = setType === "reset" ? "reset" : "backfill";
 
-  climbs.push(climb);
-  await writeClimbs(climbs);
+  const climbId = withTransaction(() => {
+    const result = stmt.insertClimb.run(
+      numericWallId,
+      trimmedName,
+      trimmedName, // display name starts equal to setterName — see the
+      // naming-rights note on the climbs table in server/db.js
+      trimmedSetterGrade,
+      "", // grade — not confirmed yet, see POST /api/climbs/grade
+      trimmedSetter,
+      photoUrl || "",
+      crypto.randomUUID(),
+      resolvedSetDate,
+      resolvedSetType
+    );
+    return Number(result.lastInsertRowid);
+  });
 
+  const climb = attachClaimsAndProposals([mapClimbRow(stmt.getClimbById.get(climbId))])[0];
   res.json({ climb });
 });
 
@@ -1328,7 +1290,7 @@ app.post("/api/climbs", authenticate, requireModeratorOrSetter, async (req, res)
 // wall's current set (i.e. a newer reset has superseded it — see
 // currentClimbsOnly) — the setter's original range guess (setterGrade)
 // stands until then.
-app.post("/api/climbs/grade", authenticate, requireAdmin, async (req, res) => {
+app.post("/api/climbs/grade", authenticate, requireAdmin, (req, res) => {
   const { wallId, setterName, grade } = req.body || {};
 
   const trimmedGrade = (grade || "").trim();
@@ -1342,48 +1304,37 @@ app.post("/api/climbs/grade", authenticate, requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "Unrecognized grade." });
   }
 
-  const climbs = await readClimbs();
-  // Case-insensitive, matching POST /api/climbs' duplicate check above —
-  // the two used to disagree (creation case-insensitive, this exact-match),
-  // so a climb could be un-findable here purely because of how its name was
-  // capitalized when typed (§14.17g). climbKey itself is deliberately left
-  // alone: ascents store climbName copied from a real climb object, so keys
-  // already match exactly, and lowercasing the key format risks breaking
-  // that join for no gain.
-  const climb = climbs.find(
-    (c) => c.wallId === numericWallId && c.setterName.toLowerCase() === setterName.toLowerCase()
-  );
+  // Case-insensitive via the column's COLLATE NOCASE — matches POST
+  // /api/climbs' duplicate check, which used to disagree with this lookup
+  // before the migration (§14.17g).
+  const climb = mapClimbRow(stmt.getClimbByWallAndSetterName.get(numericWallId, setterName));
   if (!climb) {
     return res.status(404).json({ error: "Climb not found." });
   }
 
-  const isCurrent = currentClimbsOnly(climbs).some(
-    (c) => c.wallId === numericWallId && c.setterName.toLowerCase() === setterName.toLowerCase()
-  );
+  const climbs = getAllClimbs();
+  const isCurrent = currentClimbsOnly(climbs).some((c) => c.id === climb.id);
   if (isCurrent) {
     return res.status(409).json({
       error: "This climb's grade can't be set until it's superseded by the wall's next reset.",
     });
   }
 
-  climb.grade = trimmedGrade;
-  await writeClimbs(climbs);
+  stmt.updateClimbGrade.run(trimmedGrade, climb.id);
 
-  res.json({ climb });
+  res.json({ climb: attachClaimsAndProposals([{ ...climb, grade: trimmedGrade }])[0] });
 });
 
 // Climbs eligible for an admin to confirm a final grade for — every climb
 // no longer current on its wall (superseded by a newer reset) that doesn't
 // have one yet. Backs the Grades tab's grade-setting list. Admin-only, same
 // audience as POST /api/climbs/grade above.
-app.get("/api/climbs/needs-grade", authenticate, requireAdmin, async (req, res) => {
-  const climbs = await readClimbs();
-  const currentKeys = new Set(
-    currentClimbsOnly(climbs).map((c) => climbKey(c.wallId, c.setterName))
-  );
+app.get("/api/climbs/needs-grade", authenticate, requireAdmin, (req, res) => {
+  const climbs = getAllClimbs();
+  const currentIds = new Set(currentClimbsOnly(climbs).map((c) => c.id));
 
   const needsGrade = climbs
-    .filter((c) => !c.grade && !currentKeys.has(climbKey(c.wallId, c.setterName)))
+    .filter((c) => !c.grade && !currentIds.has(c.id))
     .sort((a, b) => (a.setDate < b.setDate ? 1 : -1));
 
   res.json({ climbs: needsGrade });
@@ -1393,22 +1344,22 @@ app.get("/api/climbs/needs-grade", authenticate, requireAdmin, async (req, res) 
 // pendingNames note on POST /api/ascents. Backs the Approve tab's queue.
 // Moderator/setter-only, same audience as the old grade-approval tab this
 // one took over the name/slot of.
-app.get("/api/climbs/needs-name-approval", authenticate, requireModeratorOrSetter, async (req, res) => {
-  const climbs = await readClimbs();
-  const needsApproval = climbs
-    .filter((c) => (c.pendingNames || []).length > 0)
-    .sort((a, b) => (a.setDate < b.setDate ? 1 : -1));
+app.get("/api/climbs/needs-name-approval", authenticate, requireModeratorOrSetter, (req, res) => {
+  const climbIds = new Set(stmt.climbIdsWithProposals.all().map((r) => r.climb_id));
+  const climbs = attachClaimsAndProposals(
+    getAllClimbs().filter((c) => climbIds.has(c.id))
+  ).sort((a, b) => (a.setDate < b.setDate ? 1 : -1));
 
-  res.json({ climbs: needsApproval });
+  res.json({ climbs });
 });
 
 // Approves or rejects one pending naming-rights proposal. Moderator/setter
 // only. Approving sets the climb's confirmed `name` and discards every
 // other still-pending proposal for that climb (only one name can win);
 // rejecting just discards the one proposal. Either way the climb keeps its
-// immutable `setterName` — nothing else that references the climb by key
+// immutable `setterName` — nothing else that references the climb by id
 // needs to change.
-app.post("/api/climbs/approve-name", authenticate, requireModeratorOrSetter, async (req, res) => {
+app.post("/api/climbs/approve-name", authenticate, requireModeratorOrSetter, (req, res) => {
   const { wallId, setterName, proposalId, action } = req.body || {};
   const numericWallId = Number(wallId);
 
@@ -1419,58 +1370,47 @@ app.post("/api/climbs/approve-name", authenticate, requireModeratorOrSetter, asy
     return res.status(400).json({ error: "Action must be 'approve' or 'reject'." });
   }
 
-  const climbs = await readClimbs();
-  const climb = climbs.find((c) => c.wallId === numericWallId && c.setterName === setterName);
+  const climb = mapClimbRow(stmt.getClimbByWallAndSetterName.get(numericWallId, setterName));
   if (!climb) {
     return res.status(404).json({ error: "Climb not found." });
   }
 
-  const proposal = (climb.pendingNames || []).find((p) => p.id === proposalId);
+  const proposal = stmt.proposalById.get(proposalId, climb.id);
   if (!proposal) {
     return res.status(404).json({ error: "Proposal not found." });
   }
 
-  if (action === "approve") {
-    climb.name = proposal.name;
-    climb.pendingNames = [];
-  } else {
-    climb.pendingNames = climb.pendingNames.filter((p) => p.id !== proposalId);
-  }
-  await writeClimbs(climbs);
+  withTransaction(() => {
+    if (action === "approve") {
+      stmt.updateClimbName.run(proposal.name, climb.id);
+      stmt.deleteProposalsForClimb.run(climb.id);
+    } else {
+      stmt.deleteProposal.run(proposalId);
+    }
+  });
 
-  res.json({ climb });
+  const updated = mapClimbRow(stmt.getClimbById.get(climb.id));
+  res.json({ climb: attachClaimsAndProposals([updated])[0] });
 });
 
-app.get("/api/archive", async (req, res) => {
-  const climbs = await readClimbs();
+app.get("/api/archive", (req, res) => {
+  const climbs = attachClaimsAndProposals(getAllClimbs());
   const walls = archivedClimbsByWall(climbs);
   const archivedFlat = walls.flatMap((wall) => wall.climbs);
 
   // Within the archive itself, the most recent cycle per wall is still
   // loggable — same rule as the live list, just applied one level down.
   // Older cycles beyond that stay view-only.
-  const loggableKeys = new Set(
-    currentClimbsOnly(archivedFlat).map((climb) => climbKey(climb.wallId, climb.setterName))
-  );
+  const loggableIds = new Set(currentClimbsOnly(archivedFlat).map((climb) => climb.id));
 
-  // Run every archived climb through the same stats/comments merge as the
-  // live list, then slot the results back into their wall group by
-  // wallId+setterName.
-  const statsByKey = {};
-  const merged = await withAscentStats(archivedFlat);
-  merged.forEach((climb) => {
-    statsByKey[climbKey(climb.wallId, climb.setterName)] = climb;
-  });
+  const statsById = new Map(withAscentStats(archivedFlat).map((c) => [c.id, c]));
 
   const wallsWithStats = walls.map((wall) => ({
     ...wall,
-    climbs: wall.climbs.map((climb) => {
-      const key = climbKey(climb.wallId, climb.setterName);
-      return {
-        ...(statsByKey[key] || climb),
-        loggable: loggableKeys.has(key),
-      };
-    }),
+    climbs: wall.climbs.map((climb) => ({
+      ...(statsById.get(climb.id) || climb),
+      loggable: loggableIds.has(climb.id),
+    })),
   }));
 
   res.json({ walls: wallsWithStats });
@@ -1502,7 +1442,7 @@ function isValidAttemptsValue(value, { allowZero }) {
   return typeof value === "number" && Number.isInteger(value) && (allowZero ? value >= 0 : value >= 1);
 }
 
-app.post("/api/ascents", authenticate, async (req, res) => {
+app.post("/api/ascents", authenticate, (req, res) => {
   const {
     wallId,
     climbName,
@@ -1524,11 +1464,11 @@ app.post("/api/ascents", authenticate, async (req, res) => {
   // before it had even read climbs.json, so any {wallId, climbName} string
   // pair was accepted, stored, counted, and rendered as a comment on a climb
   // that might not exist (§14.6).
-  const climbs = await readClimbs();
-  const climb = climbs.find((c) => c.wallId === numericWallId && c.setterName === climbName);
+  const climb = mapClimbRow(stmt.getClimbByWallAndSetterName.get(numericWallId, climbName));
   if (!climb) {
     return res.status(404).json({ error: "Climb not found." });
   }
+  const climbs = getAllClimbs();
   if (!isLoggable(climb, climbs)) {
     return res.status(409).json({
       error: "This climb is no longer accepting new ascents.",
@@ -1557,78 +1497,62 @@ app.post("/api/ascents", authenticate, async (req, res) => {
     return res.status(400).json({ error: `Comment must be ${MAX_ASCENT_COMMENT_LENGTH} characters or fewer.` });
   }
 
-  const users = await readUsers();
-  const user = users.find((u) => u.username === req.user.username);
-  if (!user) {
-    return res.status(404).json({ error: "User not found." });
-  }
+  const ascentId = crypto.randomUUID();
 
-  if (!user.ascents) user.ascents = [];
-  user.ascents.push({
-    id: crypto.randomUUID(),
-    wallId: numericWallId,
-    climbName,
-    starRating: starRating ?? null,
-    grade: trimmedGrade,
-    comment: comment || "",
-    logAttempts: Boolean(logAttempts),
-    attempts: logAttempts ? attempts ?? null : null,
-    attemptsThisSession: logAttempts ? attemptsThisSession ?? null : null,
-  });
-  await writeUsers(users);
+  withTransaction(() => {
+    stmt.insertAscent.run(
+      ascentId,
+      req.user.id,
+      climb.id,
+      starRating ?? null,
+      trimmedGrade,
+      comment || "",
+      logAttempts ? attempts ?? null : null,
+      logAttempts ? attemptsThisSession ?? null : null,
+      new Date().toISOString() // new ascents get an honest timestamp —
+      // only pre-migration rows are NULL (§14.20)
+    );
 
-  // Optional first/second/.../fifth-ascent claim offered alongside this log
-  // (see LogAscentSheet client-side) — recorded on the climb itself, one
-  // slot per ordinal, first come first served, capped at 5.
-  if (ascentClaim && (ascentClaim.name || ascentClaim.pass)) {
-    if (!climb.ascentClaims) climb.ascentClaims = [];
-    if (climb.ascentClaims.length < 5) {
-      const trimmedClaimName = (ascentClaim.name || "").trim();
-      climb.ascentClaims.push({
-        name: trimmedClaimName,
-        pass: Boolean(ascentClaim.pass),
-      });
-      // Naming rights: whoever names an ascenter also proposes a new name
-      // for the climb itself, queued for a moderator/setter to approve
-      // (see GET /api/climbs/needs-name-approval, POST
-      // /api/climbs/approve-name) rather than taking effect immediately.
-      if (trimmedClaimName) {
-        if (!climb.pendingNames) climb.pendingNames = [];
-        climb.pendingNames.push({
-          id: crypto.randomUUID(),
-          name: trimmedClaimName,
-          claimedBy: user.username,
-        });
+    // Optional first/second/.../fifth-ascent claim offered alongside this
+    // log (see LogAscentSheet client-side) — recorded on the climb itself,
+    // one slot per ordinal, first come first served, capped at 5 (the
+    // ascent_claims PRIMARY KEY also enforces this structurally).
+    if (ascentClaim && (ascentClaim.name || ascentClaim.pass)) {
+      const claimCount = stmt.countClaims.get(climb.id).n;
+      if (claimCount < 5) {
+        const trimmedClaimName = (ascentClaim.name || "").trim();
+        stmt.insertClaim.run(climb.id, claimCount + 1, trimmedClaimName, ascentClaim.pass ? 1 : 0);
+
+        // Naming rights: whoever names an ascenter also proposes a new name
+        // for the climb itself, queued for a moderator/setter to approve
+        // (see GET /api/climbs/needs-name-approval, POST
+        // /api/climbs/approve-name) rather than taking effect immediately.
+        if (trimmedClaimName) {
+          stmt.insertProposal.run(crypto.randomUUID(), climb.id, trimmedClaimName, req.user.username);
+        }
       }
-      await writeClimbs(climbs);
     }
-  }
+  });
 
   // Derived fresh rather than stored (§14.7) — see computeAscentCount.
-  const currentKeys = currentClimbKeys(climbs);
-  res.json({ ascents: user.ascents, ascentCount: computeAscentCount(user.ascents, currentKeys) });
+  const ctx = buildAscentCountContext();
+  const ascents = stmt.ascentsForUser.all(req.user.id).map(mapAscentRow);
+  res.json({ ascents, ascentCount: ascentCountForUser(req.user.id, ctx) });
 });
 
 // Deleting a comment only clears the `comment` text off the ascent it came
 // from — the rest of that ascent's data (grade, rating, attempts) is kept.
 // Only the ascent's owner can delete it — enforced via `requireSelf` against
 // the session cookie, not just the username in the URL.
-app.delete("/api/users/:username/ascents/:ascentId/comment", authenticate, requireSelf, async (req, res) => {
-  const { username, ascentId } = req.params;
+app.delete("/api/users/:username/ascents/:ascentId/comment", authenticate, requireSelf, (req, res) => {
+  const { ascentId } = req.params;
 
-  const users = await readUsers();
-  const user = users.find((u) => u.username === username);
-  if (!user) {
-    return res.status(404).json({ error: "User not found." });
-  }
-
-  const ascent = (user.ascents || []).find((a) => a.id === ascentId);
+  const ascent = stmt.ascentById.get(ascentId, req.user.id);
   if (!ascent) {
     return res.status(404).json({ error: "Ascent not found." });
   }
 
-  ascent.comment = "";
-  await writeUsers(users);
+  stmt.clearAscentComment.run(ascentId);
   res.json({ success: true });
 });
 
@@ -1636,33 +1560,27 @@ app.delete("/api/users/:username/ascents/:ascentId/comment", authenticate, requi
 // rows — a repeat ascent doesn't inflate a bucket, §14.6) fall in each
 // V-grade bucket. Prefers the grade typed on the user's most recent ascent
 // of that climb; falls back to the climb's own bucket grade (looked up by
-// wallId+setterName, across current AND archived climbs) when that was
-// left blank.
-app.get("/api/users/:username/grade-counts", async (req, res) => {
+// climb id, across current AND archived climbs) when that was left blank.
+app.get("/api/users/:username/grade-counts", (req, res) => {
   const { username } = req.params;
-
-  const users = await readUsers();
-  const user = users.find((u) => u.username === username);
+  const user = mapUserRow(stmt.getUserByUsername.get(username));
   if (!user) {
     return res.status(404).json({ error: "User not found." });
   }
 
-  const climbs = await readClimbs();
-  const bucketGradeByKey = {};
-  climbs.forEach((climb) => {
-    bucketGradeByKey[climbKey(climb.wallId, climb.setterName)] = climbBucketGrade(climb);
-  });
+  const climbsById = new Map(getAllClimbs().map((c) => [c.id, c]));
 
-  // One entry per climb — later ascents in the array overwrite earlier
-  // ones, leaving each climb's most-recently-logged grade opinion.
-  const gradeByClimbKey = new Map();
-  for (const ascent of user.ascents || []) {
-    const key = climbKey(ascent.wallId, ascent.climbName);
-    const grade = (ascent.grade && ascent.grade.trim()) || bucketGradeByKey[key] || "";
-    gradeByClimbKey.set(key, grade);
+  // One entry per climb — rows come back in insertion order, so later
+  // ascents overwrite earlier ones, leaving each climb's most-recently-
+  // logged grade opinion.
+  const gradeByClimbId = new Map();
+  for (const row of stmt.ascentsForUser.all(user.id)) {
+    const climb = climbsById.get(row.climb_id);
+    const grade = (row.grade && row.grade.trim()) || (climb ? climbBucketGrade(climb) : "") || "";
+    gradeByClimbId.set(row.climb_id, grade);
   }
 
-  res.json({ counts: bucketCounts([...gradeByClimbKey.values()]) });
+  res.json({ counts: bucketCounts([...gradeByClimbId.values()]) });
 });
 
 // A single climb's Info page: the community's own opinions on difficulty —
@@ -1672,36 +1590,33 @@ app.get("/api/users/:username/grade-counts", async (req, res) => {
 // handedly skew it. Unlike the two grade-count endpoints above, a blank
 // ascent grade just doesn't count here rather than falling back to the
 // climb's official setterGrade/grade, since the point of this chart is
-// specifically what people actually typed. Matched by wallId+setterName
-// (see climbKey), since climbs have no id of their own and setterName —
-// unlike the mutable, renameable `name` — is guaranteed unique within a
-// wall.
-app.get("/api/climbs/grade-distribution", async (req, res) => {
+// specifically what people actually typed.
+app.get("/api/climbs/grade-distribution", (req, res) => {
   const numericWallId = Number(req.query.wallId);
   const setterName = (req.query.setterName || "").toString();
   if (!Number.isFinite(numericWallId) || !setterName) {
     return res.status(400).json({ error: "Wall and climb name are required." });
   }
 
-  const targetKey = climbKey(numericWallId, setterName);
-  const users = await readUsers();
-  const grades = users.map((user) => {
-    const matching = (user.ascents || []).filter(
-      (ascent) => climbKey(ascent.wallId, ascent.climbName) === targetKey
-    );
-    // The last matching entry is this user's most recent opinion.
-    return matching.length ? matching[matching.length - 1].grade : "";
-  });
+  const climb = mapClimbRow(stmt.getClimbByWallAndSetterName.get(numericWallId, setterName));
+  if (!climb) {
+    return res.json({ counts: bucketCounts([]) });
+  }
 
-  res.json({ counts: bucketCounts(grades) });
+  const byUser = new Map();
+  for (const row of stmt.allAscentsForClimb.all(climb.id)) {
+    byUser.set(row.username, row.grade); // later rows overwrite -> most recent
+  }
+
+  res.json({ counts: bucketCounts([...byUser.values()]) });
 });
 
 // The Home page's grade pyramid: how many *currently active* climbs (this
 // wall's latest reset + backfill — see currentClimbsOnly) fall in each
 // V-grade bucket. Unlike the per-user chart above, this isn't about who's
 // climbed what — it's what's actually up on the walls right now.
-app.get("/api/climbs/grade-counts", async (req, res) => {
-  const climbs = await readClimbs();
+app.get("/api/climbs/grade-counts", (req, res) => {
+  const climbs = getAllClimbs();
   const grades = currentClimbsOnly(climbs).map(climbBucketGrade);
 
   res.json({ counts: bucketCounts(grades) });

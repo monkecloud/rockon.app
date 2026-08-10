@@ -129,43 +129,68 @@ start, `Restart=always`).
 
 ## 4. Data model
 
-Two hand-rolled JSON files, read/written directly. No database, no migrations.
+SQLite (`server/db.js`, via Node's built-in `node:sqlite` — no native
+module, chosen because the deploy target is a Raspberry Pi and something
+like `better-sqlite3` would need ARM prebuilds on every deploy). Replaced
+the hand-rolled `users.json`/`climbs.json` flat files (§14.3): those
+`fs.writeFile`-whole-file writes weren't atomic (a crash mid-write could
+truncate the JSON) or isolated (two interleaved requests could lose one's
+changes). `DB_PATH` env var overrides the file location (`":memory:"` in
+tests). `server/worker.js` talks to it via prepared statements and maps
+snake_case rows to the app's existing camelCase shape
+(`mapUserRow`/`mapClimbRow`/`mapAscentRow`) — most route bodies still work
+with plain camelCase objects, same as before the migration.
 
-### 4.1 `server/climbs.json` — 260 climbs across 4 walls
+**One-time setup:** `node scripts/migrate-json-to-sqlite.js` populates the
+database from `server/users.json`/`server/climbs.json` (kept in the repo as
+the migration's input, no longer read at runtime). Re-runnable — wipes and
+reseeds every table from those two files each time. `server/climbing.db`
+itself is gitignored (unlike the JSON files it replaced) and needs its own
+backup story in any real deployment.
 
-```jsonc
-{
-  "wallId": 4,                    // 1=Back 2=Slab 3=Cave 4=Front
-  "setterName": "Wild Ledge",     // UNIQUE WITHIN A WALL, IMMUTABLE — this is the key
-  "name": "Wild Ledge",           // confirmed DISPLAY name — starts equal to
-                                   // setterName, can change via an approved
-                                   // naming-rights proposal (see pendingNames).
-                                   // Not unique, never a key.
-  "setter": "Cubesnail",          // a username; not validated server-side
-  "setterGrade": "VB-1",          // setter's guess at set time; IMMUTABLE
-  "grade": "V1",                  // confirmed final grade; "" until an admin sets it
-  "photoUrl": "data:image/...",   // base64 inline; "" or absent
-  "comments": [],                 // seeded sample comments only
-  "setId": "47c503be-...",        // uuid shared by climbs put up together
-  "setDate": "2026-05-01",        // "YYYY-MM-DD"
-  "setType": "reset",             // "reset" | "backfill"
-  "archived": false,              // NOT AUTHORITATIVE — reserved for a future tool
-  "ascentClaims": [],             // up to 5 × { name, pass }
-  "pendingNames": []              // queued rename proposals — see below
-}
+### 4.1 `climbs` table
+
+```sql
+CREATE TABLE climbs (
+  id INTEGER PRIMARY KEY,
+  wall_id INTEGER NOT NULL REFERENCES walls(id),
+  setter_name TEXT NOT NULL COLLATE NOCASE,  -- UNIQUE per wall, IMMUTABLE — this is the key
+  name TEXT NOT NULL,                        -- confirmed DISPLAY name — starts
+                                              -- equal to setter_name, can change
+                                              -- via an approved naming-rights
+                                              -- proposal. Not unique, never a key.
+  setter_grade TEXT NOT NULL,      -- setter's guess at set time; IMMUTABLE
+  grade TEXT NOT NULL DEFAULT '',  -- confirmed final grade; '' until an admin sets it
+  setter TEXT NOT NULL,            -- a username; existence checked at write
+                                    -- time (POST /api/climbs), not FK-enforced
+  photo_url TEXT NOT NULL DEFAULT '',
+  set_id TEXT NOT NULL,            -- shared by climbs put up together
+  set_date TEXT NOT NULL,          -- "YYYY-MM-DD"
+  set_type TEXT NOT NULL CHECK (set_type IN ('reset','backfill')),
+  UNIQUE (wall_id, setter_name)
+);
 ```
 
-**Climbs have no id of their own.** `wallId` + `setterName` is the key that
-ascents, comments, and every front-end lookup reference a climb by —
-`setterName` is immutable and guaranteed unique within a wall, unlike the
-mutable, renameable `name`. `climbKey(wallId, setterName)` →
-`` `${wallId}::${setterName}` `` is the canonical join key.
+Related tables: `ascent_claims` (`climb_id, ordinal 1-5, name, pass` — the
+`PRIMARY KEY (climb_id, ordinal)` caps a climb at 5 claims structurally) and
+`name_proposals` (`id, climb_id, name, claimed_by` — the naming-rights
+queue, see below). `walls` (`id, name, display_order`, seeded with the 4
+walls on first boot) replaced the hardcoded `WALLS` constant that used to
+live in `src/App.jsx` (§13.8-e) — a climb can no longer reference a wall
+that doesn't exist.
+
+**Climbs have a real id now**, but `wallId` + `setterName` is still the
+externally-visible identity ascents/front-end lookups reference a climb
+by — `setter_name` is `COLLATE NOCASE` (case-insensitive lookup/uniqueness
+from the database itself) and immutable, unlike the mutable, renameable
+`name`. `climbKey(wallId, setterName)` → `` `${wallId}::${setterName}` ``
+is still the join key server-side helpers like `currentClimbsOnly` use.
 
 **Naming rights.** Whenever a logged ascent fills in a name for any
-`ascentClaims` slot (first/second/.../fifth ascent — see §5.7), that name is
-also queued in `pendingNames` (`[{id, name, claimedBy}]`) as a proposal to
-rename the climb. A moderator/setter resolves each proposal on the **Approve**
-tab (`GET /api/climbs/needs-name-approval`, `POST /api/climbs/approve-name`):
+ascent-claim slot (first/second/.../fifth ascent — see §5.7), that name is
+also queued in `name_proposals` as a proposal to rename the climb. A
+moderator/setter resolves each proposal on the **Approve** tab
+(`GET /api/climbs/needs-name-approval`, `POST /api/climbs/approve-name`):
 approving sets `climb.name` to the proposed name and discards every other
 pending proposal for that climb (only one name can win); rejecting drops just
 that one. `setterName` never changes either way.
@@ -174,9 +199,13 @@ that one. `setterName` never changes either way.
 - **reset** — everything older on that wall stops being "current"
 - **backfill** — new climbs layer on top, nothing comes down
 
-"Current" is *derived*, never read from `archived`. Current data spans
-2026-05-01 → 2026-10-09, alternating reset (~15-20 climbs) and backfill (4
-climbs) roughly weekly.
+"Current" is *derived* — `currentClimbsOnly()` in `server/worker.js` stays a
+JS traversal over all climbs (fetched via one `SELECT * FROM climbs`) rather
+than a SQL window-function query; the "latest reset per wall, then
+everything on/after it" rule is simple as a loop and already thoroughly
+tested, so forcing it into a single SQL expression buys nothing. There's no
+`archived` column (§14.20 — the JSON version had one but nothing ever
+trusted it).
 
 **Grades are two-stage:**
 1. `setterGrade` — a single grade (`"V6"`) or a range (`"V2-4"`), set at
@@ -184,64 +213,68 @@ climbs) roughly weekly.
 2. `grade` — the confirmed single grade, settable **only once the climb is no
    longer current**, by an **admin**, via the Grades tab.
 
-### 4.2 `server/users.json` — 10 accounts
+### 4.2 `users`, `sessions`, `ascents`, `follows` tables
 
-```jsonc
-{
-  "username": "Cubesnail",       // case-insensitively unique
-  "passwordHash": "$2b$12$...",  // bcrypt, SALT_ROUNDS=12; "" = needs reset
-  "sessionToken": "hex64",       // one active session per user
-  "name": "Display Name",        // optional
-  "avatarUrl": "data:image/...", // base64 inline
-  "followers": ["alice"],        // usernames
-  "following": ["bob"],          // usernames
-  "ascents": [ /* below */ ],
-  "isModerator": true,           // role flags — admin sets all three
-  "isSetter": true,
-  "isAdmin": true
-}
+```sql
+CREATE TABLE users (
+  id INTEGER PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  name TEXT NOT NULL DEFAULT '',
+  password_hash TEXT NOT NULL DEFAULT '',  -- bcrypt, SALT_ROUNDS=12; '' = needs reset
+  avatar_url TEXT NOT NULL DEFAULT '',
+  is_moderator INTEGER NOT NULL DEFAULT 0,  -- role flags — admin sets all three
+  is_setter    INTEGER NOT NULL DEFAULT 0,
+  is_admin     INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE sessions (        -- real server-side expiry (§13.1) — the old
+  token TEXT PRIMARY KEY,      -- users.json sessionToken field never had any
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL
+);
+
+CREATE TABLE follows (
+  follower_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  followee_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (follower_id, followee_id)
+);
+
+CREATE TABLE ascents (
+  id TEXT PRIMARY KEY,
+  user_id  INTEGER NOT NULL REFERENCES users(id)  ON DELETE CASCADE,
+  climb_id INTEGER NOT NULL REFERENCES climbs(id) ON DELETE CASCADE,
+  star_rating REAL,                -- 0.5 steps, 0.5-5, or NULL
+  grade TEXT NOT NULL DEFAULT '',  -- the climber's own opinion, or '' for none
+  comment TEXT NOT NULL DEFAULT '',
+  attempts INTEGER,                -- nullable — expresses the old always-true
+  attempts_this_session INTEGER,   -- logAttempts flag; both NULL = not logged
+  created_at TEXT   -- nullable: ascents migrated from users.json have no
+                     -- honest timestamp (inventing one would be fabricating
+                     -- data), so they're NULL rather than the migration
+                     -- date (§14.20). New ascents get a real timestamp.
+);
 ```
 
-**`ascentCount` is not a field on the user record at all** — see below.
+`sessions.token` being the primary key is also what closed the timing side
+channel a linear array scan used to have (`authenticate` used to do
+`users.find(u => u.sessionToken === token)`) — an indexed lookup's timing
+doesn't depend on where in a scan the match would have been.
 
-An ascent:
+**`ascentCount` is not a column anywhere.** It's derived fresh on every read
+(`buildAscentCountContext`/`ascentCountForUser` in `server/worker.js`, built
+once per request and passed around — rebuilding it per user, e.g. in the
+leaderboard, would turn an O(n) endpoint into O(n·m)). It counts **distinct
+climbs**, not ascent rows — repeats are allowed (climbers legitimately
+resend a project) but must not inflate the count — restricted to climbs
+still in their wall's *current* set. Deriving it on read rather than storing
+it is what makes a wall reset unable to leave it stale for anyone.
 
-```jsonc
-{
-  "id": "uuid",                  // targets this ascent's comment for deletion
-  "wallId": 4,
-  "climbName": "Wild Ledge",     // wallId + climbName = the climb's setterName
-  "starRating": 4.5,             // 0.5 steps, min 0.5-5, or null
-  "grade": "V4",                 // the climber's own opinion, or "" for none
-  "comment": "Great moves",      // non-empty → shows on the Info page
-  "logAttempts": true,
-  "attempts": 7,
-  "attemptsThisSession": 3
-}
-```
-
-**`ascentCount` is derived fresh on every read, never stored** (§14.7) —
-`computeAscentCount(ascents, currentKeys)`, where `currentKeys` is a
-`currentClimbKeys(climbs)` Set built once per request and passed around
-(rebuilding it per user, e.g. in the leaderboard, would turn an O(n)
-endpoint into O(n·m)). It counts **distinct climbs**, not ascent rows or
-`ascents.length` — repeats are allowed (climbers legitimately resend a
-project) but must not inflate the count — restricted to climbs still in
-their wall's *current* set; a climb archived by a newer reset stops
-counting, though the ascent itself is kept. Deriving it on read rather than
-storing it is what makes a wall reset unable to leave it stale for anyone —
-the earlier stored-counter design only recomputed it for whoever next
-logged an ascent.
-
-### 4.3 Lazy schema backfill — the migration pattern
-
-Both readers backfill missing fields on load and persist immediately.
-**When adding a field, follow this pattern; don't write a migration script.**
-
-| Reader | Backfills |
-|---|---|
-| `readUsers()` | `ascent.id` (uuid). (`ascentCount` used to be backfilled here too — no longer; it's derived on read instead, see §4.2.) |
-| `readClimbs()` | Old single `difficulty` → `setterGrade` + `grade` (treated as already-confirmed), deletes `difficulty`; missing `setterName` ← `name` (pre-naming-rights climbs); missing `pendingNames` → `[]` |
+**Not migrated from the JSON files** (§14.20): the `archived` column, the
+always-`true` `logAttempts` flag (nullable `attempts`/`attempts_this_session`
+say the same thing), and seeded sample `comments` (vestigial — no new climb
+has had one since creation moved to `POST /api/climbs`; a climb's comments
+are purely ascent-derived now, merged in by `withAscentStats`).
 
 ---
 
@@ -337,10 +370,18 @@ All exported (for tests). Grouped by job.
 - `getCookie(req, name)` — hand-rolled parser; no `cookie-parser` dependency
 - `setSessionCookie(req, res, token)` — httpOnly, sameSite lax, `secure: req.secure`, 30d
 
-**Storage**
-- `readUsers()` / `writeUsers(users)` — with the lazy backfills of §4.3
-- `readClimbs()` / `writeClimbs(climbs)` — plain disk I/O now (§14.3.1ii); no
-  IPC ping, no worker swap, that whole layer is gone
+**Storage — SQLite (§14.3), not `readUsers`/`writeUsers`/`readClimbs`/`writeClimbs`**
+- `stmt` — an object of prepared statements, compiled once at module load
+  (see `server/worker.js` near the top). Route handlers call these directly
+  rather than reading/writing a whole file
+- `mapUserRow`/`mapClimbRow`/`mapAscentRow` — snake_case DB row → the app's
+  existing camelCase shape
+- `withTransaction(fn)` (from `server/db.js`) — raw `BEGIN`/`COMMIT`/`ROLLBACK`;
+  `node:sqlite`'s `DatabaseSync` has no `.transaction()` helper of its own.
+  Wraps every multi-row mutation
+- `getAllClimbs()` — `SELECT * FROM climbs`, mapped; `attachClaimsAndProposals(climbs)`
+  bulk-fetches `ascent_claims`/`name_proposals` and groups them in JS by
+  `climb_id`, rather than N+1 per-climb queries
 
 **Set/cycle logic — the conceptual core**
 - `currentClimbsOnly(climbs)` — per wall, finds the latest `setType:"reset"`
@@ -356,16 +397,20 @@ All exported (for tests). Grouped by job.
 - `climbKey(wallId, setterName)` — `` `${wallId}::${setterName}` ``
 - `currentClimbKeys(climbs)` — the Set version of `currentClimbsOnly`, built
   once per request and passed around rather than rebuilt per user (§14.7)
-- `computeAscentCount(ascents, currentKeys)` — **distinct** current climbs
-  logged, not ascent rows (§14.6); takes the Set from `currentClimbKeys`,
-  not a raw climbs array
+- `buildAscentCountContext()` / `ascentCountForUser(userId, ctx)` — the
+  SQLite-era replacement for the old `computeAscentCount(ascents, currentKeys)`
+  (ascents are looked up by user id from the DB now, not passed in as a
+  plain array); `ctx` bundles `currentKeys` + a `climbsById` map so callers
+  build it once per request, not once per user
 - `isLoggable(climb, climbs)` / `loggableClimbKeys(climbs)` — whether a new
   ascent may be logged against this climb: current, or in the wall's most
   recently *archived* cycle. Shared with `GET /api/archive`'s `loggable` flag
-- `withAscentStats(climbs)` — walks every user's ascents once to attach
-  `ascentCount` (distinct users), `averageStars` (one rating per user, their
-  most recent), and merge user comments (id `ascent-<uuid>`, every repeat's
-  comment shown — not deduped) onto seeded ones
+- `withAscentStats(climbs)` — queries every ascent (joined to its user +
+  climb) once to attach `ascentCount` (distinct users), `averageStars` (one
+  rating per user, their most recent), and merge user comments (id
+  `ascent-<uuid>`, every repeat's comment shown — not deduped). No longer
+  `async` (the DB is synchronous) and no longer merges in seeded
+  `climb.comments` — none were carried across by the migration (§14.20)
 
 **Grades — now `shared/grades.js` (§14.19), not worker.js**
 - `gradeToBucket(grade)` — `"V4"`→`V4`, `"vb"`→`VB`, ≥10→`V10+`, unparseable→`null`
@@ -386,7 +431,10 @@ All exported (for tests). Grouped by job.
 | `toSearchResultEntry(user, viewer, ascentCount)` | username, name, avatarUrl, counts, ascentCount, **isFollowing** | search, leaderboard, follower lists |
 | `toSetterListEntry` | username, name | setter dropdown |
 
-None of these ever include `passwordHash` or `sessionToken`.
+`user` needs a real `id` (a DB row) — `followersCount`/`followingCount`/
+`isFollowing` are live `COUNT`/`EXISTS`-style queries against the `follows`
+table inside these functions, not read off the object passed in. None of
+these ever include `passwordHash` or `sessionToken`.
 
 ---
 
@@ -564,9 +612,12 @@ anything malformed. Everything that parses a range assumes this exact shape.
   (`--color-bg`, `--color-surface-0…7`, `--color-text-*`, `--color-accent`,
   `--color-danger`, `--color-star`). **Change a color there, not in App.jsx.**
 - Dark theme only. App is capped at `maxWidth: 420` and centered.
-- Scrollbars hidden globally; page-level pinch-zoom blocked in `main.jsx` via
-  `gesturestart`/`gesturechange`/multi-touch `touchmove` handlers (iOS Safari
-  ignores `user-scalable=no` in some versions).
+- Scrollbars hidden globally; page-level pinch-zoom blocked via
+  `gesturestart`/`gesturechange` handlers in `main.jsx` (iOS Safari ignores
+  `user-scalable=no` in some versions) plus a multi-touch `touchmove`
+  handler scoped to `ZoomableImageViewer`'s pinch stage specifically
+  (§14.22 — used to be document-wide in `main.jsx`, running on every touch
+  anywhere in the app).
 - Safe-area insets used on the top bar and content padding.
 
 ---
@@ -603,11 +654,11 @@ covers brute-force/spam, not weak passwords.
 
 ## 9. Tests
 
-`npm test` — vitest, 313 tests.
+`npm test` — vitest, 301 tests.
 
 | File | Tests | Approach |
 |---|---|---|
-| `server/worker.test.js` | 217 | Mocks `fs/promises` with an in-memory store; drives `app` through supertest. Covers every route, every middleware, every pure helper |
+| `server/worker.test.js` | 205 | Seeds a fresh in-memory SQLite database per test (`seedUsers`/`seedClimbs`, see below); drives `app` through supertest. Covers every route, every middleware, every pure helper |
 | `shared/grades.test.js` | 17 | Plain node env — pure functions, no DOM. Every export of `shared/grades.js`, including the `composeSetterGrade`/`parseSetterGrade` round-trip |
 | `src/test/pure.test.js` | 17 | Plain node env — `roleOf` (`lib/roles.js`), `climbGradeSortValue`/`matchesClimbQuery`/`sortClimbs` (`lib/climbs.js`) |
 | `src/test/App.navigation.test.jsx` | 12 | jsdom + `@testing-library/react` — `App()`'s navigation state machine: role-gated tabs, Walls drill-down/back, tab re-tap-to-root, the search stack, `leaderboardReturnTab`, plus the §14.9/§14.8 regression tests |
@@ -621,16 +672,34 @@ covers brute-force/spam, not weak passwords.
 | `src/test/StarRatingInput.test.jsx` | 5 | jsdom — pointer-drag-to-rate in 0.5 steps (with `getBoundingClientRect` stubbed), edge clamping, arrow/Home/End keyboard control |
 | `src/test/ZoomableImageViewer.test.jsx` | 5 | jsdom — single-pointer drag translate, two-finger pinch scale (clamped [1,4]), wheel zoom, all read off `img.style.transform` since it's written via ref, not state |
 
+Server count dropped from 217 (pre-§14.3, mocked `fs/promises`) to 205 after
+the SQLite migration — the difference is file-locking/atomic-write-retry
+behavior that stopped being a thing worth testing once `node:sqlite`
+transactions replaced whole-file `fs` reads/writes, not a coverage loss.
+Frontend count (96, added by §14.11a/§14.11b, unaffected by the backend
+swap since it mocks `fetch`) is unchanged.
+
 **Frontend coverage: §14.11a and §14.11b both done** — infra, pure
 functions, the navigation state machine (§14.11a), plus forms, derived
 state, data-driven screens, and pointer-driven components (§14.11b, built
 after §14.16's split landed). See §14.11's own writeup for what each
 priority covered and one non-obvious timing gotcha found while building it.
 
-`server/worker.test.js` sets `process.env.NODE_ENV = "test"` at the top —
-this is what makes importing `worker.js` skip binding a real socket and
-touching the real JSON files. (`server/index.js`/`index.test.js`, the old
-primary-process proxy and its 30 tests, were deleted per §14.3.1(ii).)
+`server/worker.test.js` sets `process.env.NODE_ENV = "test"` (skip binding a
+real socket) and `process.env.DB_PATH = ":memory:"` (§14.3 — a fresh SQLite
+database for the whole file's run, instead of `server/climbing.db`) at the
+top, before importing `server/worker.js`. `seedUsers`/`seedClimbs` each
+*replace* the relevant tables' contents (matching the old JSON-mock
+semantics — one call sets up that test's whole fixture) rather than being
+additive; `currentUsers()`/`currentClimbs()` read the current DB state back
+in the same camelCase shape, which is what lets the common
+`const users = currentUsers(); users[0].isAdmin = true; seedUsers(users);`
+round-trip pattern (including the caller's session cookie) keep working
+unchanged. A fixture referencing a climb that wasn't seeded via
+`seedClimbs()` first is silently skipped (ascents FK-reference climbs now),
+same as `scripts/migrate-json-to-sqlite.js` does for real orphaned data.
+(`server/index.js`/`index.test.js`, the old primary-process proxy and its
+30 tests, were deleted earlier per §14.3.1(ii).)
 
 **Frontend tests run in `jsdom`, server tests run in plain `node`** —
 `vite.config.js`'s `test.environment` defaults to `"node"` (so
@@ -646,8 +715,12 @@ guarded on `typeof Element !== "undefined"`.
 
 ## 10. Common edits — recipes
 
-**Add a wall** → `WALLS` in `src/constants.js`. Then seed climbs for it with
-`setType: "reset"` (via the Walls-root `+`, or by hand in `climbs.json`).
+**Add a wall** → insert a row into the `walls` table (`server/db.js`'s schema
+seeds the initial 4 on first boot; `GET /api/walls` exposes them, though the
+frontend doesn't consume it yet — `WALLS` in `src/constants.js` (moved there
+from `src/App.jsx` by §14.16's split) is still the hardcoded source of truth,
+kept in sync by hand — see §13.8-e/§14.3.2). Then seed climbs for it with
+`setType: "reset"` (via the Walls-root `+`, or a direct `INSERT INTO climbs`).
 `currentClimbsOnly` shows *everything* for a wall with no reset on record.
 
 **Add a screen** → write the component in its own file under `src/screens/`
@@ -682,31 +755,36 @@ or rejects it on the Approve tab. Approving sets `climb.name` only —
 
 ## 11. Footguns
 
-1. **Climbs have no id.** They're joined by `wallId`+`setterName` — `setterName`
-   is immutable specifically so the naming-rights flow (see §5.6, §10 "Rename
-   a climb") can change the mutable, display-only `name` without orphaning
-   ascents/comments. Anything that still keys off `climb.name` instead of
-   `climb.setterName` will break the moment a name proposal is approved.
-2. **`archived` is a lie.** It exists on every climb but nothing trusts it.
-   Currency is always derived via `currentClimbsOnly`.
-3. **Worker memory is disposable.** Any `climbs.json` write forks a fresh
-   worker. Module-level caches will silently vanish mid-session.
-4. **Duplicated grade logic** between client and server (§7.4).
-5. **Username changes don't cascade** into other users' `followers`/`following`
-   arrays, which store usernames as strings. Follows now actually populate
-   those arrays, so this *is* a live bug waiting to happen.
-6. **Base64 images inline in JSON.** Avatars and climb photos are stored as
-   data URLs directly in `users.json` / `climbs.json`. One oversized test photo
-   was stripped and `compression` added (§14.5 step 1), so `climbs.json` is
-   back down to ~86 KB for now — but nothing stops the next real upload from
-   growing it the same way. Body limit is 5 MB. This will not scale — real
+1. **Climbs have a real id now (§14.3), but it's still not the join key.**
+   `wallId`+`setterName` is — `setterName` is immutable specifically so the
+   naming-rights flow (see §5.6, §10 "Rename a climb") can change the
+   mutable, display-only `name` without orphaning ascents. Anything that
+   still keys off `climb.name` instead of `climb.setterName` will break the
+   moment a name proposal is approved.
+2. **Base64 images inline in the database.** Avatars and climb photos are
+   stored as data URLs directly in `users.avatar_url`/`climbs.photo_url` TEXT
+   columns — moving to SQLite didn't change this. One oversized test photo
+   was stripped and `compression` added (§14.5 step 1), so this isn't
+   biting yet, but nothing stops the next real upload from growing the
+   database the same way. Body limit is 5 MB. This will not scale — real
    file storage (§14.5 step 2, not yet built) is the eventual fix.
-7. **`writeUsers` / `writeClimbs` are read-modify-write with no locking.**
-   Concurrent writes can lose data.
-8. **Duplicate `setterName`s are rejected across all history**, not just the
-   current set — so a name can never be reused on a wall at creation time.
-   `name` (the mutable display name) has no such uniqueness check.
-9. **The root `App.jsx` is stale.** Only `src/App.jsx` is built.
+3. **Duplicate `setterName`s are rejected across all history**, not just the
+   current set — so a name can never be reused on a wall at creation time
+   (`UNIQUE (wall_id, setter_name)`). `name` (the mutable display name) has
+   no such uniqueness check.
+4. **The root `App.jsx` is stale.** Only `src/App.jsx` is built.
+
+Retired by the SQLite migration (§14.3), kept here only so a stale mental
+model doesn't linger: **worker memory is no longer disposable** (there's no
+primary/worker hot-swap forking a fresh process on every write, see
+§14.3.1 — a module-level cache would actually survive now, though nothing
+relies on one); **writes are no longer unlocked read-modify-write** (every
+multi-row mutation is a real transaction, and `DatabaseSync` is synchronous
+so there's no `await` point for a race to open in the first place);
+**`archived` doesn't exist as a column at all**, not just "unused" (§14.20);
+**username changes can't strand a stale reference anywhere** (follows/
+ascents reference user id, not username string); **grade logic isn't
+duplicated** between client and server (`shared/grades.js`, §14.19).
 
 ---
 
@@ -1105,7 +1183,7 @@ implement 13.2-a+b using Option B."*
 |---|---|---|
 | 13.1-a Data files in git | P0 | ⏸️ **Deferred** by Derrick, 2026-08-10 — "will deal with it later" |
 | 13.2-a+b Worker crash recovery | P0 | ❌ **CANCELLED** 2026-08-10 — superseded by §14.3.1(ii); the code it patches is being deleted |
-| 13.2-c+d Atomic writes & locking | P0 | ✅ **DECIDED: Option D — migrate to SQLite** (Derrick, 2026-08-10) — not yet started |
+| 13.2-c+d Atomic writes & locking | P0 | ✅ **DONE 2026-08-10** — Option D, SQLite (`node:sqlite`). See §14.3 |
 | 13.2-e Hot-swap is a no-op | P0 | ✅ **DONE 2026-08-10** — Option (ii), `server/index.js`/`index.test.js` deleted, `worker.js` binds `PORT` directly |
 | 13.1-b Login rate limiting | P0 | ✅ **DONE 2026-08-10** — hand-rolled dual-key (IP+username) escalating-delay limiter on login; signup gets it too (IP-only, every attempt counts). See §14.4 |
 | 13.4-a/b/c Payload trio | P1 | ✅ **Step 1 DONE 2026-08-10** — picturetest climb deleted, `compression` added. **Step 2 (Option B, files on disk) not started.** See §14.5 |
@@ -1124,8 +1202,8 @@ implement 13.2-a+b using Option B."*
 | 13.3-d/e/f/g Climb validation | P2 | ✅ **DONE 2026-08-10** — setDate, setterGrade, grade, setter existence all validated; grade lookup now case-insensitive. See §14.17 |
 | 13.4-h/i Debounce & refetch | P2 | ✅ **DONE 2026-08-10** — Option A: 300ms debounce on the user search, `useFetch`'s `apiCache` fixes refetch-on-mount for `GradeBarChart`/`Leaderboard` for free. See §14.18 |
 | 13.8-c/f Shared grades + dev port | P2 | ✅ **DONE 2026-08-10** — `shared/grades.js` extracted, both sides import it; `vite.config.js` reads `PORT` via `loadEnv`. See §14.19 |
-| 13.8-e `WALLS` hardcoded | P2 | ✅ **DECIDED: fold into §14.3 as a `walls` table** (Derrick, 2026-08-10) — not a standalone item. See §14.3.2 |
-| 13.5-a/b/c + 13.3-h Data-model cleanups | P2/P3 | ✅ **DECIDED: Option A — fold all four into §14.3** (Derrick, 2026-08-10). See §14.20. ⚠️ `createdAt` is lost for every ascent logged before the migration |
+| 13.8-e `WALLS` hardcoded | P2 | ⚠️ **PARTIAL 2026-08-10** — **DECIDED: fold into §14.3 as a `walls` table** (Derrick, 2026-08-10). Built: `walls` table + `GET /api/walls` (climbs are FK-enforced to a real wall now). Not yet done: the frontend isn't wired to it — `WALLS` in `src/constants.js` (post-§14.16 split) is still the hardcoded source of truth. See §14.3.2 |
+| 13.5-a/b/c + 13.3-h Data-model cleanups | P2/P3 | ✅ **DECIDED: Option A — fold all four into §14.3** (Derrick, 2026-08-10) — **DONE 2026-08-10**: `archived`/`logAttempts` not migrated, `ascents.created_at` added (NULL for pre-migration rows), `ascent_claims` PK caps at 5 structurally. See §14.20. ⚠️ `createdAt` is lost for every ascent logged before the migration (19 real pre-migration ascents affected) |
 | 13.6-c/d/f Frontend UX | P2 | ✅ **DONE 2026-08-10** — Option B: `matchesClimbQuery` shared by both search boxes (in-wall now matches setter too), `GradeBarChart` renders a same-dimension skeleton instead of `null`, `ZoomableImageViewer` keyed by climb at both call sites. See §14.21 |
 | 13.6-e Optimistic UI | P2 | ⏸️ **DEFERRED** (Derrick, 2026-08-10) — cheaper after §14.9's `apiSend` lands. Stays open |
 | All 21 P3 items | P3 | ✅ **BATCH-DECIDED** (Derrick, 2026-08-10). Group 2 (stale comments, package.json, SALT_ROUNDS, reduced-motion) and Group 3 (touchmove scope, image lazy-loading, contrast, star icons, reset warning) **DONE 2026-08-10**. Groups 1 (absorbed elsewhere) and 4 (product question, not a bug) don't need standalone work. See §14.22 |
@@ -1133,11 +1211,14 @@ implement 13.2-a+b using Option B."*
 
 Everything else in §13 has no options drafted yet.
 
-**Build order for a new session:**
+**Build order for a new session (both DONE, 2026-08-10):**
 1. **§14.3.1 Option (ii)** — delete `server/index.js`, have `worker.js` bind
-   `PORT`, let systemd supervise. Do this **first**: it removes ~150 lines and
-   two P0 bugs, and means the SQLite work touches one process instead of two.
-2. **§14.3** — SQLite migration.
+   `PORT`, let systemd supervise. Removed ~150 lines and two P0 bugs, and
+   meant the SQLite work touched one process instead of two.
+2. **§14.3** — SQLite migration. Built as the full idiomatic version (real
+   per-route queries/transactions, not the smaller compatibility-shim
+   alternative that was also on the table) — see the section itself for
+   what that did and didn't change relationally vs. keep as JS.
 
 §14.2 is **cancelled** — kept only as a record of why. Do not implement it.
 
@@ -1336,13 +1417,26 @@ worker exits → **no** restart; (4) `MAX_FAILURES` consecutive crashes →
 
 ---
 
-### 14.3 — Migrate to SQLite  `P0`  ✅ decided
+### 14.3 — Migrate to SQLite  `P0`  ✅ DONE 2026-08-10
 
-> ## ✅ DECISION: build **Option D — SQLite**
-> Chosen by Derrick, 2026-08-10, for backlog items §13.2-c (atomic writes) and
-> §13.2-d (write locking). Options A–C (temp-file writes, in-process mutex,
-> file locking) are recorded as **rejected** — do not build them.
-> **Read §14.3.1 first**: it may change the shape of this work.
+> ## ✅ DONE — built Option D — SQLite
+> Chosen and built by Derrick, 2026-08-10, for backlog items §13.2-c (atomic
+> writes) and §13.2-d (write locking). Options A–C (temp-file writes,
+> in-process mutex, file locking) were **rejected**, not built.
+>
+> **Built as the full idiomatic version**, not the smaller compatibility-shim
+> alternative that was also on the table (reconstruct the same nested JS
+> shapes and do bulk delete+reinsert writes) — every route got real per-table
+> queries/joins/transactions. The one deliberate exception:
+> `currentClimbsOnly`/`groupIntoCycles`/`archivedClimbsByWall` stayed JS
+> traversals over `SELECT * FROM climbs` rather than SQL window-function
+> queries — already correct, already tested, and forcing the "latest reset
+> per wall" rule into a single SQL expression buys nothing. See §4 for the
+> as-built schema (it differs from the sketch below in a few places — a
+> `setter_name`/`name` split for naming-rights, `name_proposals`, `walls`
+> seeded automatically — reflecting decisions made after this section was
+> originally written) and `server/db.js`/`scripts/migrate-json-to-sqlite.js`
+> for the real thing.
 
 **What it replaces.** Every mutating route currently does `read whole file →
 mutate array → write whole file`, which is neither atomic (a crash mid-write

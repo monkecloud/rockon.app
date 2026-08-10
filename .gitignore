@@ -5,3 +5,13 @@ dist
 APP_SPEC.txt
 .claude/settings.local.json
 .claude/worktrees/
+
+# SQLite datastore (§14.3) -- unlike the users.json/climbs.json files it
+# replaces, this is a binary file that changes on every mutation, so it's
+# not tracked in git the way those were (§14.1 remains open/deferred on
+# whether that should also apply retroactively to the JSON files still in
+# the repo). Needs its own backup story outside git -- see the "Running it
+# persistently" section of README.md.
+server/climbing.db
+server/climbing.db-wal
+server/climbing.db-shm

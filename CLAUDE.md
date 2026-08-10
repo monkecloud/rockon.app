@@ -16,8 +16,8 @@ This file (CLAUDE.md) is the short version; that one is the detail.
 A mobile-oriented React climbing-gym app: bottom tab bar (Home, Walls, Search,
 Profile), drill-down navigation (Walls → Climbs → Climb, with a zoomable
 image and a comments page), sign-up/login, ascent logging, and
-moderator/setter/admin tooling — backed by a small Express API with two flat
-JSON files as the datastore (no real database).
+moderator/setter/admin tooling — backed by a small Express API with a SQLite
+datastore (`server/db.js`, via Node's built-in `node:sqlite`).
 
 ## Commands
 
@@ -35,12 +35,12 @@ npm start             # production-style: one process serves dist/ + API on :251
 
 There is no lint script configured.
 
-Tests set `NODE_ENV=test` themselves (via `process.env.NODE_ENV = "test"` at
-the top of the test file) — this skips `server/worker.js`'s real `fs`/socket
-side effects (see below) so importing it under vitest doesn't bind a real
-port or touch real `users.json`/`climbs.json`. `server/worker.test.js` mocks
-`fs/promises` with an in-memory store and exercises `app` directly via
-`supertest`.
+Tests set `NODE_ENV=test` (skips binding a real port) and `DB_PATH=":memory:"`
+(a fresh in-memory SQLite database for the whole test-file run, instead of
+the real `server/climbing.db`) themselves at the top of the test file, before
+importing `server/worker.js`. `server/worker.test.js` seeds that database
+directly (see `seedUsers`/`seedClimbs`/`currentUsers`/`currentClimbs`) and
+exercises `app` directly via `supertest`.
 
 **`NODE_ENV=production` is safe to set, including locally.** The session
 cookie's `secure` flag is driven by `req.secure` (the actual request), not
@@ -92,9 +92,11 @@ and being the root cause of two P0 crash-recovery bugs. `deploy/climbing-app.ser
 
 Because nothing forks or restarts this process on a normal write anymore,
 in-memory state *could* now survive across requests — but sessions and
-everything else still persist to disk (`users.json` / `climbs.json`)
-because a crash-and-restart (or the eventual SQLite migration, §14.3) would
-still wipe a module-level variable; don't start relying on one.
+everything else still persist to the SQLite database (see below) because a
+crash-and-restart would still wipe a module-level variable; don't start
+relying on one. (The one exception is login/signup rate-limit counters,
+deliberately in-memory — see the module comment above `rateLimitAttempts`
+in `server/worker.js`.)
 
 In dev (`npm run dev:all`), Vite (`:5173`) serves the UI and proxies `/api`
 to this same process on `:25100` (see `vite.config.js`). In production
@@ -102,56 +104,88 @@ to this same process on `:25100` (see `vite.config.js`). In production
 the README's "Running it persistently" section for the systemd deploy path
 (`deploy/climbing-app.service`).
 
-### Data model (`server/users.json`, `server/climbs.json`)
+### Data model — SQLite (`server/db.js`, `server/climbing.db`)
 
-Both files are hand-rolled JSON "databases," read/written directly by
-`server/worker.js` (`readUsers`/`writeUsers`/`readClimbs`/`writeClimbs`).
-Both readers do lazy schema backfills on load (e.g. adding `ascent.id`,
-splitting old `difficulty` into `setterGrade`/`grade`, splitting old `name`
-into `setterName`/`name`) and persist the backfilled shape immediately —
-when adding a new field, prefer this same lazy-backfill-on-read pattern
-over a one-off migration script.
+Replaced the hand-rolled `users.json`/`climbs.json` flat files (§14.3) —
+those `fs.readFile`/`writeFile`-whole-file reads/writes weren't atomic (a
+crash mid-write could truncate the JSON) or isolated (two interleaved
+requests could lose one's changes). `server/db.js` opens the database
+(`node:sqlite`'s `DatabaseSync`, built into Node — no native module, chosen
+specifically because the deploy target is a Raspberry Pi and a native
+module like `better-sqlite3` would need ARM prebuilds on every deploy) and
+owns the schema (`users`, `sessions`, `walls`, `climbs`, `ascents`,
+`ascent_claims`, `name_proposals`, `follows`). `DB_PATH` env var overrides
+the file location — tests use `":memory:"` (see above).
 
-- **Climbs have no id of their own.** `wallId` + `setterName` (immutable,
-  unique within a wall — unlike the mutable, renameable `name`) is the key
-  everything — ascents, comments, front-end lookups — references a climb
-  by. A climber can propose renaming a climb by filling in a name on an
-  ascent claim; a moderator/setter approves or rejects it on the Approve
-  tab, which changes only `name`, never `setterName`.
+`server/worker.js` talks to it via prepared statements (the `stmt` object
+near the top of the file) and maps snake_case rows to the app's existing
+camelCase shape (`mapUserRow`/`mapClimbRow`/`mapAscentRow`) — route bodies
+mostly still work with plain camelCase objects, same as before the
+migration. Multi-row mutations are wrapped in `withTransaction` (real
+`BEGIN`/`COMMIT`/`ROLLBACK` — `DatabaseSync` has no `.transaction()` helper
+of its own).
+
+**One-time setup:** a fresh clone/deploy needs
+`node scripts/migrate-json-to-sqlite.js` run once to populate the database
+from `server/users.json`/`server/climbs.json` (kept in the repo as the
+migration's input, no longer read at runtime). The script is re-runnable —
+it wipes and reseeds every table from those two files each time, so re-run
+it if you need to start over. `server/climbing.db` itself is gitignored
+(unlike the JSON files it replaced — see the comment in `.gitignore`); back
+it up separately in any real deployment.
+
+- **Climbs have a real id now**, but `wallId` + `setterName` (immutable,
+  `UNIQUE` per wall, `COLLATE NOCASE` so lookups/uniqueness are
+  case-insensitive at the database level) is still the externally-visible
+  identity ascents/front-end lookups reference a climb by — unlike the
+  mutable, renameable `name`. A climber can propose renaming a climb by
+  filling in a name on an ascent claim; a moderator/setter approves or
+  rejects it on the Approve tab, which changes only `name`, never
+  `setterName`.
 - **Sets, not a flat climb list.** Each wall periodically gets a new "set" of
   climbs: a `reset` (every old climb comes down, replaced) or a `backfill`
-  (new climbs added, nothing removed). Every climb tracks `setId`,
-  `setDate`, `setType`. `currentClimbsOnly()` in `server/worker.js` derives
+  (new climbs added, nothing removed). Every climb tracks `set_id`,
+  `set_date`, `set_type`. `currentClimbsOnly()` in `server/worker.js` derives
   which climbs are "current" per wall (latest reset + backfills on top of
-  it) rather than trusting the `archived` boolean field, which exists for a
-  future moderator tool but isn't authoritative yet. `groupIntoCycles()` /
-  `archivedClimbsByWall()` do the equivalent grouping for the Archive tab.
+  it) — this stays a JS traversal over all climbs rather than a SQL
+  window-function query; the "latest reset per wall" rule is simple as a
+  loop and forcing it into one SQL expression buys nothing. There's no
+  `archived` column any more (§14.20 — it existed but nothing ever trusted
+  it). `groupIntoCycles()` / `archivedClimbsByWall()` do the equivalent
+  grouping for the Archive tab.
 - **Grades are two-stage.** `setterGrade` is the setter's rough guess given
   at creation (single grade or a range like `"V2-4"`), immutable after.
   `grade` is the confirmed final grade, settable only once a climb is no
   longer current (see `POST /api/climbs/grade`, `GET /api/climbs/needs-grade`).
 - **Auth is cookie/session-based, not client-trust.** Login/signup issue a
-  random token stored on the user record in `users.json` and set as an
-  httpOnly cookie; `authenticate` middleware resolves `req.user` from that
-  cookie on every protected route. Route handlers must authorize off
-  `req.user`, never off a username taken from `params`/`body`/`query`
-  (`requireSelf` enforces "only your own account" on `/api/users/:username/...`
-  routes). Roles are `isModerator` / `isSetter` / `isAdmin` on the user
-  record — four tiers: member (no flags), moderator/setter (peers, same
-  permission level via `requireModeratorOrSetter`, just a different label),
-  admin (all three flags set, gated by `requireAdmin`).
+  random token stored in the `sessions` table (with real server-side
+  expiry — the old `users.json` `sessionToken` field never had any) and set
+  as an httpOnly cookie; `authenticate` middleware resolves `req.user` via
+  an indexed lookup on that table (`sessions.token` is its primary key —
+  this is also what closed the timing side-channel a linear array scan used
+  to have). Route handlers must authorize off `req.user`, never off a
+  username taken from `params`/`body`/`query` (`requireSelf` enforces "only
+  your own account" on `/api/users/:username/...` routes). Roles are
+  `isModerator` / `isSetter` / `isAdmin` on the user record — four tiers:
+  member (no flags), moderator/setter (peers, same permission level via
+  `requireModeratorOrSetter`, just a different label), admin (all three
+  flags set, gated by `requireAdmin`).
 - Passwords are bcrypt-hashed before ever touching disk.
 - **`ascentCount` is not stored anywhere, and not `ascents.length`.** It's
-  derived fresh on every read via `computeAscentCount` + `currentClimbKeys`
-  — the number of *distinct* climbs (repeats don't inflate it) still in
-  their wall's current set. Deriving it on read rather than storing it is
-  what makes a wall reset unable to leave any user's count stale — the
-  earlier stored-counter design only recomputed it for whoever next logged
-  an ascent, so it silently went wrong for everyone else until they did.
-  Repeats are allowed everywhere ascents are logged; every place a count is
-  *derived* from ascents (a climb's `ascentCount`, `averageStars`, grade
-  pyramids) counts distinct climbs/users, never ascent rows.
+  derived fresh on every read (`buildAscentCountContext`/`ascentCountForUser`
+  in `server/worker.js`) — the number of *distinct* climbs (repeats don't
+  inflate it) still in their wall's current set. Deriving it on read rather
+  than storing it is what makes a wall reset unable to leave any user's
+  count stale. Repeats are allowed everywhere ascents are logged; every
+  place a count is *derived* from ascents (a climb's `ascentCount`,
+  `averageStars`, grade pyramids) counts distinct climbs/users, never
+  ascent rows.
+- **Not migrated** (§14.20): the `archived` column, the always-`true`
+  `logAttempts` flag (nullable `attempts`/`attempts_this_session` express
+  the same thing), and seeded sample `comments` (vestigial — no new climb
+  has had one since creation moved to `POST /api/climbs`; a climb's
+  comments are purely ascent-derived now).
 
 See the module comment at the top of `server/worker.js` and the "Notes"
-section of `README.md` for further field-by-field detail on ascents,
-comments, and settings endpoints.
+section of `README.md` for further field-by-field detail on ascents and
+settings endpoints.

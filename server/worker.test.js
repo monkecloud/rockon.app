@@ -1,30 +1,16 @@
-import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import path from "path";
-import { fileURLToPath } from "url";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import request from "supertest";
 
 process.env.NODE_ENV = "test";
+// A fresh in-memory SQLite database for this test file's whole run (see
+// server/db.js) rather than mocking fs/promises the way the old JSON-file
+// datastore's tests did (§14.3). Tables are wiped and reseeded per test via
+// the seedUsers/seedClimbs helpers below, not per file.
+process.env.DB_PATH = ":memory:";
 
-// In-memory stand-in for fs/promises so tests never touch the real
-// server/users.json or server/climbs.json on disk. Keyed by absolute path,
-// same as the real fs API would be.
-vi.mock("fs/promises", () => {
-  const store = new Map();
-  const readFile = vi.fn(async (filePath) => {
-    if (!store.has(filePath)) {
-      const err = new Error(`ENOENT: no such file, open '${filePath}'`);
-      err.code = "ENOENT";
-      throw err;
-    }
-    return store.get(filePath);
-  });
-  const writeFile = vi.fn(async (filePath, data) => {
-    store.set(filePath, data);
-  });
-  const api = { readFile, writeFile };
-  return { ...api, default: api, __store: store };
-});
+const { db } = await import("./db.js");
 
 const {
   app,
@@ -35,10 +21,6 @@ const {
   requireSelf,
   requireAdmin,
   requireModeratorOrSetter,
-  readUsers,
-  writeUsers,
-  readClimbs,
-  writeClimbs,
   currentClimbsOnly,
   groupIntoCycles,
   archivedClimbsByWall,
@@ -47,8 +29,6 @@ const {
   toSearchResultEntry,
   toSetterListEntry,
   climbKey,
-  computeAscentCount,
-  currentClimbKeys,
   isLoggable,
   withAscentStats,
   gradeToBucket,
@@ -59,21 +39,205 @@ const {
   recordRateLimitSuccess,
 } = await import("./worker.js");
 
-const fsPromises = await import("fs/promises");
-const store = fsPromises.__store;
+// ---------------------------------------------------------------------------
+// Seed helpers. Each call REPLACES the relevant tables' contents (matching
+// the old JSON-mock seedUsers/seedClimbs semantics — one call sets up that
+// test's entire fixture), specifically so the ~200 existing test bodies
+// below didn't all need rewriting along with the datastore: they still
+// build plain camelCase fixture objects and read plain camelCase results
+// back, same as before the migration — only what's underneath changed.
+//
+// seedUsers accepts (and currentUsers() returns) the same shape the old
+// users.json objects had, including `sessionToken` and `ascents` with
+// `climbName` strings — this is what lets the very common
+// `const users = currentUsers(); users[0].isAdmin = true; seedUsers(users);`
+// round-trip pattern keep working unchanged, cookie and all.
+// ---------------------------------------------------------------------------
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const USERS_PATH = path.join(__dirname, "users.json");
-const CLIMBS_PATH = path.join(__dirname, "climbs.json");
+const insertClimbStmt = db.prepare(`
+  INSERT INTO climbs (wall_id, setter_name, name, setter_grade, grade, setter, photo_url, set_id, set_date, set_type)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+const insertClaimStmt = db.prepare(
+  "INSERT INTO ascent_claims (climb_id, ordinal, name, pass) VALUES (?, ?, ?, ?)"
+);
+const insertProposalStmt = db.prepare(
+  "INSERT INTO name_proposals (id, climb_id, name, claimed_by) VALUES (?, ?, ?, ?)"
+);
+
+function seedClimbs(climbs) {
+  db.exec("DELETE FROM ascent_claims");
+  db.exec("DELETE FROM name_proposals");
+  // Ascents FK-reference climbs — a fresh seedClimbs call means a fresh
+  // climb set, same as replacing climbs.json outright used to.
+  db.exec("DELETE FROM ascents");
+  db.exec("DELETE FROM climbs");
+
+  for (const c of climbs) {
+    const setterName = c.setterName || c.name;
+    const result = insertClimbStmt.run(
+      c.wallId,
+      setterName,
+      c.name || setterName,
+      c.setterGrade || "",
+      c.grade || "",
+      c.setter || "",
+      c.photoUrl || "",
+      c.setId || crypto.randomUUID(),
+      // A handful of fixtures across this file omit setDate entirely (they
+      // don't care about date-based current/archived logic) -- the old JSON
+      // mock tolerated that silently; set_date is NOT NULL here, so fall
+      // back to a fixed placeholder rather than making every such fixture
+      // add a field it doesn't otherwise need.
+      c.setDate || "2026-01-01",
+      c.setType === "reset" ? "reset" : "backfill"
+    );
+    const climbId = Number(result.lastInsertRowid);
+    (c.ascentClaims || []).forEach((claim, i) =>
+      insertClaimStmt.run(climbId, i + 1, claim.name || "", claim.pass ? 1 : 0)
+    );
+    (c.pendingNames || []).forEach((p) =>
+      insertProposalStmt.run(p.id || crypto.randomUUID(), climbId, p.name, p.claimedBy || "")
+    );
+  }
+}
+
+const insertUserStmt = db.prepare(`
+  INSERT INTO users (username, name, password_hash, avatar_url, is_moderator, is_setter, is_admin)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`);
+const insertSessionStmt = db.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)");
+const insertFollowStmt = db.prepare(
+  "INSERT OR IGNORE INTO follows (follower_id, followee_id) VALUES (?, ?)"
+);
+const insertAscentStmt = db.prepare(`
+  INSERT INTO ascents (id, user_id, climb_id, star_rating, grade, comment, attempts, attempts_this_session, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+const findClimbStmt = db.prepare("SELECT id FROM climbs WHERE wall_id = ? AND setter_name = ?");
 
 function seedUsers(users) {
-  store.set(USERS_PATH, JSON.stringify(users));
+  db.exec("DELETE FROM ascents");
+  db.exec("DELETE FROM follows");
+  db.exec("DELETE FROM sessions");
+  db.exec("DELETE FROM users");
+
+  const idByUsername = new Map();
+  for (const u of users) {
+    const result = insertUserStmt.run(
+      u.username,
+      u.name || "",
+      u.passwordHash || "",
+      u.avatarUrl || "",
+      u.isModerator ? 1 : 0,
+      u.isSetter ? 1 : 0,
+      u.isAdmin ? 1 : 0
+    );
+    idByUsername.set(u.username, Number(result.lastInsertRowid));
+  }
+
+  for (const u of users) {
+    const userId = idByUsername.get(u.username);
+
+    if (u.sessionToken) {
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      insertSessionStmt.run(u.sessionToken, userId, expiresAt);
+    }
+
+    for (const followedUsername of u.following || []) {
+      const followeeId = idByUsername.get(followedUsername);
+      if (followeeId) insertFollowStmt.run(userId, followeeId);
+    }
+
+    for (const a of u.ascents || []) {
+      const climbRow = findClimbStmt.get(a.wallId, a.climbName);
+      // Ascents FK-reference a real climb row now, unlike the old flat
+      // JSON. A fixture referencing a climb that was never seeded via
+      // seedClimbs() is skipped rather than erroring — tests asserting on
+      // "ascents against a climb that doesn't exist don't count toward
+      // anything" still get the right observable behavior this way, same
+      // as scripts/migrate-json-to-sqlite.js does for real orphaned data.
+      if (!climbRow) continue;
+      insertAscentStmt.run(
+        a.id || crypto.randomUUID(),
+        userId,
+        climbRow.id,
+        a.starRating ?? null,
+        a.grade || "",
+        a.comment || "",
+        a.logAttempts ? a.attempts ?? null : null,
+        a.logAttempts ? a.attemptsThisSession ?? null : null,
+        null // created_at -- these fixtures predate the ascents table existing
+      );
+    }
+  }
 }
-function seedClimbs(climbs) {
-  store.set(CLIMBS_PATH, JSON.stringify(climbs));
-}
+
 function currentUsers() {
-  return JSON.parse(store.get(USERS_PATH) || "[]");
+  const users = db.prepare("SELECT * FROM users ORDER BY id").all();
+  return users.map((row) => {
+    const session = db.prepare("SELECT token FROM sessions WHERE user_id = ? LIMIT 1").get(row.id);
+    const followers = db
+      .prepare("SELECT users.username FROM follows JOIN users ON users.id = follows.follower_id WHERE follows.followee_id = ?")
+      .all(row.id)
+      .map((r) => r.username);
+    const following = db
+      .prepare("SELECT users.username FROM follows JOIN users ON users.id = follows.followee_id WHERE follows.follower_id = ?")
+      .all(row.id)
+      .map((r) => r.username);
+    const ascents = db
+      .prepare(
+        `SELECT ascents.*, climbs.wall_id, climbs.setter_name FROM ascents
+         JOIN climbs ON climbs.id = ascents.climb_id
+         WHERE ascents.user_id = ? ORDER BY ascents.rowid`
+      )
+      .all(row.id)
+      .map((a) => ({
+        id: a.id,
+        wallId: a.wall_id,
+        climbName: a.setter_name,
+        starRating: a.star_rating,
+        grade: a.grade,
+        comment: a.comment,
+        logAttempts: a.attempts !== null || a.attempts_this_session !== null,
+        attempts: a.attempts,
+        attemptsThisSession: a.attempts_this_session,
+      }));
+    return {
+      username: row.username,
+      name: row.name,
+      passwordHash: row.password_hash,
+      avatarUrl: row.avatar_url,
+      sessionToken: session ? session.token : "",
+      isModerator: !!row.is_moderator,
+      isSetter: !!row.is_setter,
+      isAdmin: !!row.is_admin,
+      followers,
+      following,
+      ascents,
+    };
+  });
+}
+
+// The seedClimbs() counterpart to currentUsers() — used by tests that read
+// the current climb set, add/tweak one, and re-seed the whole thing (a
+// second reset superseding the first, say), same round-trip pattern.
+function currentClimbs() {
+  return db
+    .prepare("SELECT * FROM climbs ORDER BY id")
+    .all()
+    .map((row) => ({
+      wallId: row.wall_id,
+      setterName: row.setter_name,
+      name: row.name,
+      setterGrade: row.setter_grade,
+      grade: row.grade,
+      setter: row.setter,
+      photoUrl: row.photo_url,
+      setId: row.set_id,
+      setDate: row.set_date,
+      setType: row.set_type,
+    }));
 }
 
 function mockRes() {
@@ -86,9 +250,8 @@ function mockRes() {
 }
 
 beforeEach(() => {
-  store.clear();
-  fsPromises.readFile.mockClear();
-  fsPromises.writeFile.mockClear();
+  seedUsers([]);
+  seedClimbs([]);
   resetRateLimits();
 });
 
@@ -307,22 +470,29 @@ describe("archivedClimbsByWall", () => {
 });
 
 describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEntry", () => {
-  const fullUser = {
-    username: "cube",
-    name: "Cube Snail",
-    avatarUrl: "http://example.com/a.png",
-    followers: ["a", "b"],
-    following: ["c"],
-    isModerator: true,
-    isSetter: false,
-    isAdmin: false,
-    passwordHash: "secret-should-never-appear",
-  };
+  // toClientUser/toSearchResultEntry now query followersCount/followingCount/
+  // isFollowing straight from the follows table (§14.3), so they need a real
+  // DB-backed user id rather than a plain object with a `followers` array.
+  function seedFullUser() {
+    seedUsers([
+      { username: "cube", name: "Cube Snail", avatarUrl: "http://example.com/a.png", isModerator: true, passwordHash: "secret-should-never-appear" },
+      { username: "a", following: ["cube"] },
+      { username: "b", following: ["cube"] },
+      { username: "c" },
+    ]);
+    // cube follows "c" — set up the reverse edge too now both users exist.
+    const users = currentUsers();
+    users.find((u) => u.username === "cube").following = ["c"];
+    seedUsers(users);
+    return db.prepare("SELECT * FROM users WHERE username = 'cube'").get();
+  }
 
   it("toClientUser exposes counts and roles, never the password hash", () => {
+    const row = seedFullUser();
+    const user = { id: row.id, username: row.username, name: row.name, avatarUrl: row.avatar_url, isModerator: !!row.is_moderator, isSetter: !!row.is_setter, isAdmin: !!row.is_admin };
     // ascentCount is no longer read off the user record (§14.7) — the
     // caller computes it and passes it in as the second argument.
-    const client = toClientUser(fullUser, 5);
+    const client = toClientUser(user, 5);
     expect(client).toEqual({
       username: "cube",
       name: "Cube Snail",
@@ -338,7 +508,9 @@ describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEnt
   });
 
   it("toClientUser defaults missing optional fields", () => {
-    const client = toClientUser({ username: "bare" });
+    seedUsers([{ username: "bare" }]);
+    const row = db.prepare("SELECT * FROM users WHERE username = 'bare'").get();
+    const client = toClientUser({ id: row.id, username: row.username });
     expect(client).toEqual({
       username: "bare",
       name: "",
@@ -353,7 +525,7 @@ describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEnt
   });
 
   it("toRoleListEntry has no follower/ascent info", () => {
-    expect(toRoleListEntry(fullUser)).toEqual({
+    expect(toRoleListEntry({ username: "cube", name: "Cube Snail", isModerator: true, isSetter: false, isAdmin: false })).toEqual({
       username: "cube",
       name: "Cube Snail",
       isModerator: true,
@@ -363,7 +535,9 @@ describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEnt
   });
 
   it("toSearchResultEntry has no role info, and defaults isFollowing false with no viewer", () => {
-    expect(toSearchResultEntry(fullUser, undefined, 5)).toEqual({
+    const row = seedFullUser();
+    const user = { id: row.id, username: row.username, name: row.name, avatarUrl: row.avatar_url };
+    expect(toSearchResultEntry(user, undefined, 5)).toEqual({
       username: "cube",
       name: "Cube Snail",
       avatarUrl: "http://example.com/a.png",
@@ -375,50 +549,26 @@ describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEnt
   });
 
   it("toSearchResultEntry reports isFollowing true when the viewer is in this user's followers", () => {
-    expect(toSearchResultEntry(fullUser, { username: "a" }).isFollowing).toBe(true);
-    expect(toSearchResultEntry(fullUser, { username: "someone-else" }).isFollowing).toBe(false);
+    const row = seedFullUser();
+    const user = { id: row.id, username: row.username, name: row.name, avatarUrl: row.avatar_url };
+    const viewerA = db.prepare("SELECT id, username FROM users WHERE username = 'a'").get();
+    const viewerElse = { id: -1, username: "someone-else" };
+    expect(toSearchResultEntry(user, viewerA).isFollowing).toBe(true);
+    expect(toSearchResultEntry(user, viewerElse).isFollowing).toBe(false);
   });
 
   it("toSetterListEntry only has username and name", () => {
-    expect(toSetterListEntry(fullUser)).toEqual({ username: "cube", name: "Cube Snail" });
+    expect(toSetterListEntry({ username: "cube", name: "Cube Snail" })).toEqual({ username: "cube", name: "Cube Snail" });
     expect(toSetterListEntry({ username: "noname" })).toEqual({ username: "noname", name: "" });
   });
 });
 
-describe("computeAscentCount", () => {
-  const climbs = [
-    { wallId: 1, setterName: "Current", setType: "reset", setDate: "2026-02-01" },
-    { wallId: 1, setterName: "Archived", setType: "reset", setDate: "2026-01-01" },
-  ];
-  const currentKeys = currentClimbKeys(climbs);
-
-  it("counts only ascents against currently-active climbs", () => {
-    const ascents = [
-      { wallId: 1, climbName: "Current" },
-      { wallId: 1, climbName: "Archived" },
-    ];
-    expect(computeAscentCount(ascents, currentKeys)).toBe(1);
-  });
-
-  it("returns 0 for an empty/undefined ascents list", () => {
-    expect(computeAscentCount([], currentKeys)).toBe(0);
-    expect(computeAscentCount(undefined, currentKeys)).toBe(0);
-  });
-
-  it("ignores ascents against climbs that no longer exist at all", () => {
-    const ascents = [{ wallId: 99, climbName: "Nonexistent" }];
-    expect(computeAscentCount(ascents, currentKeys)).toBe(0);
-  });
-
-  it("counts distinct climbs, not ascent rows — a repeat ascent doesn't inflate it", () => {
-    const ascents = [
-      { wallId: 1, climbName: "Current" },
-      { wallId: 1, climbName: "Current" },
-      { wallId: 1, climbName: "Current" },
-    ];
-    expect(computeAscentCount(ascents, currentKeys)).toBe(1);
-  });
-});
+// computeAscentCount is no longer a standalone pure function (§14.3) — it
+// needs a live DB (ascents are looked up by user id, not passed in as a
+// plain array), so its behavior is exercised through the HTTP layer
+// instead: see "POST /api/ascents" (repeat-ascent counting), "ascentCount
+// can never go stale after a reset" (§14.7 regression test), and
+// "GET /api/users/leaderboard" (ranking by derived count) below.
 
 describe("gradeToBucket", () => {
   it.each([
@@ -506,15 +656,18 @@ describe("authenticate", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it("401s cleanly (doesn't throw) when the cookie is a different length than any stored token", async () => {
-    // crypto.timingSafeEqual throws on mismatched buffer lengths — tokensMatch
-    // must guard against that itself rather than relying on equal-length
-    // real tokens always being presented.
+  it("401s cleanly when the cookie is a different length than any stored token", () => {
+    // Used to guard crypto.timingSafeEqual against throwing on mismatched
+    // buffer lengths, back when sessions were found via a linear array scan
+    // with a manual constant-time compare. That scan is gone (§14.3) —
+    // sessions are looked up by an indexed primary key instead, which
+    // doesn't care about length at all — but the "doesn't blow up on a
+    // bogus cookie" behavior is still worth pinning.
     seedUsers([{ username: "cube", sessionToken: "a-much-longer-real-session-token" }]);
     const req = { headers: { cookie: "session=short" } };
     const res = mockRes();
     const next = vi.fn();
-    await expect(authenticate(req, res, next)).resolves.not.toThrow();
+    expect(() => authenticate(req, res, next)).not.toThrow();
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
   });
@@ -584,112 +737,65 @@ describe("requireModeratorOrSetter", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Persistence helpers
+// Persistence
+//
+// readUsers/writeUsers/readClimbs/writeClimbs and their lazy-schema-backfill
+// tests are gone (§14.3) — that whole pattern existed to migrate old-shaped
+// JSON records on read; the SQLite schema now guarantees the shape
+// structurally (NOT NULL/CHECK/UNIQUE constraints), so there's nothing left
+// to backfill. See server/db.js and scripts/migrate-json-to-sqlite.js.
 // ---------------------------------------------------------------------------
 
-describe("readUsers / writeUsers", () => {
-  it("returns [] when users.json doesn't exist", async () => {
-    expect(await readUsers()).toEqual([]);
-  });
-
-  it("round-trips via writeUsers", async () => {
-    await writeUsers([{ username: "a" }]);
-    expect(await readUsers()).toEqual([{ username: "a" }]);
-  });
-
-  it("backfills missing ascent ids and persists the change", async () => {
-    seedUsers([{ username: "a", ascents: [{ wallId: 1, climbName: "X" }] }]);
-    const users = await readUsers();
-    expect(users[0].ascents[0].id).toEqual(expect.any(String));
-    expect(fsPromises.writeFile).toHaveBeenCalled();
-    // Persisted, not just returned in-memory.
-    expect(currentUsers()[0].ascents[0].id).toEqual(users[0].ascents[0].id);
-  });
-
-  // ascentCount is no longer stored/backfilled at all (§14.7) — it's
-  // derived fresh on every read instead, so there's nothing left for
-  // readUsers to backfill here. See computeAscentCount/currentClimbKeys.
-
-  it("does not write when no backfill is needed", async () => {
-    seedUsers([{ username: "a", ascents: [] }]);
-    await readUsers();
-    expect(fsPromises.writeFile).not.toHaveBeenCalled();
-  });
-});
-
-describe("readClimbs / writeClimbs", () => {
-  it("returns [] when climbs.json doesn't exist", async () => {
-    expect(await readClimbs()).toEqual([]);
-  });
-
-  it("round-trips via writeClimbs", async () => {
-    await writeClimbs([{ wallId: 1, name: "X", setterName: "X" }]);
-    expect(await readClimbs()).toEqual([
-      { wallId: 1, name: "X", setterName: "X", pendingNames: [] },
-    ]);
-  });
-
-  it("backfills legacy `difficulty` into setterGrade/grade and persists", async () => {
-    seedClimbs([{ wallId: 1, name: "X", difficulty: "V4" }]);
-    const climbs = await readClimbs();
-    expect(climbs[0]).toEqual({
-      wallId: 1,
-      name: "X",
-      setterGrade: "V4",
-      grade: "V4",
-      setterName: "X",
-      pendingNames: [],
-    });
-    expect(climbs[0].difficulty).toBeUndefined();
-    expect(JSON.parse(store.get(CLIMBS_PATH))[0].setterGrade).toBe("V4");
-  });
-
-  it("does not touch already-migrated climbs", async () => {
-    seedClimbs([
-      { wallId: 1, name: "X", setterName: "X", setterGrade: "V4", grade: "", pendingNames: [] },
-    ]);
-    await readClimbs();
-    expect(fsPromises.writeFile).not.toHaveBeenCalled();
-  });
-
-  it("backfills setterName/pendingNames for climbs seeded before the naming-rights split", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setterGrade: "V4", grade: "" }]);
-    const climbs = await readClimbs();
-    expect(climbs[0].setterName).toBe("X");
-    expect(climbs[0].pendingNames).toEqual([]);
-    expect(JSON.parse(store.get(CLIMBS_PATH))[0].setterName).toBe("X");
-  });
-
-});
+// withAscentStats now keys off each climb's real database id rather than a
+// wallId+setterName string (§14.3), so these tests seed via seedClimbs and
+// read the real id back rather than constructing a plain fixture object.
+function climbRowByName(wallId, setterName) {
+  const row = db.prepare("SELECT * FROM climbs WHERE wall_id = ? AND setter_name = ?").get(wallId, setterName);
+  return {
+    id: row.id,
+    wallId: row.wall_id,
+    setterName: row.setter_name,
+    name: row.name,
+    setterGrade: row.setter_grade,
+    grade: row.grade,
+    setter: row.setter,
+    photoUrl: row.photo_url,
+    setId: row.set_id,
+    setDate: row.set_date,
+    setType: row.set_type,
+  };
+}
 
 describe("withAscentStats", () => {
-  it("adds zeroed stats and seeded comments when nobody has climbed it", async () => {
-    seedUsers([]);
-    const [climb] = await withAscentStats([
-      { wallId: 1, name: "X", setterName: "X", comments: [{ id: "seed-1", text: "hi" }] },
-    ]);
+  it("adds zeroed stats and no comments when nobody has climbed it", () => {
+    seedClimbs([{ wallId: 1, name: "X", setDate: "2026-01-01", setType: "reset" }]);
+    const [climb] = withAscentStats([climbRowByName(1, "X")]);
     expect(climb.ascentCount).toBe(0);
     expect(climb.averageStars).toBe(0);
-    expect(climb.comments).toEqual([{ id: "seed-1", text: "hi" }]);
+    // No seeded comments are carried across by the migration (§14.20) — a
+    // climb's comments are purely ascent-derived now.
+    expect(climb.comments).toEqual([]);
   });
 
-  it("averages one rating per user across distinct users", async () => {
+  it("averages one rating per user across distinct users", () => {
+    seedClimbs([{ wallId: 1, name: "X", setDate: "2026-01-01", setType: "reset" }]);
     seedUsers([
       { username: "a", ascents: [{ id: "1", wallId: 1, climbName: "X", starRating: 5 }] },
       { username: "b", ascents: [{ id: "2", wallId: 1, climbName: "X", starRating: null }] },
       { username: "c", ascents: [{ id: "3", wallId: 1, climbName: "X", starRating: 3 }] },
     ]);
-    const [climb] = await withAscentStats([{ wallId: 1, name: "X", setterName: "X" }]);
+    const [climb] = withAscentStats([climbRowByName(1, "X")]);
     expect(climb.ascentCount).toBe(3); // 3 distinct users, regardless of who rated
     expect(climb.averageStars).toBe(4); // (5 + 3) / 2 valid ratings, null skipped
   });
 
-  it("counts distinct users, not ascent rows — one user repeat-logging isn't 3 ascents", async () => {
+  it("counts distinct users, not ascent rows — one user repeat-logging isn't 3 ascents", () => {
     // Repeats are allowed (§14.6): the same user logs the same climb three
     // times. ascentCount must reflect 1 person having climbed it, and
     // averageStars must use only their most recent rating (3), not average
     // across all three repeats — otherwise one climber could single-
     // handedly skew both numbers for every other viewer of the climb.
+    seedClimbs([{ wallId: 1, name: "X", setDate: "2026-01-01", setType: "reset" }]);
     seedUsers([
       {
         username: "a",
@@ -700,12 +806,13 @@ describe("withAscentStats", () => {
         ],
       },
     ]);
-    const [climb] = await withAscentStats([{ wallId: 1, name: "X", setterName: "X" }]);
+    const [climb] = withAscentStats([climbRowByName(1, "X")]);
     expect(climb.ascentCount).toBe(1);
     expect(climb.averageStars).toBe(3);
   });
 
-  it("merges user comments alongside seeded ones, skipping blank/whitespace-only comments", async () => {
+  it("merges user comments, skipping blank/whitespace-only ones", () => {
+    seedClimbs([{ wallId: 1, name: "X", setDate: "2026-01-01", setType: "reset" }]);
     seedUsers([
       {
         username: "a",
@@ -715,7 +822,7 @@ describe("withAscentStats", () => {
         ],
       },
     ]);
-    const [climb] = await withAscentStats([{ wallId: 1, name: "X", setterName: "X", comments: [] }]);
+    const [climb] = withAscentStats([climbRowByName(1, "X")]);
     expect(climb.comments).toEqual([
       { id: "ascent-1", ascentId: "1", author: "a", text: "great climb" },
     ]);
@@ -1134,7 +1241,9 @@ function makeCurrentClimbs(n) {
   }));
 }
 function makeAscentsAgainst(n) {
-  return Array.from({ length: n }, (_, i) => ({ id: `a${i}`, wallId: 1, climbName: `Climb${i}` }));
+  // Globally-unique ids (not just "a0", "a1", ...) since this is called once
+  // per user in some tests, and every ascent lands in the same table.
+  return Array.from({ length: n }, (_, i) => ({ id: crypto.randomUUID(), wallId: 1, climbName: `Climb${i}` }));
 }
 
 describe("GET /api/users/leaderboard", () => {
@@ -1205,9 +1314,11 @@ describe("ascentCount can never go stale after a reset (§14.7)", () => {
     // above, yet the count must still reflect the reset on the very next
     // read. The old stored-counter design could only ever recompute this at
     // write time, so it stayed wrong until the user happened to log again.
-    const climbs = JSON.parse(store.get(CLIMBS_PATH));
-    climbs.push({ wallId: 1, name: "Y", setterName: "Y", setType: "reset", setDate: "2026-02-01" });
-    seedClimbs(climbs);
+    // Adds a second reset on top of the existing climb set WITHOUT going
+    // through seedClimbs() (which wipes and reinserts every climb, and with
+    // it, via ON DELETE CASCADE, the ascent just logged above — exactly the
+    // write this test must NOT make).
+    insertClimbStmt.run(1, "Y", "Y", "V4", "", "setter", "", crypto.randomUUID(), "2026-02-01", "reset");
 
     const after = await request(app)
       .post("/api/login")
@@ -1413,6 +1524,18 @@ describe("GET /api/climbs", () => {
     const res = await request(app).get("/api/climbs");
     expect(res.body.climbs.map((c) => c.name)).toEqual(["New"]);
     expect(res.body.climbs[0]).toEqual(expect.objectContaining({ ascentCount: 0, averageStars: 0 }));
+  });
+});
+
+describe("GET /api/walls", () => {
+  it("returns the 4 seeded walls in display order", async () => {
+    const res = await request(app).get("/api/walls");
+    expect(res.body.walls).toEqual([
+      { id: 1, name: "Back" },
+      { id: 2, name: "Slab" },
+      { id: 3, name: "Cave" },
+      { id: 4, name: "Front" },
+    ]);
   });
 });
 
@@ -2177,6 +2300,14 @@ describe("GET /api/climbs/grade-distribution", () => {
   });
 
   it("counts only ascents against the named climb, using the ascent's own grade", async () => {
+    // Ascents FK-reference a real climb row now (§14.3) — unlike the old
+    // flat JSON, a fixture can't reference a climb name that was never
+    // seeded.
+    seedClimbs([
+      { wallId: 1, name: "Target" },
+      { wallId: 1, name: "Other" },
+      { wallId: 2, name: "Target" },
+    ]);
     seedUsers([
       { username: "cube", ascents: [{ id: "1", wallId: 1, climbName: "Target", grade: "V4" }] },
       {
@@ -2198,6 +2329,7 @@ describe("GET /api/climbs/grade-distribution", () => {
   });
 
   it("counts one vote per user — their most recent — not one per repeat ascent", async () => {
+    seedClimbs([{ wallId: 1, name: "Target" }]);
     seedUsers([
       {
         username: "cube",
