@@ -1040,7 +1040,7 @@ implement 13.2-a+b using Option B."*
 | 13.7-c/d/e/f A11y cluster | P2 | ✅ **DECIDED: Option C — full P2 closure** (Derrick, 2026-08-10) — not yet started. See §14.13. **Contains a 15-min fix worth pulling forward.** |
 | 13.9-b CI | P2 | ✅ **DONE 2026-08-10** — `.github/workflows/ci.yml` (test + build). Option A, no linter. See §14.14 |
 | 13.9-c Linter | P2 | ❌ **Not being built** (Derrick, 2026-08-10) — considered and declined as part of §14.14. Stays open in §13.9 |
-| 13.1-c/d/e Security hardening | P2 | ✅ **DECIDED: Option B — headers + CORS now, CSP deferred** (Derrick, 2026-08-10) — not yet started. See §14.15 |
+| 13.1-c/d/e Security hardening | P2 | ✅ **DONE 2026-08-10** — helmet (CSP deferred), CORS defaults to same-origin only, timing-safe token compare. See §14.15 |
 | 13.8-a/b Split `App.jsx` | P2 | ✅ **DECIDED: Option A — split by screen, shared `styles.js`** (Derrick, 2026-08-10) — not yet started. **Unblocks a 4-item chain.** See §14.16 |
 | 13.3-d/e/f/g Climb validation | P2 | ✅ **DECIDED: Option A — validate all** (Derrick, 2026-08-10) — not yet started. See §14.17 |
 | 13.4-h/i Debounce & refetch | P2 | ✅ **DECIDED: Option A** (Derrick, 2026-08-10) — not yet started. **Build inside §14.9's `useFetch`.** See §14.18 |
