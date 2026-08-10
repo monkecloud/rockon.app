@@ -1056,10 +1056,10 @@ implement 13.2-a+b using Option B."*
 | 13.3-b Stale `ascentCount` | P1 | ✅ **DONE 2026-08-10** — dropped the stored field entirely, derived on read via `computeAscentCount`+`currentClimbKeys`. See §14.7 |
 | 13.3-c Client trusts localStorage | P1 | ✅ **DONE 2026-08-10** — `GET /api/me` called on mount, verified in a real browser. See §14.8. ⚠️ Mid-session expiry still unhandled — tracked as a separate open item |
 | 13.6-a/b Loading & error states | P1 | ✅ **DONE 2026-08-10** — Option B: `useFetch` hook + `<Async>` wrapper, `apiSend` for writes, url-keyed `apiCache` cleared on every mutation. Verified against a real browser (§14.9). |
-| 13.7-a/b Keyboard access | P1 | ✅ **DECIDED: Option A — global `:focus-visible` rule + fix the `<div onClick>`s** (Derrick, 2026-08-10) — not yet started. See §14.10. ⚠️ Closes 2 of 9 a11y items only |
+| 13.7-a/b Keyboard access | P1 | ✅ **DONE 2026-08-10** — global `:focus-visible` ring in `index.css`; `ArchiveSection`'s expander + wall rows are real `<button>`s now. See §14.10 |
 | 13.9-a Zero frontend tests | P1 | ✅ **DECIDED: Option B — component-level coverage** (Derrick, 2026-08-10) — not yet started. **Unblocks §14.10 Option B (CSS Modules).** See §14.11 |
 | 13.2-f/g Error handler & health check | P1 | ⏸️ **DEFERRED: Option C** (Derrick, 2026-08-10) — build after §14.3 lands. **Stopgap (`NODE_ENV=production` in the systemd unit) DONE 2026-08-10** — see §14.12. Error handler + health check itself still open |
-| 13.7-c/d/e/f A11y cluster | P2 | ✅ **DECIDED: Option C — full P2 closure** (Derrick, 2026-08-10) — not yet started. See §14.13. **Contains a 15-min fix worth pulling forward.** |
+| 13.7-c/d/e/f A11y cluster | P2 | ✅ **DONE 2026-08-10** — Option C, full closure: 6 icon-only buttons labelled, `role="alert"`/`role="status"` on form messages, tab-order leak fixed, `LogAscentSheet` is a real trapped/labelled dialog with focus restore, `StarRatingInput` is keyboard-operable (`role="slider"`, arrow/Home/End). See §14.13 |
 | 13.9-b CI | P2 | ✅ **DONE 2026-08-10** — `.github/workflows/ci.yml` (test + build). Option A, no linter. See §14.14 |
 | 13.9-c Linter | P2 | ❌ **Not being built** (Derrick, 2026-08-10) — considered and declined as part of §14.14. Stays open in §13.9 |
 | 13.1-c/d/e Security hardening | P2 | ✅ **DONE 2026-08-10** — helmet (CSP deferred), CORS defaults to same-origin only, timing-safe token compare. See §14.15 |
@@ -2006,15 +2006,23 @@ component.
 
 ### 14.10 — Keyboard accessibility: focus ring & real buttons  `P1`  ✅ decided
 
-> ## ✅ DECISION: build **Option A — one global `:focus-visible` rule** + fix
-> the `<div onClick>`s regardless.
+> ## ✅ DONE 2026-08-10 — built Option A: global `:focus-visible` rule + fixed
+> the `<div onClick>`s
 > Chosen by Derrick, 2026-08-10. Option B (migrate to CSS Modules) is
 > **deferred, not rejected** — see below. Option C (CSS-in-JS library) is
 > **rejected**.
 >
 > ⚠️ **This closes 2 of the 9 items in §13.7.** It makes focus *visible* and
 > the archive rows *reachable*. It does not make the app fully keyboard-usable
-> — see "still open" below. Do not mark accessibility as done.
+> — the rest was closed separately by §14.13, built in the same session.
+>
+> **What shipped.** `:focus-visible { outline: 2px solid var(--color-accent-bright); ... }`
+> added to `src/index.css` — keyboard-only, no ring on mouse clicks, nothing
+> pre-existing fought it. `ArchiveSection`'s expander (`<div onClick>` →
+> `<button type="button" style={styles.archiveBar}>`) and each wall row
+> (`<div onClick>` → `<button style={styles.archiveSetRow}>`) are now real,
+> focusable, Enter/Space-activatable buttons — verified in a real browser:
+> tabbing to "Archive" and pressing Enter expands it.
 
 Backlog refs: §13.7 items 1 and 2.
 
@@ -2063,12 +2071,12 @@ written for `<div>`s and will need the same treatment — diff them against
 
 #### Still open in §13.7 after this lands
 
-`StarRatingInput` is pointer-only (no `role="slider"`, no arrow keys);
-`LogAscentSheet` is not a real dialog (no `role`, no focus trap, no Escape, no
-focus restore); icon-only buttons are unlabelled (2 `aria-label`s in the whole
-file); validation errors aren't announced (`role="alert"`); no
-`prefers-reduced-motion`; star ratings render as ⭐/☆ emoji read literally by
-screen readers; several muted greys are near or below WCAG AA.
+~~`StarRatingInput` is pointer-only... validation errors aren't announced
+(`role="alert"`)~~ — **all closed by §14.13**, built in the same session.
+Still open (P3, not part of either item): star ratings in list rows render as
+⭐/☆ emoji read literally by screen readers; several muted greys are near or
+below WCAG AA (this specific pair was actually fixed in §14.22 group 3 —
+`prefers-reduced-motion` on the sheet transition was also picked up there).
 
 #### On Option B (CSS Modules) — deferred, with a prerequisite
 
@@ -2248,7 +2256,7 @@ served in production.** Apply the stopgap.
 
 ### 14.13 — Accessibility: labels, dialog, keyboard rating  `P2`  ✅ decided
 
-> ## ✅ DECISION: build **Option C — full P2 closure**
+> ## ✅ DONE 2026-08-10 — built Option C: full P2 closure
 > Chosen by Derrick, 2026-08-10. Options A (labels only) and B (labels +
 > dialog) are recorded as **rejected** — both stop short of making the app's
 > primary action possible without a pointer.
@@ -2256,6 +2264,42 @@ served in production.** Apply the stopgap.
 > 🚨 **Pull part 3 forward.** The closed-sheet tab-order leak is a ~15-minute
 > fix for a bug that affects sighted keyboard users right now. It does not
 > depend on the rest of this item.
+>
+> **What shipped, all 5 parts.**
+> - **Part 1 (labels):** all 6 — `TopBar` back (`aria-label="Back"`), info
+>   (`"Climb info"`), add (context-dependent `addButtonLabel` prop, `"Add
+>   wall"` on the Walls root vs. `"Add climb"` on a wall's Climbs list, since
+>   `TopBar` itself can't tell which); `ClimbActionBar`'s `−`/`+`
+>   (`"Decrease attempts"`/`"Increase attempts"`); the climbs `Filter` button
+>   (`"Filter climbs"`).
+> - **Part 2 (announce errors):** all ~16 `<p style={styles.formError}>`
+>   sites (including the shared `<Async>` component, so every consumer got it
+>   for free) got `role="alert"`; `ManageRolesScreen`'s success message got
+>   `role="status"`.
+> - **Part 3 (tab-order leak):** `styles.sheet` transitions
+>   `visibility: hidden -> visible` alongside `transform`, per the doc's
+>   recommended approach (React 18.3 predates the `inert` JSX prop).
+> - **Part 4 (dialog semantics):** `LogAscentSheet` is `role="dialog"
+>   aria-modal="true" aria-label="Log ascent"`; a Tab/Shift+Tab handler traps
+>   focus within it; Escape closes it; focus moves to the rating slider on
+>   open and restores to whatever had focus before (normally the "Log
+>   ascent" button) on close.
+> - **Part 5 (keyboard rating):** `StarRatingInput` is
+>   `role="slider" tabIndex={0}` with `aria-valuemin/max/now/valuetext`;
+>   arrow keys move in 0.5 steps (`preventDefault`ed so they don't scroll the
+>   sheet), Home/End jump to 0.5/5; the pointer-drag path is untouched.
+>
+> ⚠️ **One non-obvious bug found building Part 4**, worth recording for
+> anyone touching sheet-open focus logic later: `ratingRef.current.focus()`
+> called from the `open`-triggered effect was a silent no-op, because
+> `styles.sheet`'s `visibility: hidden → visible` is itself a *transitioned*
+> property (Part 3), and the browser hadn't applied the new computed style
+> yet at the point the effect ran — verified this was still true even one
+> `requestAnimationFrame` later. A **double `requestAnimationFrame`** before
+> calling `.focus()` is what actually works. Confirmed with a real-browser
+> Playwright pass: role=dialog present, focus lands on the slider on open,
+> arrow keys change `aria-valuenow`, Escape closes and restores focus to the
+> trigger button, and Tab from the last field wraps back to the slider.
 
 Backlog refs: §13.7 items 3, 4, 5, 6. Builds on §14.10 (focus ring, real
 buttons), which should land first.
@@ -2341,9 +2385,11 @@ pointer path, which needs jsdom stubs for `setPointerCapture`. Adding
 
 #### Still open after this (P3)
 
-No `prefers-reduced-motion` on the sheet transition; star ratings in list rows
-render as ⭐/☆ emoji read literally by screen readers; several muted greys are
-near or below WCAG AA contrast.
+~~No `prefers-reduced-motion` on the sheet transition~~ / ~~muted greys near or
+below WCAG AA~~ — both already fixed in §14.22 group 3 (global
+`prefers-reduced-motion` rule; `--color-text-faint`/`muted`/`inactive`
+lifted). Still open: star ratings in list rows render as ⭐/☆ emoji read
+literally by screen readers.
 
 ---
 
