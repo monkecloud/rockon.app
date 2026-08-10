@@ -149,7 +149,7 @@ function saveToStorage(key, value) {
 // app's scale the extra refetch after a write costs nothing.
 const apiCache = new Map(); // url -> { data }
 
-function clearApiCache() {
+export function clearApiCache() {
   apiCache.clear();
 }
 
@@ -159,7 +159,7 @@ function clearApiCache() {
 // fetch resolves, `data` becomes whatever the server returned (which may
 // itself be an empty list — a *known* empty result, not a loading one).
 // Never conflate the two, in this hook or in what reads it.
-function useFetch(url, { skip = false } = {}) {
+export function useFetch(url, { skip = false } = {}) {
   const cached = apiCache.get(url);
   const [state, setState] = useState(() =>
     cached ? { data: cached.data, loading: false, error: null } : { data: null, loading: !skip, error: null }
@@ -205,7 +205,7 @@ function useFetch(url, { skip = false } = {}) {
 // error — the single most useful thing this adds over the status quo. A
 // phone that briefly drops wifi mid-session used to need a full app reload
 // to recover from any failed fetch; now it needs one tap.
-function Async({ loading, error, retry, loadingFallback, children }) {
+export function Async({ loading, error, retry, loadingFallback, children }) {
   if (loading) return loadingFallback ?? <p style={styles.placeholderText}>Loading…</p>;
   if (error) {
     return (
@@ -225,7 +225,7 @@ function Async({ loading, error, retry, loadingFallback, children }) {
 // already informally doing. Returns { success, data, error } and, on
 // success, clears the read cache above so the next screen that needs
 // affected data refetches it (see the coarse-invalidation note).
-async function apiSend(url, { method = "POST", body, onUnauthorized } = {}) {
+export async function apiSend(url, { method = "POST", body, onUnauthorized } = {}) {
   try {
     const res = await fetch(url, {
       method,
@@ -260,7 +260,7 @@ const PODIUM_HEIGHTS = { 1: 64, 2: 44, 3: 30 };
 // Top ascenders, from GET /api/users/leaderboard (ranked by ascentCount
 // descending, zero-ascent users excluded server-side). onSelectUser opens
 // that user's profile the same way tapping a Search result does.
-function Leaderboard({ onSelectUser }) {
+export function Leaderboard({ onSelectUser }) {
   const { data, loading, error, retry } = useFetch("/api/users/leaderboard");
   const users = data?.users;
 
@@ -326,7 +326,7 @@ function Leaderboard({ onSelectUser }) {
   );
 }
 
-function HomeScreen({ onSelectUser }) {
+export function HomeScreen({ onSelectUser }) {
   return (
     <div style={styles.screen}>
       <GradeBarChart title="Climbs on the wall" endpoint="/api/climbs/grade-counts" />
@@ -349,7 +349,7 @@ function HomeScreen({ onSelectUser }) {
 // (zoom out / percentage / zoom in / reset) that stays pinned just below
 // the persistent top bar. Uses the Pointer Events API so mouse drag,
 // touch drag, and two-finger pinch all go through the same code path.
-function ZoomableImageViewer({ title, subtitle, photoUrl }) {
+export function ZoomableImageViewer({ title, subtitle, photoUrl }) {
   const imageRef = useRef(null);
   const stageRef = useRef(null);
   // Mutable, not React state: on mobile, calling setState on every single
@@ -461,7 +461,7 @@ function ZoomableImageViewer({ title, subtitle, photoUrl }) {
   );
 }
 
-function ClimbInfoScreen({ climb, currentUser, onDeleteComment }) {
+export function ClimbInfoScreen({ climb, currentUser, onDeleteComment }) {
   const comments = climb?.comments ?? [];
 
   return (
@@ -512,7 +512,7 @@ function ClimbInfoScreen({ climb, currentUser, onDeleteComment }) {
   );
 }
 
-function ListScreen({
+export function ListScreen({
   selectedItem,
   selectedSubItem,
   climbsByWall,
@@ -675,7 +675,7 @@ const WALL_NAME_BY_ID = Object.fromEntries(WALLS.map((wall) => [wall.id, wall.na
 // survives ListScreen unmounting — e.g. switching tabs away and back, or
 // drilling into a wall/climb and backing out — instead of resetting every
 // time this component remounts.
-function ArchiveSection({ expanded, walls, error, onRetry, onToggle, onSelectWall }) {
+export function ArchiveSection({ expanded, walls, error, onRetry, onToggle, onSelectWall }) {
   return (
     <>
       <button type="button" style={styles.archiveBar} onClick={onToggle}>
@@ -727,7 +727,7 @@ function ArchiveSection({ expanded, walls, error, onRetry, onToggle, onSelectWal
 // image (see onSelectClimb / App's viewingArchivedClimb), same as a
 // current climb, but without the ability to log an ascent unless it's from
 // the most recent archived cycle.
-function ArchiveWallScreen({ wall, onSelectClimb }) {
+export function ArchiveWallScreen({ wall, onSelectClimb }) {
   if (!wall) return null;
 
   return (
@@ -756,7 +756,7 @@ function ArchiveWallScreen({ wall, onSelectClimb }) {
   );
 }
 
-function PlaceholderScreen({ title }) {
+export function PlaceholderScreen({ title }) {
   return (
     <div style={styles.screen}>
       <p style={styles.placeholderText}>This screen is ready for content.</p>
@@ -769,7 +769,7 @@ function PlaceholderScreen({ title }) {
 // as the user types. Climbs are filtered client-side against the same
 // climbs list the Walls tab already has in memory; users are looked up via
 // GET /api/users/search since the full user list isn't fetched up front.
-function SearchScreen({
+export function SearchScreen({
   climbs,
   query,
   mode,
@@ -895,7 +895,7 @@ function SearchScreen({
 // owner should see or do (Settings, Logbook) — but with a Follow/Unfollow
 // button in Settings' spot, and the follower/following counts tappable to
 // drill into that list, neither of which make sense on your own profile.
-function UserProfileScreen({ user, currentUser, onFollow, onUnfollow, onViewFollowers, onViewFollowing }) {
+export function UserProfileScreen({ user, currentUser, onFollow, onUnfollow, onViewFollowers, onViewFollowing }) {
   const initials = user.username.slice(0, 2).toUpperCase();
   const isSelf = currentUser?.username === user.username;
 
@@ -944,7 +944,7 @@ function UserProfileScreen({ user, currentUser, onFollow, onUnfollow, onViewFoll
 // Backs the follower/following list screens opened from UserProfileScreen's
 // tappable counts. Same row shape/style as SearchScreen's "Users" results —
 // tapping a row opens that person's own UserProfileScreen in turn.
-function FollowListScreen({ username, type, onSelectUser }) {
+export function FollowListScreen({ username, type, onSelectUser }) {
   const { data, loading, error, retry } = useFetch(`/api/users/${encodeURIComponent(username)}/${type}`);
   const users = data?.users;
 
@@ -976,7 +976,7 @@ function FollowListScreen({ username, type, onSelectUser }) {
 // showResetClimbs/showBackfillClimbs); the grade range and setter fields
 // below are still just placeholders for whatever a real climb filter ends
 // up needing there.
-function ClimbsFilterForm({
+export function ClimbsFilterForm({
   sortBy,
   onSortByChange,
   showResetClimbs,
@@ -1057,7 +1057,7 @@ function ClimbsFilterForm({
 // that's been up for a while already. Compare with NewWallForm below,
 // opened from the Walls root list's "+" instead — similar fields, but for
 // starting a wall's next "reset" rather than adding to its current set.
-function NewClimbForm({ wallId, resetDate, onSave }) {
+export function NewClimbForm({ wallId, resetDate, onSave }) {
   const [photo, setPhoto] = useState("");
   const [name, setName] = useState("");
   const [gradeBottom, setGradeBottom] = useState("VB");
@@ -1209,7 +1209,7 @@ function NewClimbForm({ wallId, resetDate, onSave }) {
 // locked/toggle-based like NewClimbForm's) so a setter adding several
 // climbs to the same new set can give them all the same date and have them
 // land in one cycle together.
-function NewWallForm({ walls, onSave }) {
+export function NewWallForm({ walls, onSave }) {
   const [photo, setPhoto] = useState("");
   const [name, setName] = useState("");
   const [gradeBottom, setGradeBottom] = useState("VB");
@@ -1360,7 +1360,7 @@ function NewWallForm({ walls, onSave }) {
 // ascending/descending (rather than jumping to the top on descending).
 // Built on climbBucketGrade so a setter's still-unconfirmed guess sorts the
 // same way it buckets everywhere else (top end of a range, e.g. "V2-4" as V4).
-function climbGradeSortValue(climb) {
+export function climbGradeSortValue(climb) {
   const grade = (climbBucketGrade(climb) || "").trim().toUpperCase();
   if (grade === "VB") return -1;
   const match = grade.match(/^V(\d+)$/);
@@ -1383,17 +1383,30 @@ const SORT_OPTIONS = [
 // "search for a setter's name" works the same everywhere — matching on name
 // only in one place and name+setter in the other was an inconsistency, not
 // a deliberate scoping choice (§14.21c).
-function matchesClimbQuery(climb, query) {
+export function matchesClimbQuery(climb, query) {
   const q = query.trim().toLowerCase();
   if (!q) return true;
   return climb.name.toLowerCase().includes(q) || (climb.setter || "").toLowerCase().includes(q);
 }
 
-function sortClimbs(climbs, sortBy) {
+export function sortClimbs(climbs, sortBy) {
   const sorted = [...climbs];
   switch (sortBy) {
     case "gradeDesc":
-      sorted.sort((a, b) => climbGradeSortValue(b) - climbGradeSortValue(a));
+      // Plain `climbGradeSortValue(b) - climbGradeSortValue(a)` would put a
+      // no-grade climb (Infinity) *first* here, not last — Infinity reads
+      // as "highest" under both directions, so simply flipping the
+      // subtraction for descending flips it to the front instead of
+      // keeping it pinned to the end like gradeAsc naturally does. Handled
+      // explicitly so both directions honor the same "no grade sorts last"
+      // rule the comment on climbGradeSortValue promises.
+      sorted.sort((a, b) => {
+        const av = climbGradeSortValue(a);
+        const bv = climbGradeSortValue(b);
+        if (av === Number.POSITIVE_INFINITY) return bv === Number.POSITIVE_INFINITY ? 0 : 1;
+        if (bv === Number.POSITIVE_INFINITY) return -1;
+        return bv - av;
+      });
       break;
     case "nameAsc":
       sorted.sort((a, b) => a.name.localeCompare(b.name));
@@ -1420,7 +1433,7 @@ function sortClimbs(climbs, sortBy) {
 // "star star star...", once per character — replaced with the same lucide
 // Star icons StarRatingInput uses, plus one aria-label giving the numeric
 // value instead (§14.22).
-function StarRatingDisplay({ value }) {
+export function StarRatingDisplay({ value }) {
   const filled = Math.round(value || 0);
   return (
     <span style={styles.climbStars} aria-label={`${filled} out of 5 stars`}>
@@ -1441,7 +1454,7 @@ function StarRatingDisplay({ value }) {
 // The colored grade shown in a climb's title (see climbTitleNode below) —
 // gray for a setter's still-unconfirmed guess, white once an admin has
 // locked in the final grade (see the Grades tab).
-function ClimbGradeLabel({ climb }) {
+export function ClimbGradeLabel({ climb }) {
   const confirmed = Boolean(climb.grade);
   return (
     <span
@@ -1454,7 +1467,7 @@ function ClimbGradeLabel({ climb }) {
 
 // "V4 · Climb Name" title shown atop the Climb detail page's image, for
 // both current and archived climbs — the grade colored per ClimbGradeLabel.
-function climbTitleNode(climb) {
+export function climbTitleNode(climb) {
   return (
     <>
       <ClimbGradeLabel climb={climb} />
@@ -1476,7 +1489,7 @@ function climbTitleNode(climb) {
 // enough that nothing visibly reflows once data arrives.
 const GRADE_CHART_SKELETON_COLUMNS = Array.from({ length: GRADE_OPTIONS.length }, (_, i) => i);
 
-function GradeBarChart({ title, endpoint, counts: providedCounts }) {
+export function GradeBarChart({ title, endpoint, counts: providedCounts }) {
   const { data, error, retry } = useFetch(endpoint, { skip: !endpoint });
   const counts = providedCounts ?? data?.counts ?? null;
 
@@ -1584,7 +1597,7 @@ function GradeBarChart({ title, endpoint, counts: providedCounts }) {
   );
 }
 
-function ProfileScreen({
+export function ProfileScreen({
   currentUser,
   onSignup,
   onLogin,
@@ -1772,7 +1785,7 @@ const SETTINGS_OPTIONS = [
   { id: "password", label: "Change password" },
 ];
 
-function SettingsScreen({ onSelectOption, onLogout }) {
+export function SettingsScreen({ onSelectOption, onLogout }) {
   return (
     <div style={styles.screen}>
       <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
@@ -1797,7 +1810,7 @@ function SettingsScreen({ onSelectOption, onLogout }) {
   );
 }
 
-function ChangeAvatarForm({ currentUser, onSave }) {
+export function ChangeAvatarForm({ currentUser, onSave }) {
   const [preview, setPreview] = useState(currentUser.avatarUrl || "");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -1858,7 +1871,7 @@ function ChangeAvatarForm({ currentUser, onSave }) {
   );
 }
 
-function ChangeUsernameForm({ currentUser, onSave }) {
+export function ChangeUsernameForm({ currentUser, onSave }) {
   const [username, setUsername] = useState(currentUser.username);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -1903,7 +1916,7 @@ function ChangeUsernameForm({ currentUser, onSave }) {
   );
 }
 
-function ChangeNameForm({ currentUser, onSave }) {
+export function ChangeNameForm({ currentUser, onSave }) {
   const [name, setName] = useState(currentUser.name || "");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -1943,7 +1956,7 @@ function ChangeNameForm({ currentUser, onSave }) {
   );
 }
 
-function ChangePasswordForm({ onSave, requireCurrentPassword = true, helperText }) {
+export function ChangePasswordForm({ onSave, requireCurrentPassword = true, helperText }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -2035,7 +2048,7 @@ const ROLE_OPTIONS = [
 
 // Moderator and setter are peers (same permission level, different label);
 // admin implies both, so it's checked first.
-function roleOf(user) {
+export function roleOf(user) {
   if (user.isAdmin) return "admin";
   if (user.isModerator) return "moderator";
   if (user.isSetter) return "setter";
@@ -2054,7 +2067,7 @@ const ROLE_FILTER_TABS = [
 // Admin-only settings sub-page: lists every account and lets an admin
 // change anyone's role via GET/POST /api/users(/:username/role) — grants
 // and revokes moderator/admin access.
-function ManageRolesScreen() {
+export function ManageRolesScreen() {
   const { data: usersData, loading, error: fetchError, retry } = useFetch("/api/users");
   const [users, setUsers] = useState(null);
   // Role dropdowns no longer save on change — they stage a pick here, and
@@ -2227,7 +2240,7 @@ function ManageRolesScreen() {
 // climbs an admin is now allowed to lock in a final grade for, per the gate
 // on POST /api/climbs/grade. Picking a grade and tapping the checkmark
 // confirms it and drops the row from this list.
-function GradesScreen() {
+export function GradesScreen() {
   const { data: climbsData, loading, error: fetchError, retry } = useFetch("/api/climbs/needs-grade");
   const [climbs, setClimbs] = useState(null);
   const [error, setError] = useState("");
@@ -2323,7 +2336,7 @@ function GradesScreen() {
 // clears any other pending proposals for that climb; rejecting just drops
 // that one proposal. The climb's setterName (its immutable identity) never
 // changes either way.
-function ApproveClimbsScreen() {
+export function ApproveClimbsScreen() {
   const { data: climbsData, loading, error: fetchError, retry } = useFetch("/api/climbs/needs-name-approval");
   const [climbs, setClimbs] = useState(null);
   const [error, setError] = useState("");
@@ -2408,7 +2421,7 @@ function ApproveClimbsScreen() {
   );
 }
 
-function TopBar({
+export function TopBar({
   title,
   showBack,
   onBack,
@@ -2448,7 +2461,7 @@ function TopBar({
 // Replaces the persistent tab bar while viewing a Climb detail page: an
 // attempts counter (with -/+ buttons on either side) above a center button
 // to log an ascent. Logging isn't wired up to anything yet.
-function ClimbActionBar({ attempts, onDecrement, onIncrement, onLogAscent, disabled }) {
+export function ClimbActionBar({ attempts, onDecrement, onIncrement, onLogAscent, disabled }) {
   return (
     <nav style={styles.climbActionBar}>
       <button
@@ -2491,7 +2504,7 @@ function ClimbActionBar({ attempts, onDecrement, onIncrement, onLogAscent, disab
   );
 }
 
-function StarRatingInput({ value, onChange, invalid, inputRef }) {
+export function StarRatingInput({ value, onChange, invalid, inputRef }) {
   // A precise left-half/right-half tap on a 26px star is too fiddly with a
   // finger, so instead the whole row is a drag surface: press or drag
   // anywhere across it and the rating (in 0.5 steps) tracks the pointer's
@@ -2591,7 +2604,7 @@ function StarRatingInput({ value, onChange, invalid, inputRef }) {
 // tab (see server/worker.js's pendingNames).
 const ASCENT_ORDINALS = ["First", "Second", "Third", "Fourth", "Fifth"];
 
-function LogAscentSheet({
+export function LogAscentSheet({
   open,
   attemptsThisSession,
   currentGrade,

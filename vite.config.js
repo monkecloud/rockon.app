@@ -19,5 +19,15 @@ export default defineConfig(({ mode }) => {
         "/api": `http://localhost:${apiPort}`,
       },
     },
+    test: {
+      // Default stays "node" so server/*.test.js (mocks fs/promises and
+      // child_process, assumes a real Node environment) is unaffected —
+      // vitest 4 dropped environmentMatchGlobs, so src/ test files opt
+      // into jsdom individually via a `// @vitest-environment jsdom`
+      // comment at the top of the file instead (§14.11).
+      environment: "node",
+      setupFiles: ["./src/test/setup.js"],
+      globals: true,
+    },
   };
 });

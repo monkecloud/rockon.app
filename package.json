@@ -26,8 +26,12 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.3",
     "@vitejs/plugin-react": "^4.7.0",
     "concurrently": "^10.0.3",
+    "jsdom": "^30.0.1",
     "supertest": "^7.2.2",
     "vite": "^7.3.6",
     "vitest": "^4.1.10"
