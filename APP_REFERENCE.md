@@ -386,8 +386,8 @@ is stale and unused** — ignore it.
 | `WALLS` | ~71 | **Hardcoded**: `{1 Back, 2 Slab, 3 Cave, 4 Front}` |
 | `WALL_NAME_BY_ID` | ~453 | Derived lookup |
 | `STORAGE_KEYS` | ~88 | `boilerplate:currentUser` |
-| `GRADE_OPTIONS` | ~2181 | `VB, V0…V11` — every grade dropdown |
-| `GRADE_BUCKETS` | ~1144 | `VB, V0…V9, V10+` — chart buckets |
+| `GRADE_OPTIONS` | `shared/grades.js` | `VB, V0…V11` — every grade dropdown |
+| `GRADE_BUCKETS` | `shared/grades.js` | `VB, V0…V9, V10+` — chart buckets |
 | `SETTINGS_OPTIONS` | ~1470 | avatar, username, name, password |
 | `ROLE_OPTIONS` | ~1731 | member, moderator, setter, admin |
 | `ROLE_FILTER_TABS` | ~1750 | Admin screen's Moderator/Setter/Users filter |
@@ -492,19 +492,20 @@ climbs, currentUser
 | `handleSubmitAscent` | Guards against archived non-`loggable` climbs as defense in depth |
 | `handleOpenLogbook` | **Empty stub — TODO** |
 
-### 7.4 Client/server duplicated logic ⚠️
+### 7.4 Grade logic — `shared/grades.js` ✅
 
-These exist in **both** files and must be changed together:
-
-| Concept | Client | Server |
-|---|---|---|
-| `GRADE_BUCKETS` | App.jsx:1144 | worker.js:1178 |
-| Grade → bucket | `bucketGradeCounts` (1148) | `gradeToBucket` (1155) |
-| `climbBucketGrade` | App.jsx:1171 | worker.js:1171 |
-| Setter-grade range format | `composeSetterGrade` (821) | parsed in `climbBucketGrade` |
+Used to be duplicated in both `App.jsx` and `worker.js`, with nothing tying
+the two implementations together — fixed by §14.19. `shared/grades.js` is
+now the single source for `GRADE_OPTIONS`, `GRADE_BUCKETS`, `gradeToBucket`,
+`bucketCounts`, `climbBucketGrade`, `climbDisplayGrade`, `composeSetterGrade`,
+and `parseSetterGrade`; both `App.jsx` and `worker.js` import it (`worker.js`
+re-exports `gradeToBucket`/`climbBucketGrade` so existing test imports don't
+change). **When editing grade logic, edit `shared/grades.js` — don't
+reintroduce a client- or server-local copy.**
 
 `composeSetterGrade(bottom, top)` produces `"V6"` when equal, else `"V2-4"`
-(top loses its `V`). Everything that parses a range assumes this exact shape.
+(top loses its `V`); `parseSetterGrade` is its inverse, returning `null` for
+anything malformed. Everything that parses a range assumes this exact shape.
 
 ### 7.5 Styling
 
@@ -948,7 +949,7 @@ failure modes that take it down until someone notices.
   root cause of the missing hover/focus/media-query capabilities above. CSS
   modules or plain CSS with the existing custom properties would fix all three
   at once.
-- [x] **P2 ✅ Grade logic is duplicated client/server** → **DECIDED: shared/grades.js, §14.19. Prerequisite for §14.6 and §14.17.** in four places (§7.4).
+- [x] **P2 ✅ Grade logic is duplicated client/server** → **DONE: extracted to `shared/grades.js`, §14.19.** Was duplicated in four places (§7.4).
   Extract to a `shared/grades.js` importable by both.
 - [x] **P2 ✅ Dead code:** → **PlaceholderScreen + root App.jsx deleted during §14.16; the rest stays open.** Original:  `PlaceholderScreen` (never rendered), the root
   `App.jsx` (stale duplicate, not in the build), `handleOpenLogbook` (empty
@@ -1041,7 +1042,7 @@ implement 13.2-a+b using Option B."*
 | 13.8-a/b Split `App.jsx` | P2 | ✅ **DECIDED: Option A — split by screen, shared `styles.js`** (Derrick, 2026-08-10) — not yet started. **Unblocks a 4-item chain.** See §14.16 |
 | 13.3-d/e/f/g Climb validation | P2 | ✅ **DECIDED: Option A — validate all** (Derrick, 2026-08-10) — not yet started. See §14.17 |
 | 13.4-h/i Debounce & refetch | P2 | ✅ **DECIDED: Option A** (Derrick, 2026-08-10) — not yet started. **Build inside §14.9's `useFetch`.** See §14.18 |
-| 13.8-c/f Shared grades + dev port | P2 | ✅ **DECIDED: Option A** (Derrick, 2026-08-10) — not yet started. **Prerequisite for §14.6 and §14.17.** See §14.19 |
+| 13.8-c/f Shared grades + dev port | P2 | ✅ **DONE 2026-08-10** — `shared/grades.js` extracted, both sides import it; `vite.config.js` reads `PORT` via `loadEnv`. See §14.19 |
 | 13.8-e `WALLS` hardcoded | P2 | ✅ **DECIDED: fold into §14.3 as a `walls` table** (Derrick, 2026-08-10) — not a standalone item. See §14.3.2 |
 | 13.5-a/b/c + 13.3-h Data-model cleanups | P2/P3 | ✅ **DECIDED: Option A — fold all four into §14.3** (Derrick, 2026-08-10). See §14.20. ⚠️ `createdAt` is lost for every ascent logged before the migration |
 | 13.6-c/d/f Frontend UX | P2 | ✅ **DECIDED: Option B — align search, chart skeleton, key the viewer** (Derrick, 2026-08-10) — not yet started. See §14.21 |
