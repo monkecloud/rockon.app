@@ -256,8 +256,8 @@ Base: `/api`. All bodies/responses JSON. Auth is the httpOnly `session` cookie
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| POST | `/api/signup` | — | `{username, password, name?}` → `{user}`. 409 if taken (case-insensitive). Sets cookie |
-| POST | `/api/login` | — | `{username, password}` → `{user, needsPasswordReset?}`. Empty `passwordHash` ⇒ lets you in with `needsPasswordReset: true`. Compares against a dummy hash when the user doesn't exist so timing doesn't leak which usernames are registered |
+| POST | `/api/signup` | — | `{username, password, name?}` → `{user}`. 409 if taken (case-insensitive). Sets cookie. Rate-limited per IP — every attempt counts, success included (§14.4) |
+| POST | `/api/login` | — | `{username, password}` → `{user, needsPasswordReset?}`. Empty `passwordHash` ⇒ lets you in with `needsPasswordReset: true`. Compares against a dummy hash when the user doesn't exist so timing doesn't leak which usernames are registered. Rate-limited per IP+username, cleared on success (§14.4) |
 | POST | `/api/logout` | session | Clears the token server-side **and** the cookie |
 
 ### 5.3 Own account (`requireSelf`)
@@ -544,9 +544,11 @@ params/body/query. Role flags are booleans on the user record; the `role`
 string only exists at the API boundary. Client-side tab hiding is cosmetic —
 every gate is enforced server-side too.
 
-**Known limits (prototype-grade):** no rate limiting, no email verification,
-no password strength rules, one active session per user (logging in again
-invalidates the previous token), no CSRF token beyond `sameSite: lax`.
+**Known limits (prototype-grade):** no email verification, no password
+strength rules, one active session per user (logging in again invalidates
+the previous token), no CSRF token beyond `sameSite: lax`. Login/signup are
+rate-limited (dual-key IP+username escalating delay, §14.4) but that only
+covers brute-force/spam, not weak passwords.
 
 ---
 
@@ -1026,7 +1028,7 @@ implement 13.2-a+b using Option B."*
 | 13.2-a+b Worker crash recovery | P0 | ❌ **CANCELLED** 2026-08-10 — superseded by §14.3.1(ii); the code it patches is being deleted |
 | 13.2-c+d Atomic writes & locking | P0 | ✅ **DECIDED: Option D — migrate to SQLite** (Derrick, 2026-08-10) — not yet started |
 | 13.2-e Hot-swap is a no-op | P0 | ✅ **DONE 2026-08-10** — Option (ii), `server/index.js`/`index.test.js` deleted, `worker.js` binds `PORT` directly |
-| 13.1-b Login rate limiting | P0 | ✅ **DECIDED: Option B — hand-rolled dual-key limiter** (Derrick, 2026-08-10) — not yet started. **Depends on §14.3.1(ii).** See §14.4 |
+| 13.1-b Login rate limiting | P0 | ✅ **DONE 2026-08-10** — hand-rolled dual-key (IP+username) escalating-delay limiter on login; signup gets it too (IP-only, every attempt counts). See §14.4 |
 | 13.4-a/b/c Payload trio | P1 | ✅ **Step 1 DONE 2026-08-10** — picturetest climb deleted, `compression` added. **Step 2 (Option B, files on disk) not started.** See §14.5 |
 | 13.3-a Ascent validation | P1 | ✅ **DECIDED: Option B — allow repeats, count distinct** (Derrick, 2026-08-10) — not yet started. See §14.6 |
 | 13.3-b Stale `ascentCount` | P1 | ✅ **DECIDED: Option B — derive on read, drop the stored field** (Derrick, 2026-08-10) — not yet started. **Build together with §14.6.** See §14.7 |
