@@ -51,6 +51,10 @@ const {
   withAscentStats,
   gradeToBucket,
   climbBucketGrade,
+  resetRateLimits,
+  checkRateLimit,
+  recordRateLimitFailure,
+  recordRateLimitSuccess,
 } = await import("./worker.js");
 
 const fsPromises = await import("fs/promises");
@@ -83,6 +87,7 @@ beforeEach(() => {
   store.clear();
   fsPromises.readFile.mockClear();
   fsPromises.writeFile.mockClear();
+  resetRateLimits();
 });
 
 // ---------------------------------------------------------------------------
@@ -701,6 +706,25 @@ describe("POST /api/signup", () => {
     const res = await request(app).post("/api/signup").send({ username: "cube", password: "x" });
     expect(res.status).toBe(409);
   });
+
+  it("429s repeated signup spam from the same IP, independent of login's limit", async () => {
+    for (let i = 0; i < 6; i++) {
+      await request(app)
+        .post("/api/signup")
+        .send({ username: `spam-user-${i}`, password: "x" });
+    }
+    const res = await request(app)
+      .post("/api/signup")
+      .send({ username: "spam-user-final", password: "x" });
+    expect(res.status).toBe(429);
+
+    // A completely unrelated login from the same test run isn't blocked —
+    // signup-ip: and ip:/user: are separate keyspaces.
+    const loginRes = await request(app)
+      .post("/api/login")
+      .send({ username: "nobody-in-particular", password: "x" });
+    expect(loginRes.status).toBe(401);
+  });
 });
 
 describe("POST /api/login", () => {
@@ -732,6 +756,113 @@ describe("POST /api/login", () => {
     const res = await request(app).post("/api/login").send({ username: "reset-me", password: "anything" });
     expect(res.status).toBe(200);
     expect(res.body.needsPasswordReset).toBe(true);
+  });
+});
+
+describe("POST /api/login rate limiting", () => {
+  it("stays at 401 for failures at or below the free-tries threshold", async () => {
+    await signup("ratelimit-under", "correct-password");
+    for (let i = 0; i < 5; i++) {
+      const res = await request(app)
+        .post("/api/login")
+        .send({ username: "ratelimit-under", password: "wrong" });
+      expect(res.status).toBe(401);
+    }
+  });
+
+  it("429s past the free-tries threshold, with a Retry-After header", async () => {
+    await signup("ratelimit-over", "correct-password");
+    // The 6th failure is what first computes a nonzero blockedUntil; it
+    // still gets its own 401 (the block applies to the *next* request), so
+    // a 7th attempt is what actually observes the 429.
+    for (let i = 0; i < 6; i++) {
+      await request(app).post("/api/login").send({ username: "ratelimit-over", password: "wrong" });
+    }
+    const res = await request(app)
+      .post("/api/login")
+      .send({ username: "ratelimit-over", password: "wrong" });
+    expect(res.status).toBe(429);
+    expect(res.headers["retry-after"]).toBeDefined();
+    expect(Number(res.headers["retry-after"])).toBeGreaterThan(0);
+  });
+
+  it("a successful login clears the block instead of leaving it wedged", async () => {
+    await signup("ratelimit-clears", "correct-password");
+    for (let i = 0; i < 5; i++) {
+      await request(app).post("/api/login").send({ username: "ratelimit-clears", password: "wrong" });
+    }
+    const success = await request(app)
+      .post("/api/login")
+      .send({ username: "ratelimit-clears", password: "correct-password" });
+    expect(success.status).toBe(200);
+
+    const after = await request(app)
+      .post("/api/login")
+      .send({ username: "ratelimit-clears", password: "wrong" });
+    expect(after.status).toBe(401); // not 429 — the block was cleared on success
+
+    // Directly verify a block already in effect is actually removed, not
+    // just too fresh to have kicked in yet (the HTTP round-trip above can't
+    // distinguish those two cases since 5 failures alone never blocks).
+    for (let i = 0; i < 6; i++) recordRateLimitFailure(["user:ratelimit-clears-direct"]);
+    expect(checkRateLimit(["user:ratelimit-clears-direct"])).toBeGreaterThan(0);
+    recordRateLimitSuccess(["user:ratelimit-clears-direct"]);
+    expect(checkRateLimit(["user:ratelimit-clears-direct"])).toBe(0);
+  });
+
+  it("429 body is identical whether the username is real or made up", async () => {
+    await signup("ratelimit-real", "correct-password");
+    for (let i = 0; i < 6; i++) {
+      await request(app).post("/api/login").send({ username: "ratelimit-real", password: "wrong" });
+    }
+    const realRes = await request(app)
+      .post("/api/login")
+      .send({ username: "ratelimit-real", password: "wrong" });
+
+    for (let i = 0; i < 6; i++) {
+      await request(app)
+        .post("/api/login")
+        .send({ username: "totally-made-up-user", password: "wrong" });
+    }
+    const fakeRes = await request(app)
+      .post("/api/login")
+      .send({ username: "totally-made-up-user", password: "wrong" });
+
+    expect(realRes.status).toBe(429);
+    expect(fakeRes.status).toBe(429);
+    expect(realRes.body).toEqual(fakeRes.body);
+  });
+
+  // The four tests below drive the rate limiter directly rather than through
+  // HTTP: supertest requests all share one loopback req.ip, so there's no
+  // way to exercise the IP key independently of the username key (or wait
+  // out a real 15-minute window) from outside.
+  it("the IP key and username key trip independently", () => {
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    for (let i = 0; i < 6; i++) {
+      recordRateLimitFailure(["ip:1.2.3.4", "user:alice"]);
+    }
+    // Someone else on the same IP, different username: blocked via the IP key.
+    expect(checkRateLimit(["ip:1.2.3.4", "user:bob"])).toBeGreaterThan(0);
+    // Same username from a different IP: blocked via the username key.
+    expect(checkRateLimit(["ip:9.9.9.9", "user:alice"])).toBeGreaterThan(0);
+    // Neither key involved: untouched.
+    expect(checkRateLimit(["ip:9.9.9.9", "user:bob"])).toBe(0);
+    vi.restoreAllMocks();
+  });
+
+  it("entries expire after the window", () => {
+    const start = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(start);
+    for (let i = 0; i < 10; i++) {
+      recordRateLimitFailure(["user:windowtest"]);
+    }
+    expect(checkRateLimit(["user:windowtest"])).toBeGreaterThan(0);
+
+    vi.spyOn(Date, "now").mockReturnValue(start + 15 * 60_000 + 1);
+    expect(checkRateLimit(["user:windowtest"])).toBe(0);
+    vi.restoreAllMocks();
   });
 });
 

@@ -45,10 +45,13 @@ export { gradeToBucket, climbBucketGrade };
 // process's lifetime is guaranteed — a crash and systemd restart wipes
 // memory the same way the old worker-recycling design used to.
 //
-// Still a toy auth system in some respects (no rate limiting, no email
-// verification, one active session per user at a time since logging in
-// again overwrites the previous token), so treat it as a prototype rather
-// than something to expose to the public internet as-is.
+// Still a toy auth system in some respects (no email verification, one
+// active session per user at a time since logging in again overwrites the
+// previous token), so treat it as a prototype rather than something to
+// expose to the public internet as-is. Login/signup are rate-limited (see
+// the block below), but only against brute-force/spam — there's still no
+// password-strength enforcement, so a weak-but-not-guessed password on an
+// account isn't caught by anything here.
 //
 // Each user record also has an optional display `name` (set at signup,
 // separate from `username`), tracks `followers` and `following` (arrays of
@@ -525,6 +528,87 @@ export function toSetterListEntry(user) {
   return { username: user.username, name: user.name || "" };
 }
 
+// ---------------------------------------------------------------------------
+// Login/signup rate limiting — see APP_REFERENCE.md §14.4. A module-level Map
+// is only safe here because §14.3.1(ii) removed the primary/worker hot-swap
+// that used to fork a brand-new worker (wiping all in-memory state) on every
+// climbs.json write — before that, an attacker triggering any climb write
+// would have reset every counter for free.
+//
+// POST /api/login is keyed on BOTH the requester's IP and the (lowercased)
+// username, and the stricter of the two applies — IP-only misses a botnet
+// spraying one account from many hosts, username-only misses one host
+// grinding many accounts. POST /api/signup is IP-only (account-creation
+// spam, not per-account brute force).
+const rateLimitAttempts = new Map(); // key -> { count, windowResetAt, blockedUntil }
+
+const RATE_LIMIT_WINDOW_MS = 15 * 60_000;
+const RATE_LIMIT_FREE_TRIES = 5; // no penalty at or below this many failures
+const RATE_LIMIT_BASE_MS = 250;
+const RATE_LIMIT_MAX_MS = 30 * 60_000;
+
+function rateLimitPenaltyMs(count) {
+  if (count <= RATE_LIMIT_FREE_TRIES) return 0;
+  return Math.min(RATE_LIMIT_MAX_MS, RATE_LIMIT_BASE_MS * 2 ** (count - RATE_LIMIT_FREE_TRIES));
+}
+
+// Test-only: drop every tracked key, so worker.test.js's repeated
+// signup/login calls across `it` blocks don't trip each other's counters.
+export function resetRateLimits() {
+  rateLimitAttempts.clear();
+}
+
+// Returns how many ms the caller must still wait (0 = not rate-limited).
+// Evicts lazily on read rather than running a timer — simpler, and needs no
+// cleanup on shutdown. Exported (alongside the two functions below) so
+// worker.test.js can drive the window/independence behavior directly with a
+// mocked Date.now, rather than fighting supertest's fixed loopback IP or
+// real 15-minute waits.
+export function checkRateLimit(keys) {
+  const now = Date.now();
+  let waitMs = 0;
+  for (const key of keys) {
+    const entry = rateLimitAttempts.get(key);
+    if (!entry) continue;
+    if (entry.windowResetAt <= now) {
+      rateLimitAttempts.delete(key);
+      continue;
+    }
+    if (entry.blockedUntil > now) {
+      waitMs = Math.max(waitMs, entry.blockedUntil - now);
+    }
+  }
+  return waitMs;
+}
+
+export function recordRateLimitFailure(keys) {
+  const now = Date.now();
+  for (const key of keys) {
+    let entry = rateLimitAttempts.get(key);
+    if (!entry || entry.windowResetAt <= now) {
+      entry = { count: 0, windowResetAt: now + RATE_LIMIT_WINDOW_MS, blockedUntil: 0 };
+    }
+    entry.count += 1;
+    entry.blockedUntil = now + rateLimitPenaltyMs(entry.count);
+    rateLimitAttempts.set(key, entry);
+  }
+}
+
+export function recordRateLimitSuccess(keys) {
+  for (const key of keys) rateLimitAttempts.delete(key);
+}
+
+// Sends the 429 both rate-limited routes share. Deliberately generic wording
+// (never "unknown username" etc.) and never sleeps before responding — a
+// stalled response would hold a socket open per attacker request, which is a
+// free amplification vector; a 429 costs nothing and lets the client render
+// a countdown from Retry-After.
+function sendRateLimited(res, waitMs) {
+  res.set("Retry-After", String(Math.ceil(waitMs / 1000)));
+  res.status(429).json({ error: "Too many attempts. Please try again later." });
+}
+// ---------------------------------------------------------------------------
+
 app.post("/api/signup", async (req, res) => {
   const { username, password, name } = req.body || {};
 
@@ -532,10 +616,26 @@ app.post("/api/signup", async (req, res) => {
     return res.status(400).json({ error: "Username and password are required." });
   }
 
+  // IP-only: this is about account-creation spam, not brute-forcing a
+  // specific existing account, so there's no username to key on yet.
+  //
+  // Unlike login, a *successful* signup is itself the thing being throttled
+  // — each one is a newly created account, which is the spam. So every
+  // attempt increments the counter (via recordRateLimitFailure below,
+  // despite the name) and nothing here ever calls recordRateLimitSuccess —
+  // there's no "proved legitimate, clear the count" moment for account
+  // creation the way there is for logging into an account you already own.
+  const rateLimitKeys = [`signup-ip:${req.ip}`];
+  const waitMs = checkRateLimit(rateLimitKeys);
+  if (waitMs > 0) {
+    return sendRateLimited(res, waitMs);
+  }
+
   const users = await readUsers();
   // Case-insensitive so "Cubesnail" and "cubesnail" can't both exist.
   const exists = users.some((u) => u.username.toLowerCase() === username.toLowerCase());
   if (exists) {
+    recordRateLimitFailure(rateLimitKeys);
     return res.status(409).json({ error: "That username is already taken." });
   }
 
@@ -553,6 +653,7 @@ app.post("/api/signup", async (req, res) => {
   };
   users.push(user);
   await writeUsers(users);
+  recordRateLimitFailure(rateLimitKeys);
 
   setSessionCookie(req, res, sessionToken);
   res.json({ user: toClientUser(user) });
@@ -563,6 +664,16 @@ app.post("/api/login", async (req, res) => {
 
   if (!username || !password) {
     return res.status(400).json({ error: "Username and password are required." });
+  }
+
+  // Checked before anything else — in particular before the bcrypt compare
+  // below, or the throttle would still pay the CPU cost it exists to avoid.
+  // Username must be lowercased: login is case-insensitive, so "Admin" and
+  // "admin" have to share a bucket or this is trivially bypassed.
+  const rateLimitKeys = [`ip:${req.ip}`, `user:${username.toLowerCase()}`];
+  const waitMs = checkRateLimit(rateLimitKeys);
+  if (waitMs > 0) {
+    return sendRateLimited(res, waitMs);
   }
 
   const users = await readUsers();
@@ -576,6 +687,7 @@ app.post("/api/login", async (req, res) => {
   if (user && !user.passwordHash) {
     user.sessionToken = generateSessionToken();
     await writeUsers(users);
+    recordRateLimitSuccess(rateLimitKeys);
     setSessionCookie(req, res, user.sessionToken);
     return res.json({ user: toClientUser(user), needsPasswordReset: true });
   }
@@ -587,6 +699,9 @@ app.post("/api/login", async (req, res) => {
     : await bcrypt.compare(password, "$2a$10$invalidsaltinvalidsaltinvalidsal");
 
   if (!user || !isMatch) {
+    // Same 401 body regardless of which key(s) exist — this must not become
+    // a second way to learn whether a username is registered.
+    recordRateLimitFailure(rateLimitKeys);
     return res.status(401).json({ error: "Incorrect username or password." });
   }
 
@@ -599,6 +714,7 @@ app.post("/api/login", async (req, res) => {
 
   user.sessionToken = generateSessionToken();
   await writeUsers(users);
+  recordRateLimitSuccess(rateLimitKeys);
   setSessionCookie(req, res, user.sessionToken);
   res.json({ user: toClientUser(user) });
 });
