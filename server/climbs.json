@@ -9,7 +9,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-1",
-    "grade": "V1"
+    "grade": "V1",
+    "setterName": "Wild Ledge",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -21,7 +23,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": "V6"
+    "grade": "V6",
+    "setterName": "Copper Nose",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -33,7 +37,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": "V9"
+    "grade": "V9",
+    "setterName": "Cracked Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -45,7 +51,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7-8",
-    "grade": "V8"
+    "grade": "V8",
+    "setterName": "Quiet Seam",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -57,7 +65,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "setterName": "Neon Chimney",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -69,7 +79,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": ""
+    "grade": "VB",
+    "setterName": "Hollow Highball",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -81,7 +93,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": ""
+    "grade": "V7",
+    "setterName": "Jagged Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -93,7 +107,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7-9",
-    "grade": "V9"
+    "grade": "V9",
+    "setterName": "Quiet Roof",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -105,7 +121,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-5",
-    "grade": "V5"
+    "grade": "V5",
+    "setterName": "Sunken Corner",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -117,7 +135,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": ""
+    "grade": "V6",
+    "setterName": "Hollow Nose",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -129,7 +149,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": "V3"
+    "grade": "V3",
+    "setterName": "Stormy Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -141,7 +163,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1",
-    "grade": ""
+    "grade": "V1",
+    "setterName": "Golden Roof",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -153,7 +177,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3",
-    "grade": ""
+    "grade": "V3",
+    "setterName": "Silent Ridge",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -165,7 +191,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": "V6"
+    "grade": "V6",
+    "setterName": "Windy Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -177,7 +205,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3",
-    "grade": "V3"
+    "grade": "V3",
+    "setterName": "Jagged Traverse",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -189,7 +219,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": "V8"
+    "grade": "V8",
+    "setterName": "Windy Nose",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -201,7 +233,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V1",
-    "grade": "V1"
+    "grade": "V1",
+    "setterName": "Crimson Overhang",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -213,7 +247,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": ""
+    "grade": "VB",
+    "setterName": "Neon Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -225,7 +261,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": ""
+    "grade": "V5",
+    "setterName": "Electric Rail",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -237,7 +275,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "VB",
+    "setterName": "Jagged Mantle",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -249,7 +289,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": "V3"
+    "grade": "V3",
+    "setterName": "Copper Traverse",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -261,7 +303,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": ""
+    "grade": "V2",
+    "setterName": "Iron Traverse",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -273,7 +317,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "setterName": "Golden Groove",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -285,7 +331,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": "V2"
+    "grade": "V2",
+    "setterName": "Wild Corner",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -297,7 +345,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": ""
+    "grade": "V7",
+    "setterName": "Faded Traverse",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -309,7 +359,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-5",
-    "grade": "V5"
+    "grade": "V5",
+    "setterName": "Wild Traverse",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -321,7 +373,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": ""
+    "grade": "V5",
+    "setterName": "Velvet Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -333,7 +387,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "setterName": "Silent Chimney",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -345,7 +401,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": ""
+    "grade": "V1",
+    "setterName": "Stormy Highball",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -357,7 +415,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-4",
-    "grade": "V4"
+    "grade": "V4",
+    "setterName": "Amber Groove",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -369,7 +429,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": "V9"
+    "grade": "V9",
+    "setterName": "Faded Groove",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -381,7 +443,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": "V9"
+    "grade": "V9",
+    "setterName": "Sunken Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -393,7 +457,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1",
-    "grade": "V1"
+    "grade": "V1",
+    "setterName": "Stormy Nose",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -405,7 +471,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6",
-    "grade": "V6"
+    "grade": "V6",
+    "setterName": "Wild Crack",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -417,7 +485,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": ""
+    "grade": "V5",
+    "setterName": "Stormy Sloper",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -429,7 +499,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "setterName": "Hollow Sloper",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -441,7 +513,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "setterName": "Jagged Highball",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -453,7 +527,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "VB-1",
-    "grade": ""
+    "grade": "VB",
+    "setterName": "Wild Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -471,7 +547,9 @@
       }
     ],
     "setterGrade": "V6-8",
-    "grade": ""
+    "grade": "",
+    "setterName": "Iron Crack",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -483,7 +561,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": ""
+    "grade": "",
+    "setterName": "Windy Highball",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -495,7 +575,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-3",
-    "grade": ""
+    "grade": "",
+    "setterName": "Copper Seam",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -507,7 +589,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": ""
+    "grade": "",
+    "setterName": "Amber Arête",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -519,7 +603,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-7",
-    "grade": ""
+    "grade": "",
+    "setterName": "Electric Ridge",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -531,7 +617,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1",
-    "grade": ""
+    "grade": "",
+    "setterName": "Ghost Mantle",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -543,7 +631,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4",
-    "grade": ""
+    "grade": "",
+    "setterName": "Electric Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -555,7 +645,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "setterName": "Jagged Ledge",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -567,7 +659,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": ""
+    "grade": "",
+    "setterName": "Velvet Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -579,7 +673,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": ""
+    "grade": "",
+    "setterName": "Windy Overhang",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -591,7 +687,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "setterName": "Neon Seam",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -603,7 +701,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": ""
+    "grade": "",
+    "setterName": "Amber Seam",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -615,7 +715,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1",
-    "grade": ""
+    "grade": "",
+    "setterName": "Ghost Chimney",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -627,7 +729,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": ""
+    "grade": "",
+    "setterName": "Copper Sloper",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -639,7 +743,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-5",
-    "grade": ""
+    "grade": "",
+    "setterName": "Rusty Mantle",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -651,7 +757,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V6",
-    "grade": ""
+    "grade": "",
+    "setterName": "Cracked Sloper",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -663,7 +771,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": ""
+    "grade": "",
+    "setterName": "Hollow Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -675,7 +785,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V8",
-    "grade": ""
+    "grade": "",
+    "setterName": "Jagged Crack",
+    "pendingNames": []
   },
   {
     "wallId": 4,
@@ -687,7 +799,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V7-9",
-    "grade": ""
+    "grade": "",
+    "setterName": "Amber Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -699,7 +813,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": "V8"
+    "grade": "V8",
+    "setterName": "Faded Highball",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -711,7 +827,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": "V8"
+    "grade": "V8",
+    "setterName": "Copper Arête",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -723,7 +841,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "setterName": "Wild Mantle",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -735,7 +855,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0-2",
-    "grade": "V2"
+    "grade": "V2",
+    "setterName": "Copper Crack",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -747,7 +869,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-6",
-    "grade": ""
+    "grade": "V4",
+    "setterName": "Sunken Rail",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -759,7 +883,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": "V5"
+    "grade": "V5",
+    "setterName": "Sunken Overhang",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -771,7 +897,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": "V9"
+    "grade": "V9",
+    "setterName": "Sunken Seam",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -783,7 +911,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-3",
-    "grade": "V3"
+    "grade": "V3",
+    "setterName": "Crimson Mantle",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -795,7 +925,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "setterName": "Stormy Traverse",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -807,7 +939,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-1",
-    "grade": "V1"
+    "grade": "V1",
+    "setterName": "Ghost Traverse",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -819,7 +953,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6",
-    "grade": "V6"
+    "grade": "V6",
+    "setterName": "Velvet Highball",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -831,7 +967,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-7",
-    "grade": "V7"
+    "grade": "V7",
+    "setterName": "Iron Groove",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -843,7 +981,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-4",
-    "grade": "V4"
+    "grade": "V4",
+    "setterName": "Amber Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -855,7 +995,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-7",
-    "grade": ""
+    "grade": "V5",
+    "setterName": "Rusty Arête",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -867,7 +1009,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "setterName": "Ghost Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -879,7 +1023,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-5",
-    "grade": "V5"
+    "grade": "V5",
+    "setterName": "Golden Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -891,7 +1037,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": "V7"
+    "grade": "V7",
+    "setterName": "Sunken Chimney",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -903,7 +1051,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": "V9"
+    "grade": "V9",
+    "setterName": "Hollow Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -915,7 +1065,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "setterName": "Wild Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -927,7 +1079,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-3",
-    "grade": "V3"
+    "grade": "V3",
+    "setterName": "Golden Arête",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -939,7 +1093,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": ""
+    "grade": "V3",
+    "setterName": "Golden Highball",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -951,7 +1107,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": "V3"
+    "grade": "V3",
+    "setterName": "Cracked Overhang",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -963,7 +1121,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V1",
-    "grade": ""
+    "grade": "V1",
+    "setterName": "Electric Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -975,7 +1135,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V0-1",
-    "grade": "V1"
+    "grade": "V1",
+    "setterName": "Golden Ridge",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -987,7 +1149,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6",
-    "grade": "V6"
+    "grade": "V6",
+    "setterName": "Crimson Roof",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -999,7 +1163,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": ""
+    "grade": "V1",
+    "setterName": "Wild Overhang",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1011,7 +1177,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "setterName": "Faded Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1023,7 +1191,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6",
-    "grade": ""
+    "grade": "V6",
+    "setterName": "Quiet Ledge",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1035,7 +1205,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": "V0"
+    "grade": "V0",
+    "setterName": "Ghost Corner",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1047,7 +1219,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "VB",
+    "setterName": "Crimson Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1059,7 +1233,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": "V8"
+    "grade": "V8",
+    "setterName": "Copper Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1071,7 +1247,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": "V9"
+    "grade": "V9",
+    "setterName": "Golden Seam",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1083,7 +1261,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "setterName": "Ghost Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1095,7 +1275,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": "V9"
+    "grade": "V9",
+    "setterName": "Cracked Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1107,7 +1289,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7-9",
-    "grade": "V9"
+    "grade": "V9",
+    "setterName": "Cracked Traverse",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1119,7 +1303,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "setterName": "Velvet Overhang",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1131,7 +1317,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": ""
+    "grade": "V1",
+    "setterName": "Electric Corner",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1143,7 +1331,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "setterName": "Crimson Highball",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1155,7 +1345,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "setterName": "Iron Chimney",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1167,7 +1359,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "setterName": "Amber Roof",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1179,7 +1373,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "setterName": "Electric Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1191,7 +1387,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": "V0"
+    "grade": "V0",
+    "setterName": "Windy Sloper",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1203,7 +1401,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": "V0"
+    "grade": "V0",
+    "setterName": "Cracked Crack",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1215,7 +1415,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": "V7"
+    "grade": "V7",
+    "setterName": "Amber Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1227,7 +1429,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": ""
+    "grade": "V1",
+    "setterName": "Copper Overhang",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1239,7 +1443,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": ""
+    "grade": "VB",
+    "setterName": "Neon Sloper",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1251,7 +1457,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "setterName": "Rusty Ledge",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1263,7 +1471,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": ""
+    "grade": "V1",
+    "setterName": "Golden Nose",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1275,7 +1485,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": ""
+    "grade": "",
+    "setterName": "Amber Highball",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1287,7 +1499,15 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": ""
+    "grade": "",
+    "ascentClaims": [
+      {
+        "name": "adsf",
+        "pass": false
+      }
+    ],
+    "setterName": "Sunken Roof",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1299,7 +1519,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": ""
+    "grade": "",
+    "setterName": "Velvet Crack",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1311,7 +1533,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3",
-    "grade": ""
+    "grade": "",
+    "setterName": "Quiet Overhang",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1323,7 +1547,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": ""
+    "grade": "",
+    "setterName": "Faded Overhang",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1335,7 +1561,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": ""
+    "grade": "",
+    "setterName": "Electric Crack",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1347,7 +1575,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": ""
+    "grade": "",
+    "setterName": "Cracked Mantle",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1359,7 +1589,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-1",
-    "grade": ""
+    "grade": "",
+    "setterName": "Crimson Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1371,7 +1603,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-3",
-    "grade": ""
+    "grade": "",
+    "setterName": "Silent Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1383,7 +1617,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": ""
+    "grade": "",
+    "setterName": "Sunken Mantle",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1395,7 +1631,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": ""
+    "grade": "",
+    "setterName": "Jagged Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1407,7 +1645,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3",
-    "grade": ""
+    "grade": "",
+    "setterName": "Quiet Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1419,7 +1659,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "setterName": "Crimson Chimney",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1431,7 +1673,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-4",
-    "grade": ""
+    "grade": "",
+    "setterName": "Hollow Overhang",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1443,7 +1687,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": ""
+    "grade": "",
+    "setterName": "Stormy Crack",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1455,7 +1701,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": ""
+    "grade": "",
+    "setterName": "Faded Seam",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1467,7 +1715,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": ""
+    "grade": "",
+    "setterName": "Golden Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1479,7 +1729,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": ""
+    "grade": "",
+    "setterName": "Crimson Nose",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1491,7 +1743,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3",
-    "grade": ""
+    "grade": "",
+    "setterName": "Rusty Traverse",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1503,7 +1757,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": ""
+    "grade": "",
+    "setterName": "Quiet Groove",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1515,7 +1771,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V0-2",
-    "grade": ""
+    "grade": "",
+    "setterName": "Rusty Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1527,7 +1785,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V7-8",
-    "grade": ""
+    "grade": "",
+    "setterName": "Neon Corner",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1539,7 +1799,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": ""
+    "grade": "",
+    "setterName": "Windy Arête",
+    "pendingNames": []
   },
   {
     "wallId": 3,
@@ -1551,7 +1813,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V4-5",
-    "grade": ""
+    "grade": "",
+    "setterName": "Silent Roof",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1563,7 +1827,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4",
-    "grade": "V4"
+    "grade": "V4",
+    "setterName": "Faded Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1575,7 +1841,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "setterName": "Stormy Corner",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1587,7 +1855,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": "V9"
+    "grade": "V9",
+    "setterName": "Stormy Seam",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1599,7 +1869,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": "V6"
+    "grade": "V6",
+    "setterName": "Neon Ledge",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1611,7 +1883,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": "V9"
+    "grade": "V9",
+    "setterName": "Silent Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1623,7 +1897,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": "V5"
+    "grade": "V5",
+    "setterName": "Crimson Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1635,7 +1911,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "setterName": "Iron Ledge",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1647,7 +1925,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0-2",
-    "grade": "V2"
+    "grade": "V2",
+    "setterName": "Quiet Chimney",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1659,7 +1939,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": ""
+    "grade": "V6",
+    "setterName": "Ghost Overhang",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1671,7 +1953,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "setterName": "Wild Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1683,7 +1967,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": "V3"
+    "grade": "V3",
+    "setterName": "Velvet Sloper",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1695,7 +1981,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": ""
+    "grade": "V6",
+    "setterName": "Stormy Ridge",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1707,7 +1995,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-3",
-    "grade": "V3"
+    "grade": "V3",
+    "setterName": "Electric Roof",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1719,7 +2009,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7-8",
-    "grade": ""
+    "grade": "V7",
+    "setterName": "Hollow Arête",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1731,7 +2023,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-4",
-    "grade": "V4"
+    "grade": "V4",
+    "setterName": "Iron Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1743,7 +2037,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0-2",
-    "grade": "V2"
+    "grade": "V2",
+    "setterName": "Quiet Arête",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1755,7 +2051,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-3",
-    "grade": ""
+    "grade": "V2",
+    "setterName": "Ghost Ridge",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1767,7 +2065,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": ""
+    "grade": "V6",
+    "setterName": "Stormy Overhang",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1779,7 +2079,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "setterName": "Iron Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1791,7 +2093,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "setterName": "Electric Highball",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1803,7 +2107,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "setterName": "Copper Roof",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1815,7 +2121,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V0-1",
-    "grade": ""
+    "grade": "V0",
+    "setterName": "Velvet Roof",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1827,7 +2135,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "setterName": "Crimson Crack",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1839,7 +2149,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "setterName": "Iron Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1851,7 +2163,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1",
-    "grade": "V1"
+    "grade": "V1",
+    "setterName": "Ghost Highball",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1863,7 +2177,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-5",
-    "grade": ""
+    "grade": "V4",
+    "setterName": "Velvet Seam",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1875,7 +2191,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "setterName": "Crimson Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1887,7 +2205,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": "V7"
+    "grade": "V7",
+    "setterName": "Iron Arête",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1899,7 +2219,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "setterName": "Iron Roof",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1911,7 +2233,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "setterName": "Faded Arête",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1923,7 +2247,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "setterName": "Neon Ridge",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1935,7 +2261,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0-2",
-    "grade": ""
+    "grade": "V0",
+    "setterName": "Ghost Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1947,7 +2275,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": "V9"
+    "grade": "V9",
+    "setterName": "Jagged Overhang",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1959,7 +2289,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "setterName": "Electric Seam",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1971,7 +2303,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": "V8"
+    "grade": "V8",
+    "setterName": "Golden Corner",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1983,7 +2317,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": ""
+    "grade": "V3",
+    "setterName": "Stormy Ledge",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -1995,7 +2331,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": ""
+    "grade": "V5",
+    "setterName": "Neon Roof",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2007,7 +2345,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": ""
+    "grade": "V7",
+    "setterName": "Velvet Traverse",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2019,7 +2359,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": ""
+    "grade": "V6",
+    "setterName": "Stormy Arête",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2031,7 +2373,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-7",
-    "grade": "V7"
+    "grade": "V7",
+    "setterName": "Copper Highball",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2043,7 +2387,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": "V0"
+    "grade": "V0",
+    "setterName": "Silent Highball",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2055,7 +2401,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V2",
-    "grade": ""
+    "grade": "V2",
+    "setterName": "Hollow Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2067,7 +2415,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": "V4"
+    "grade": "V4",
+    "setterName": "Amber Mantle",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2079,7 +2429,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V4",
-    "grade": ""
+    "grade": "V4",
+    "setterName": "Windy Roof",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2091,7 +2443,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": ""
+    "grade": "",
+    "setterName": "Cracked Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2103,7 +2457,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-6",
-    "grade": ""
+    "grade": "",
+    "setterName": "Copper Groove",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2115,7 +2471,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": ""
+    "grade": "",
+    "setterName": "Electric Sloper",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2127,7 +2485,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": ""
+    "grade": "",
+    "setterName": "Wild Ridge",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2145,7 +2505,9 @@
         "name": "Testname",
         "pass": false
       }
-    ]
+    ],
+    "setterName": "Wild Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2157,7 +2519,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4",
-    "grade": ""
+    "grade": "",
+    "setterName": "Golden Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2169,7 +2533,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-6",
-    "grade": ""
+    "grade": "",
+    "setterName": "Wild Sloper",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2181,7 +2547,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": ""
+    "grade": "",
+    "setterName": "Stormy Mantle",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2193,7 +2561,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": ""
+    "grade": "",
+    "setterName": "Neon Overhang",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2205,7 +2575,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0-1",
-    "grade": ""
+    "grade": "",
+    "setterName": "Crimson Sloper",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2217,7 +2589,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": ""
+    "grade": "",
+    "setterName": "Golden Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2229,7 +2603,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": ""
+    "grade": "",
+    "setterName": "Rusty Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2241,7 +2617,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": ""
+    "grade": "",
+    "setterName": "Rusty Roof",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2253,7 +2631,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": ""
+    "grade": "",
+    "setterName": "Sunken Ledge",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2265,7 +2645,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-7",
-    "grade": ""
+    "grade": "",
+    "setterName": "Neon Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2277,7 +2659,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-4",
-    "grade": ""
+    "grade": "",
+    "setterName": "Sunken Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2289,7 +2673,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-4",
-    "grade": ""
+    "grade": "",
+    "setterName": "Silent Rail",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2301,7 +2687,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": ""
+    "grade": "",
+    "setterName": "Jagged Corner",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2313,7 +2701,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V9",
-    "grade": ""
+    "grade": "",
+    "setterName": "Rusty Sloper",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2325,7 +2715,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "setterName": "Ghost Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2337,7 +2729,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V7-8",
-    "grade": ""
+    "grade": "",
+    "setterName": "Velvet Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -2349,7 +2743,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": ""
+    "grade": "",
+    "setterName": "Silent Mantle",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2361,7 +2757,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": "V0"
+    "grade": "V0",
+    "setterName": "Iron Corner",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2373,7 +2771,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "setterName": "Quiet Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2385,7 +2785,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": "V9"
+    "grade": "V9",
+    "setterName": "Faded Nose",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2397,7 +2799,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7-9",
-    "grade": "V9"
+    "grade": "V9",
+    "setterName": "Crimson Corner",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2409,7 +2813,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V4-6",
-    "grade": "V6"
+    "grade": "V6",
+    "setterName": "Quiet Highball",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2421,7 +2827,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": ""
+    "grade": "V8",
+    "setterName": "Windy Groove",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2433,7 +2841,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0-2",
-    "grade": "V2"
+    "grade": "V2",
+    "setterName": "Rusty Crack",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2445,7 +2855,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": "V9"
+    "grade": "V9",
+    "setterName": "Rusty Corner",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2457,7 +2869,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7-8",
-    "grade": "V8"
+    "grade": "V8",
+    "setterName": "Jagged Chimney",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2469,7 +2883,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": ""
+    "grade": "V8",
+    "setterName": "Sunken Groove",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2481,7 +2897,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "setterName": "Cracked Highball",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2493,7 +2911,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7",
-    "grade": "V7"
+    "grade": "V7",
+    "setterName": "Amber Ridge",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2505,7 +2925,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": ""
+    "grade": "V6",
+    "setterName": "Iron Overhang",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2517,7 +2939,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "setterName": "Windy Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2529,7 +2953,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8-9",
-    "grade": ""
+    "grade": "V8",
+    "setterName": "Neon Traverse",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2541,7 +2967,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "setterName": "Jagged Sloper",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2553,7 +2981,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V5-7",
-    "grade": ""
+    "grade": "V5",
+    "setterName": "Amber Crack",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2565,7 +2995,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": "V7"
+    "grade": "V7",
+    "setterName": "Copper Ridge",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2577,7 +3009,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "setterName": "Sunken Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2589,7 +3023,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": "V2"
+    "grade": "V2",
+    "setterName": "Copper Corner",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2601,7 +3037,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": "V0"
+    "grade": "V0",
+    "setterName": "Windy Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2613,7 +3051,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0",
-    "grade": "V0"
+    "grade": "V0",
+    "setterName": "Stormy Chimney",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2625,7 +3065,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-5",
-    "grade": "V5"
+    "grade": "V5",
+    "setterName": "Neon Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2637,7 +3079,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": "V4"
+    "grade": "V4",
+    "setterName": "Copper Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2649,7 +3093,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "setterName": "Cracked Ridge",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2661,7 +3107,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2",
-    "grade": "V2"
+    "grade": "V2",
+    "setterName": "Faded Ledge",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2673,7 +3121,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": "V8"
+    "grade": "V8",
+    "setterName": "Rusty Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2685,7 +3135,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5",
-    "grade": "V5"
+    "grade": "V5",
+    "setterName": "Neon Mantle",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2697,7 +3149,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6",
-    "grade": ""
+    "grade": "V6",
+    "setterName": "Golden Mantle",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2709,7 +3163,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": "V4"
+    "grade": "V4",
+    "setterName": "Ghost Arête",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2721,7 +3177,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": "VB"
+    "grade": "VB",
+    "setterName": "Windy Mantle",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2733,7 +3191,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-3",
-    "grade": ""
+    "grade": "V1",
+    "setterName": "Hollow Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2745,7 +3205,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": "V8"
+    "grade": "V8",
+    "setterName": "Jagged Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2757,7 +3219,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": "V2"
+    "grade": "V2",
+    "setterName": "Faded Corner",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2769,7 +3233,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V3",
-    "grade": "V3"
+    "grade": "V3",
+    "setterName": "Cracked Ledge",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2781,7 +3247,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1",
-    "grade": "V1"
+    "grade": "V1",
+    "setterName": "Faded Chimney",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2793,7 +3261,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": "V7"
+    "grade": "V7",
+    "setterName": "Rusty Groove",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2805,7 +3275,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V4-6",
-    "grade": "V6"
+    "grade": "V6",
+    "setterName": "Iron Sloper",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2817,7 +3289,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V7",
-    "grade": "V7"
+    "grade": "V7",
+    "setterName": "Wild Chimney",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2829,7 +3303,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V2-3",
-    "grade": "V3"
+    "grade": "V3",
+    "setterName": "Quiet Nose",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2847,7 +3323,9 @@
         "name": "fatest",
         "pass": false
       }
-    ]
+    ],
+    "setterName": "Amber Sloper",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2859,7 +3337,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V8",
-    "grade": ""
+    "grade": "",
+    "setterName": "Faded Ridge",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2871,11 +3351,13 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": ""
+    "grade": "",
+    "setterName": "Cracked Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 1,
-    "name": "Windy Ridge",
+    "name": "damnnnn",
     "setter": "tiff",
     "comments": [],
     "setId": "bb83eb80-c6ae-4f90-af07-45f90914f431",
@@ -2883,7 +3365,15 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-7",
-    "grade": ""
+    "grade": "",
+    "setterName": "Windy Ridge",
+    "pendingNames": [],
+    "ascentClaims": [
+      {
+        "name": "damnnnn",
+        "pass": true
+      }
+    ]
   },
   {
     "wallId": 1,
@@ -2895,7 +3385,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "setterName": "Copper Pinch",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2907,7 +3399,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "setterName": "Jagged Gaston",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2919,7 +3413,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-0",
-    "grade": ""
+    "grade": "",
+    "setterName": "Neon Highball",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2931,7 +3427,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V0-1",
-    "grade": ""
+    "grade": "",
+    "setterName": "Iron Ridge",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2943,7 +3441,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V5-6",
-    "grade": ""
+    "grade": "",
+    "setterName": "Quiet Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2955,7 +3455,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V9",
-    "grade": ""
+    "grade": "",
+    "setterName": "Hollow Mantle",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2967,7 +3469,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB-1",
-    "grade": ""
+    "grade": "",
+    "setterName": "Faded Crack",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2979,7 +3483,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V7-8",
-    "grade": ""
+    "grade": "",
+    "setterName": "Quiet Sloper",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -2991,7 +3497,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V1-2",
-    "grade": ""
+    "grade": "",
+    "setterName": "Velvet Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -3003,7 +3511,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "VB",
-    "grade": ""
+    "grade": "",
+    "setterName": "Velvet Nose",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -3015,7 +3525,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V6-8",
-    "grade": ""
+    "grade": "",
+    "setterName": "Iron Highball",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -3027,7 +3539,9 @@
     "setType": "reset",
     "archived": false,
     "setterGrade": "V2-4",
-    "grade": ""
+    "grade": "",
+    "setterName": "Stormy Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -3039,7 +3553,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V5",
-    "grade": ""
+    "grade": "",
+    "setterName": "Silent Dyno",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -3051,7 +3567,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V3",
-    "grade": ""
+    "grade": "",
+    "setterName": "Silent Groove",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -3063,7 +3581,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V0",
-    "grade": ""
+    "grade": "",
+    "setterName": "Iron Traverse II",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -3075,7 +3595,9 @@
     "setType": "backfill",
     "archived": false,
     "setterGrade": "V3-4",
-    "grade": ""
+    "grade": "",
+    "setterName": "Neon Crimper",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -3088,7 +3610,9 @@
     "setDate": "2026-08-06",
     "setType": "backfill",
     "archived": false,
-    "ascentClaims": []
+    "ascentClaims": [],
+    "setterName": "TEst",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -3101,7 +3625,9 @@
     "setDate": "2026-10-02",
     "setType": "backfill",
     "archived": false,
-    "ascentClaims": []
+    "ascentClaims": [],
+    "setterName": "testvbagain",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -3114,7 +3640,9 @@
     "setDate": "2026-10-02",
     "setType": "backfill",
     "archived": false,
-    "ascentClaims": []
+    "ascentClaims": [],
+    "setterName": "phototest",
+    "pendingNames": []
   },
   {
     "wallId": 2,
@@ -3128,7 +3656,9 @@
     "setDate": "2026-08-21",
     "setType": "backfill",
     "archived": false,
-    "ascentClaims": []
+    "ascentClaims": [],
+    "setterName": "bingbiong",
+    "pendingNames": []
   },
   {
     "wallId": 1,
@@ -3142,6 +3672,8 @@
     "setDate": "2026-10-02",
     "setType": "backfill",
     "archived": false,
-    "ascentClaims": []
+    "ascentClaims": [],
+    "setterName": "picturetest",
+    "pendingNames": []
   }
 ]

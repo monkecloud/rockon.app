@@ -111,13 +111,18 @@ Wi-Fi.
 ## Notes
 
 - **Climbs are stored server-side** in `server/climbs.json` — each has a
-  `wallId`, `name` (unique within a wall — climbs have **no id of their
-  own**, so `wallId` + `name` is the key ascents/comments/front-end lookups
-  reference a climb by), `setterGrade` (the setter's rough guess, given at
-  creation, immutable after), `grade` (the confirmed final grade, blank
-  until a moderator/setter sets it), `setter`, `ascentClaims` (up to 5,
-  first/second/.../fifth-ascent credit), and a `comments` array of seeded
-  sample comments. `GET /api/climbs` merges those seeded comments with any
+  `wallId`, `setterName` (the name given at creation, unique within a wall
+  and immutable after — climbs have **no id of their own**, so `wallId` +
+  `setterName` is the key ascents/comments/front-end lookups reference a
+  climb by), `name` (the confirmed display name — starts equal to
+  `setterName`, but can change if a naming-rights proposal is approved, see
+  below; not unique, never a key), `setterGrade` (the setter's rough guess,
+  given at creation, immutable after), `grade` (the confirmed final grade,
+  blank until an admin sets it), `setter`, `ascentClaims` (up to 5,
+  first/second/.../fifth-ascent credit), `pendingNames` (queued
+  naming-rights proposals awaiting moderator/setter approval — see below),
+  and a `comments` array of seeded sample comments. `GET /api/climbs` merges
+  those seeded comments with any
   comments users have left while logging an ascent (see below), so the
   Comments page shows both. Each climb also tracks which "set" put it up:
   `setId` (shared by every climb put up on the same wall in the same
@@ -131,12 +136,19 @@ Wi-Fi.
   (`GET /api/archive`).
 - **Moderator/setter/admin tooling**: a moderator or setter can add a new
   climb (`POST /api/climbs` — always stored as a `"backfill"`; there's
-  still no UI for a full wall `"reset"`, that stays hand/script-edited) and
-  confirm a climb's final grade once it's no longer current
-  (`POST /api/climbs/grade`, listed via `GET /api/climbs/needs-grade`). An
-  admin can additionally list every user and change their role
+  still no UI for a full wall `"reset"`, that stays hand/script-edited) and,
+  on the **Approve** tab, resolve pending naming-rights proposals — whoever
+  fills in a name for any ascent claim (see `ascentClaims` above) is also
+  proposing that name as the climb's new display name, queued in
+  `pendingNames` until a moderator/setter approves (sets `climb.name`,
+  discarding the rest of that climb's queue) or rejects (drops just that one
+  proposal) via `POST /api/climbs/approve-name`
+  (`GET /api/climbs/needs-name-approval` lists the queue). An admin
+  additionally gets the **Grades** tab, to confirm a climb's final grade
+  once it's no longer current (`POST /api/climbs/grade`, listed via
+  `GET /api/climbs/needs-grade`), lists every user and changes their role
   (`GET /api/users`, `POST /api/users/:username/role` — one of `member`,
-  `moderator`, `setter`, `admin`) and force-reset a user's password
+  `moderator`, `setter`, `admin`), and force-resets a user's password
   (`POST /api/users/:username/reset-password`). Roles are plain booleans
   (`isModerator`/`isSetter`/`isAdmin`) on the user record; `admin` sets all
   three.

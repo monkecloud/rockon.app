@@ -18,6 +18,7 @@ import {
   Filter,
   Shield,
   Check,
+  Tag,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -60,9 +61,17 @@ const TABS = [
 // see the visibleTabs computation in App().
 const ADMIN_TAB = { id: "admin", label: "Admin", icon: Shield };
 
+// Appended for admins only — grade confirmation used to be moderator/setter
+// facing (under the "Approve" label/slot this now took over), but is now
+// gated to admins. See the visibleTabs computation in App().
+const GRADES_TAB = { id: "grades", label: "Grades", icon: Check };
+
 // Appended for moderators/setters (admins too, since they keep every
-// moderator/setter capability) — see the visibleTabs computation in App().
-const APPROVE_TAB = { id: "approve", label: "Approve", icon: Check };
+// moderator/setter capability) — the queue of pending climb-naming-rights
+// proposals from ascent claims (see pendingNames in server/worker.js),
+// taking over the "Approve" label/slot the grade-confirmation tab used to
+// have. See the visibleTabs computation in App().
+const APPROVE_TAB = { id: "approve", label: "Approve", icon: Tag };
 
 // The 4 walls. Climbs themselves (name, grade, comments) are fetched
 // from the server at /api/climbs — see server/climbs.json — and grouped by
@@ -302,8 +311,8 @@ function ClimbInfoScreen({ climb, currentUser, onDeleteComment }) {
       {climb && (
         <GradeBarChart
           title="Logged grades"
-          endpoint={`/api/climbs/grade-distribution?wallId=${climb.wallId}&name=${encodeURIComponent(
-            climb.name
+          endpoint={`/api/climbs/grade-distribution?wallId=${climb.wallId}&setterName=${encodeURIComponent(
+            climb.setterName
           )}`}
         />
       )}
@@ -356,11 +365,14 @@ function ListScreen({
   onToggleArchive,
   onSelectArchiveWall,
   onOpenFilter,
+  climbSortBy,
+  showResetClimbs,
+  showBackfillClimbs,
 }) {
   const [climbSearch, setClimbSearch] = useState("");
 
   if (selectedItem && selectedSubItem) {
-    const climb = (climbsByWall[selectedItem.id] || []).find((c) => c.name === selectedSubItem);
+    const climb = (climbsByWall[selectedItem.id] || []).find((c) => c.setterName === selectedSubItem);
     const title = climb ? climbTitleNode(climb) : "Loading…";
     const subtitle = climb ? `Set by ${climb.setter}` : undefined;
 
@@ -369,16 +381,24 @@ function ListScreen({
 
   if (selectedItem) {
     const climbs = climbsByWall[selectedItem.id] || [];
-    const filteredClimbs = climbs.filter((climb) =>
+    const visibleClimbs = climbs.filter((climb) =>
+      climb.setType === "reset"
+        ? showResetClimbs
+        : climb.setType === "backfill"
+          ? showBackfillClimbs
+          : true
+    );
+    const sortedClimbs = sortClimbs(visibleClimbs, climbSortBy);
+    const filteredClimbs = sortedClimbs.filter((climb) =>
       climb.name.toLowerCase().includes(climbSearch.trim().toLowerCase())
     );
 
     return (
       <div style={styles.screen}>
-        {climbs.length > 0 && (
+        {visibleClimbs.length > 0 && (
           <GradeBarChart
-            title={`${climbs.length} climbs`}
-            counts={bucketGradeCounts(climbs.map(climbBucketGrade))}
+            title={`${visibleClimbs.length} climbs`}
+            counts={bucketGradeCounts(visibleClimbs.map(climbBucketGrade))}
           />
         )}
         <div style={styles.climbsFilterRow}>
@@ -396,14 +416,16 @@ function ListScreen({
         {climbs.length === 0 ? (
           <p style={styles.placeholderText}>Loading climbs…</p>
         ) : filteredClimbs.length === 0 ? (
-          <p style={styles.placeholderText}>No climbs match "{climbSearch}".</p>
+          <p style={styles.placeholderText}>
+            {climbSearch.trim() ? `No climbs match "${climbSearch}".` : "No climbs match your filters."}
+          </p>
         ) : (
           <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
             {filteredClimbs.map((climb) => (
               <button
-                key={`${climb.setId}::${climb.name}`}
+                key={`${climb.setId}::${climb.setterName}`}
                 style={styles.climbRow}
-                onClick={() => onSelectSubItem(climb.name)}
+                onClick={() => onSelectSubItem(climb.setterName)}
               >
                 <div style={styles.climbRowLeft}>
                   <span style={styles.climbDifficulty}>{climbDisplayGrade(climb)}</span>
@@ -517,7 +539,7 @@ function ArchiveWallScreen({ wall, onSelectClimb }) {
       <div style={{ ...styles.list, marginTop: 16, gap: 0, marginLeft: -20, marginRight: -20 }}>
         {wall.climbs.map((climb) => (
           <button
-            key={`${climb.name}-${climb.setDate}`}
+            key={`${climb.setterName}-${climb.setDate}`}
             style={styles.climbRow}
             onClick={() => onSelectClimb(climb)}
           >
@@ -638,7 +660,7 @@ function SearchScreen({
             {mode === "climbs"
               ? results.map((climb) => (
                   <button
-                    key={`${climb.wallId}::${climb.name}`}
+                    key={`${climb.wallId}::${climb.setterName}`}
                     style={styles.climbRow}
                     onClick={() => onSelectClimb(climb)}
                   >
@@ -771,13 +793,50 @@ function FollowListScreen({ username, type, onSelectUser }) {
   );
 }
 
-// Opened from the filter button on a wall's Climbs page. Not wired up to
-// anything yet — just the page shell and placeholder fields for whatever
-// a real climb filter ends up needing.
-function ClimbsFilterForm() {
+// Opened from the filter button on a wall's Climbs page. Sort by/Reset/
+// Backfill are wired up to ListScreen's climb list (see App's climbSortBy/
+// showResetClimbs/showBackfillClimbs); the grade range and setter fields
+// below are still just placeholders for whatever a real climb filter ends
+// up needing there.
+function ClimbsFilterForm({
+  sortBy,
+  onSortByChange,
+  showResetClimbs,
+  onShowResetClimbsChange,
+  showBackfillClimbs,
+  onShowBackfillClimbsChange,
+}) {
   return (
     <div style={styles.screen}>
       <form style={styles.form} onSubmit={(e) => e.preventDefault()}>
+        <label style={styles.label}>
+          Sort by
+          <select style={styles.input} value={sortBy} onChange={(e) => onSortByChange(e.target.value)}>
+            {SORT_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={styles.checkboxRow}>
+          <input
+            style={styles.checkboxInput}
+            type="checkbox"
+            checked={showResetClimbs}
+            onChange={(e) => onShowResetClimbsChange(e.target.checked)}
+          />
+          Reset
+        </label>
+        <label style={styles.checkboxRow}>
+          <input
+            style={styles.checkboxInput}
+            type="checkbox"
+            checked={showBackfillClimbs}
+            onChange={(e) => onShowBackfillClimbsChange(e.target.checked)}
+          />
+          Backfill
+        </label>
         <label style={styles.label}>
           Minimum grade
           <select style={styles.input} defaultValue="">
@@ -1179,9 +1238,59 @@ function climbBucketGrade(climb) {
 // setterGrade range/guess as-is (e.g. "V2-4", not collapsed to one end).
 const climbDisplayGrade = (climb) => climb.grade || climb.setterGrade;
 
+// Numeric read of a climb's grade for sorting — VB sorts below V0, and a
+// climb with no readable grade at all sorts to the very end regardless of
+// ascending/descending (rather than jumping to the top on descending).
+// Built on climbBucketGrade so a setter's still-unconfirmed guess sorts the
+// same way it buckets everywhere else (top end of a range, e.g. "V2-4" as V4).
+function climbGradeSortValue(climb) {
+  const grade = (climbBucketGrade(climb) || "").trim().toUpperCase();
+  if (grade === "VB") return -1;
+  const match = grade.match(/^V(\d+)$/);
+  return match ? parseInt(match[1], 10) : Number.POSITIVE_INFINITY;
+}
+
+// Options for the Climbs filter page's "Sort by" dropdown (see
+// ClimbsFilterForm/sortClimbs). "Setter" sorts by who set the climb, not the
+// confirmed/setter grade.
+const SORT_OPTIONS = [
+  { id: "gradeAsc", label: "Grade (ascending)" },
+  { id: "gradeDesc", label: "Grade (descending)" },
+  { id: "nameAsc", label: "Alphabetical (A-Z)" },
+  { id: "nameDesc", label: "Alphabetical (Z-A)" },
+  { id: "setterAsc", label: "Setter (A-Z)" },
+  { id: "setterDesc", label: "Setter (Z-A)" },
+];
+
+function sortClimbs(climbs, sortBy) {
+  const sorted = [...climbs];
+  switch (sortBy) {
+    case "gradeDesc":
+      sorted.sort((a, b) => climbGradeSortValue(b) - climbGradeSortValue(a));
+      break;
+    case "nameAsc":
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+      break;
+    case "nameDesc":
+      sorted.sort((a, b) => b.name.localeCompare(a.name));
+      break;
+    case "setterAsc":
+      sorted.sort((a, b) => (a.setter || "").localeCompare(b.setter || ""));
+      break;
+    case "setterDesc":
+      sorted.sort((a, b) => (b.setter || "").localeCompare(a.setter || ""));
+      break;
+    case "gradeAsc":
+    default:
+      sorted.sort((a, b) => climbGradeSortValue(a) - climbGradeSortValue(b));
+      break;
+  }
+  return sorted;
+}
+
 // The colored grade shown in a climb's title (see climbTitleNode below) —
-// gray for a setter's still-unconfirmed guess, white once a setter/
-// moderator has locked in the final grade (see the Approve tab).
+// gray for a setter's still-unconfirmed guess, white once an admin has
+// locked in the final grade (see the Grades tab).
 function ClimbGradeLabel({ climb }) {
   const confirmed = Boolean(climb.grade);
   return (
@@ -1937,13 +2046,13 @@ function ManageRolesScreen() {
   );
 }
 
-// Opened from the Approve tab (moderators/setters only). Lists every climb
-// that's been superseded by a newer reset on its wall (see currentClimbsOnly
+// Opened from the Grades tab (admin only). Lists every climb that's been
+// superseded by a newer reset on its wall (see currentClimbsOnly
 // server-side) but doesn't have a confirmed grade yet — i.e. exactly the
-// climbs a setter/moderator is now allowed to lock in a final grade for,
-// per the gate on POST /api/climbs/grade. Picking a grade and tapping the
-// checkmark confirms it and drops the row from this list.
-function ApproveClimbsScreen() {
+// climbs an admin is now allowed to lock in a final grade for, per the gate
+// on POST /api/climbs/grade. Picking a grade and tapping the checkmark
+// confirms it and drops the row from this list.
+function GradesScreen() {
   const [climbs, setClimbs] = useState(null);
   const [error, setError] = useState("");
   const [gradeByKey, setGradeByKey] = useState({});
@@ -1966,14 +2075,16 @@ function ApproveClimbsScreen() {
       const res = await fetch("/api/climbs/grade", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallId: climb.wallId, name: climb.name, grade }),
+        body: JSON.stringify({ wallId: climb.wallId, setterName: climb.setterName, grade }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Couldn't set that grade.");
         return;
       }
-      setClimbs((prev) => prev.filter((c) => c.wallId !== climb.wallId || c.name !== climb.name));
+      setClimbs((prev) =>
+        prev.filter((c) => c.wallId !== climb.wallId || c.setterName !== climb.setterName)
+      );
     } catch (err) {
       console.error("Failed to set grade:", err);
       setError("Couldn't reach the server. Is it running?");
@@ -1991,7 +2102,7 @@ function ApproveClimbsScreen() {
       )}
       <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
         {(climbs || []).map((climb) => {
-          const key = `${climb.wallId}::${climb.name}`;
+          const key = `${climb.wallId}::${climb.setterName}`;
           // A reasonable starting point for the dropdown: the bottom end of
           // the setter's original guess (e.g. "V2" out of "V2-4").
           const grade = gradeByKey[key] ?? climb.setterGrade.split("-")[0];
@@ -2003,7 +2114,7 @@ function ApproveClimbsScreen() {
                 <span style={styles.climbSetter}>
                   {WALL_NAME_BY_ID[climb.wallId] ?? `Wall ${climb.wallId}`} · Set by {climb.setter}
                 </span>
-                <span style={styles.climbSetter}>Setter guess: {climb.setterGrade}</span>
+                <span style={styles.climbSetter}>Setter grade: {climb.setterGrade}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <select
@@ -2033,6 +2144,113 @@ function ApproveClimbsScreen() {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// Opened from the Approve tab (moderators/setters only). Naming rights: a
+// climber who fills in a name for any first-through-fifth ascent claim (see
+// LogAscentSheet) is also proposing that name as the climb's new display
+// name — queued here (climb.pendingNames, server-side) rather than taking
+// effect immediately. Approving one sets the climb's confirmed name and
+// clears any other pending proposals for that climb; rejecting just drops
+// that one proposal. The climb's setterName (its immutable identity) never
+// changes either way.
+function ApproveClimbsScreen() {
+  const [climbs, setClimbs] = useState(null);
+  const [error, setError] = useState("");
+  const [savingId, setSavingId] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/climbs/needs-name-approval")
+      .then((res) => res.json())
+      .then((data) => setClimbs(data.climbs || []))
+      .catch((err) => {
+        console.error("Failed to load /api/climbs/needs-name-approval:", err);
+        setError("Couldn't reach the server. Is it running?");
+      });
+  }, []);
+
+  const handleResolveProposal = async (climb, proposal, action) => {
+    setSavingId(proposal.id);
+    setError("");
+    try {
+      const res = await fetch("/api/climbs/approve-name", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wallId: climb.wallId,
+          setterName: climb.setterName,
+          proposalId: proposal.id,
+          action,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Couldn't resolve that proposal.");
+        return;
+      }
+      setClimbs((prev) =>
+        action === "approve"
+          ? prev.filter((c) => c.wallId !== climb.wallId || c.setterName !== climb.setterName)
+          : prev
+              .map((c) =>
+                c.wallId === climb.wallId && c.setterName === climb.setterName
+                  ? { ...c, pendingNames: c.pendingNames.filter((p) => p.id !== proposal.id) }
+                  : c
+              )
+              .filter((c) => c.pendingNames.length > 0)
+      );
+    } catch (err) {
+      console.error("Failed to resolve name proposal:", err);
+      setError("Couldn't reach the server. Is it running?");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  return (
+    <div style={styles.screen}>
+      {error && <p style={styles.formError}>{error}</p>}
+      {climbs === null && !error && <p style={styles.placeholderText}>Loading…</p>}
+      {climbs !== null && climbs.length === 0 && (
+        <p style={styles.placeholderText}>No pending name proposals.</p>
+      )}
+      <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
+        {(climbs || []).flatMap((climb) =>
+          (climb.pendingNames || []).map((proposal) => (
+            <div key={proposal.id} style={styles.climbRow}>
+              <div style={styles.climbRowLeft}>
+                <span style={styles.climbTitle}>{proposal.name}</span>
+                <span style={styles.climbSetter}>
+                  {WALL_NAME_BY_ID[climb.wallId] ?? `Wall ${climb.wallId}`} · currently "{climb.name}"
+                </span>
+                <span style={styles.climbSetter}>Proposed by {proposal.claimedBy}</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button
+                  type="button"
+                  style={styles.commentDeleteButton}
+                  disabled={savingId === proposal.id}
+                  aria-label={`Reject name "${proposal.name}" for ${climb.name}`}
+                  onClick={() => handleResolveProposal(climb, proposal, "reject")}
+                >
+                  <Trash2 size={20} />
+                </button>
+                <button
+                  type="button"
+                  style={styles.commentDeleteButton}
+                  disabled={savingId === proposal.id}
+                  aria-label={`Approve name "${proposal.name}" for ${climb.name}`}
+                  onClick={() => handleResolveProposal(climb, proposal, "approve")}
+                >
+                  <Check size={20} />
+                </button>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
@@ -2180,11 +2398,14 @@ function StarRatingInput({ value, onChange, invalid }) {
 // in what gets saved, via POST /api/ascents (see App's handleSubmitAscent).
 const GRADE_OPTIONS = ["VB", ...Array.from({ length: 12 }, (_, n) => `V${n}`)];
 
-// Up to 5 ascentClaims live on the climb itself (see server/index.js), one
+// Up to 5 ascentClaims live on the climb itself (see server/worker.js), one
 // slot per ordinal. Whoever logs an ascent while a slot is still open gets
 // offered it — a name to credit (defaults to blank, e.g. crediting someone
 // else) or a "Pass" to leave it unclaimed. Filling in neither during a
 // given ascent just leaves that slot open for the next person to log one.
+// Naming rights: a filled-in name also gets queued as a proposal to rename
+// the climb itself, awaiting a moderator/setter's approval on the Approve
+// tab (see server/worker.js's pendingNames).
 const ASCENT_ORDINALS = ["First", "Second", "Third", "Fourth", "Fifth"];
 
 function LogAscentSheet({
@@ -2356,9 +2577,14 @@ export default function App() {
   // Moderator-only "add" flow from the Climbs page — not wired up to
   // anything yet, just the page shell and a placeholder form.
   const [creatingClimb, setCreatingClimb] = useState(false);
-  // "Filter" flow from the Climbs page — not wired up to anything yet,
-  // just the page shell and a placeholder form.
+  // "Filter" flow from the Climbs page. sortBy/showReset/showBackfill drive
+  // ListScreen's climb list (see ClimbsFilterForm) — the rest of the form is
+  // still just a placeholder shell. Reset/backfill both default to shown,
+  // and climbs sort by grade ascending (easiest first) by default.
   const [filteringClimbs, setFilteringClimbs] = useState(false);
+  const [climbSortBy, setClimbSortBy] = useState("gradeAsc");
+  const [showResetClimbs, setShowResetClimbs] = useState(true);
+  const [showBackfillClimbs, setShowBackfillClimbs] = useState(true);
   const [attempts, setAttempts] = useState(0);
   const [showLogAscentSheet, setShowLogAscentSheet] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -2420,7 +2646,7 @@ export default function App() {
 
   const selectedClimb =
     selectedListItem && selectedSubItem
-      ? (climbsByWall[selectedListItem.id] || []).find((c) => c.name === selectedSubItem)
+      ? (climbsByWall[selectedListItem.id] || []).find((c) => c.setterName === selectedSubItem)
       : null;
 
   // Whichever climb the Climb-detail UI (image, comments, action bar) is
@@ -2557,7 +2783,7 @@ export default function App() {
   const handleSelectSearchClimb = (climb) => {
     setActiveTab("list");
     setSelectedListItem({ id: climb.wallId, title: WALL_NAME_BY_ID[climb.wallId] ?? "" });
-    setSelectedSubItem(climb.name);
+    setSelectedSubItem(climb.setterName);
     setShowInfo(false);
     setCreatingClimb(false);
     setFilteringClimbs(false);
@@ -2714,7 +2940,7 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           wallId: activeClimb.wallId,
-          climbName: activeClimb.name,
+          climbName: activeClimb.setterName,
           ...fields,
         }),
       });
@@ -2766,7 +2992,16 @@ export default function App() {
           return <NewWallForm walls={WALLS} onSave={handleCreateClimb} />;
         }
         if (filteringClimbs) {
-          return <ClimbsFilterForm />;
+          return (
+            <ClimbsFilterForm
+              sortBy={climbSortBy}
+              onSortByChange={setClimbSortBy}
+              showResetClimbs={showResetClimbs}
+              onShowResetClimbsChange={setShowResetClimbs}
+              showBackfillClimbs={showBackfillClimbs}
+              onShowBackfillClimbsChange={setShowBackfillClimbs}
+            />
+          );
         }
         if (activeClimb && showInfo) {
           return (
@@ -2804,6 +3039,9 @@ export default function App() {
             onToggleArchive={handleToggleArchive}
             onSelectArchiveWall={setViewingArchiveWallId}
             onOpenFilter={() => setFilteringClimbs(true)}
+            climbSortBy={climbSortBy}
+            showResetClimbs={showResetClimbs}
+            showBackfillClimbs={showBackfillClimbs}
           />
         );
       }
@@ -2871,6 +3109,8 @@ export default function App() {
       }
       case "admin":
         return currentUser?.isAdmin ? <ManageRolesScreen /> : null;
+      case "grades":
+        return currentUser?.isAdmin ? <GradesScreen /> : null;
       case "approve":
         return currentUser?.isModerator || currentUser?.isSetter ? <ApproveClimbsScreen /> : null;
       default:
@@ -2891,6 +3131,9 @@ export default function App() {
     viewingArchiveWallId,
     creatingClimb,
     filteringClimbs,
+    climbSortBy,
+    showResetClimbs,
+    showBackfillClimbs,
     climbs,
     searchStack,
     searchQuery,
@@ -2898,12 +3141,13 @@ export default function App() {
     searchUserResults,
   ]);
 
-  // Approve and Admin only show up in the tab bar (and their titles only
-  // resolve) for accounts with the matching role — see APPROVE_TAB/ADMIN_TAB.
+  // Approve, Grades, and Admin only show up in the tab bar (and their titles
+  // only resolve) for accounts with the matching role — see
+  // APPROVE_TAB/GRADES_TAB/ADMIN_TAB.
   const visibleTabs = [
     ...TABS,
     ...(currentUser?.isModerator || currentUser?.isSetter ? [APPROVE_TAB] : []),
-    ...(currentUser?.isAdmin ? [ADMIN_TAB] : []),
+    ...(currentUser?.isAdmin ? [GRADES_TAB, ADMIN_TAB] : []),
   ];
   const tabTitle = visibleTabs.find((tab) => tab.id === activeTab)?.label ?? "";
   let topBarTitle = tabTitle;

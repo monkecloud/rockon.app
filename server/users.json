@@ -292,10 +292,21 @@
         "logAttempts": true,
         "attempts": 2,
         "attemptsThisSession": 0
+      },
+      {
+        "id": "e14b427b-4a8c-430d-87dc-633df84f7fa0",
+        "wallId": 3,
+        "climbName": "Sunken Roof",
+        "starRating": 2.5,
+        "grade": "V3",
+        "comment": "asdf",
+        "logAttempts": true,
+        "attempts": 3,
+        "attemptsThisSession": 0
       }
     ],
-    "sessionToken": "7e04873a3e135ed66ee981fe13160497012fed394576c5e07509c51b07f949b9",
-    "ascentCount": 4
+    "sessionToken": "",
+    "ascentCount": 5
   },
   {
     "username": "Cubesnail",
@@ -319,7 +330,7 @@
       }
     ],
     "isSetter": true,
-    "sessionToken": "68987cd2b139d284adcfce855d057ffcc4be2c145847fe4591f816ae70bd8a38",
+    "sessionToken": "249cd661bf0b3ff253e59aacfc2dbe11034ba828981b12b21b00e83e04464b31",
     "ascentCount": 0
   },
   {
@@ -509,5 +520,27 @@
     "following": [],
     "ascents": [],
     "ascentCount": 0
+  },
+  {
+    "username": "sebi",
+    "passwordHash": "$2b$10$aMIy6c7zZYUsD1VuK1mmqOL8E2Jidf7dj1fzr5yAPHfES3/7LWocS",
+    "sessionToken": "8e8c257180c9e5610da167113e13b50b66f125ffc4ba53b80e52e6a04af80853",
+    "name": "sebi",
+    "followers": [],
+    "following": [],
+    "ascents": [
+      {
+        "id": "243073a4-3cef-4f3c-a459-6a77e322ea67",
+        "wallId": 1,
+        "climbName": "Windy Ridge",
+        "starRating": 3.5,
+        "grade": "VB",
+        "comment": "",
+        "logAttempts": true,
+        "attempts": 2,
+        "attemptsThisSession": 0
+      }
+    ],
+    "ascentCount": 1
   }
 ]

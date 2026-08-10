@@ -370,8 +370,8 @@ describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEnt
 
 describe("computeAscentCount", () => {
   const climbs = [
-    { wallId: 1, name: "Current", setType: "reset", setDate: "2026-02-01" },
-    { wallId: 1, name: "Archived", setType: "reset", setDate: "2026-01-01" },
+    { wallId: 1, setterName: "Current", setType: "reset", setDate: "2026-02-01" },
+    { wallId: 1, setterName: "Archived", setType: "reset", setDate: "2026-01-01" },
   ];
 
   it("counts only ascents against currently-active climbs", () => {
@@ -590,22 +590,41 @@ describe("readClimbs / writeClimbs", () => {
   });
 
   it("round-trips via writeClimbs", async () => {
-    await writeClimbs([{ wallId: 1, name: "X" }]);
-    expect(await readClimbs()).toEqual([{ wallId: 1, name: "X" }]);
+    await writeClimbs([{ wallId: 1, name: "X", setterName: "X" }]);
+    expect(await readClimbs()).toEqual([
+      { wallId: 1, name: "X", setterName: "X", pendingNames: [] },
+    ]);
   });
 
   it("backfills legacy `difficulty` into setterGrade/grade and persists", async () => {
     seedClimbs([{ wallId: 1, name: "X", difficulty: "V4" }]);
     const climbs = await readClimbs();
-    expect(climbs[0]).toEqual({ wallId: 1, name: "X", setterGrade: "V4", grade: "V4" });
+    expect(climbs[0]).toEqual({
+      wallId: 1,
+      name: "X",
+      setterGrade: "V4",
+      grade: "V4",
+      setterName: "X",
+      pendingNames: [],
+    });
     expect(climbs[0].difficulty).toBeUndefined();
     expect(JSON.parse(store.get(CLIMBS_PATH))[0].setterGrade).toBe("V4");
   });
 
   it("does not touch already-migrated climbs", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setterGrade: "V4", grade: "" }]);
+    seedClimbs([
+      { wallId: 1, name: "X", setterName: "X", setterGrade: "V4", grade: "", pendingNames: [] },
+    ]);
     await readClimbs();
     expect(fsPromises.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("backfills setterName/pendingNames for climbs seeded before the naming-rights split", async () => {
+    seedClimbs([{ wallId: 1, name: "X", setterGrade: "V4", grade: "" }]);
+    const climbs = await readClimbs();
+    expect(climbs[0].setterName).toBe("X");
+    expect(climbs[0].pendingNames).toEqual([]);
+    expect(JSON.parse(store.get(CLIMBS_PATH))[0].setterName).toBe("X");
   });
 
   it("pings the primary process over IPC when process.send exists", async () => {
@@ -626,7 +645,7 @@ describe("withAscentStats", () => {
   it("adds zeroed stats and seeded comments when nobody has climbed it", async () => {
     seedUsers([]);
     const [climb] = await withAscentStats([
-      { wallId: 1, name: "X", comments: [{ id: "seed-1", text: "hi" }] },
+      { wallId: 1, name: "X", setterName: "X", comments: [{ id: "seed-1", text: "hi" }] },
     ]);
     expect(climb.ascentCount).toBe(0);
     expect(climb.averageStars).toBe(0);
@@ -644,7 +663,7 @@ describe("withAscentStats", () => {
         ],
       },
     ]);
-    const [climb] = await withAscentStats([{ wallId: 1, name: "X" }]);
+    const [climb] = await withAscentStats([{ wallId: 1, name: "X", setterName: "X" }]);
     expect(climb.ascentCount).toBe(3);
     expect(climb.averageStars).toBe(4);
   });
@@ -659,7 +678,7 @@ describe("withAscentStats", () => {
         ],
       },
     ]);
-    const [climb] = await withAscentStats([{ wallId: 1, name: "X", comments: [] }]);
+    const [climb] = await withAscentStats([{ wallId: 1, name: "X", setterName: "X", comments: [] }]);
     expect(climb.comments).toEqual([
       { id: "ascent-1", ascentId: "1", author: "a", text: "great climb" },
     ]);
@@ -1203,42 +1222,56 @@ describe("POST /api/climbs", () => {
 });
 
 describe("POST /api/climbs/grade", () => {
-  async function setterCookie() {
-    const { cookie } = await signup("setter-user");
+  async function adminCookie() {
+    const { cookie } = await signup("admin-user");
     const users = currentUsers();
-    users[0].isSetter = true;
+    users[0].isAdmin = true;
     seedUsers(users);
     return cookie;
   }
 
+  it("401s without auth", async () => {
+    const res = await request(app).post("/api/climbs/grade").send({});
+    expect(res.status).toBe(401);
+  });
+
+  it("403s a non-admin (including moderators/setters)", async () => {
+    const { cookie } = await signup("setter-user");
+    const users = currentUsers();
+    users[0].isSetter = true;
+    seedUsers(users);
+    const res = await request(app).post("/api/climbs/grade").set("Cookie", cookie).send({});
+    expect(res.status).toBe(403);
+  });
+
   it("400s on missing fields", async () => {
-    const cookie = await setterCookie();
+    const cookie = await adminCookie();
     const res = await request(app).post("/api/climbs/grade").set("Cookie", cookie).send({});
     expect(res.status).toBe(400);
   });
 
   it("404s an unknown climb", async () => {
-    const cookie = await setterCookie();
+    const cookie = await adminCookie();
     seedClimbs([]);
     const res = await request(app)
       .post("/api/climbs/grade")
       .set("Cookie", cookie)
-      .send({ wallId: 1, name: "Ghost", grade: "V4" });
+      .send({ wallId: 1, setterName: "Ghost", grade: "V4" });
     expect(res.status).toBe(404);
   });
 
   it("409s a climb that's still current", async () => {
-    const cookie = await setterCookie();
+    const cookie = await adminCookie();
     seedClimbs([{ wallId: 1, name: "Current", setType: "reset", setDate: "2026-01-01" }]);
     const res = await request(app)
       .post("/api/climbs/grade")
       .set("Cookie", cookie)
-      .send({ wallId: 1, name: "Current", grade: "V4" });
+      .send({ wallId: 1, setterName: "Current", grade: "V4" });
     expect(res.status).toBe(409);
   });
 
   it("sets the grade on an archived climb", async () => {
-    const cookie = await setterCookie();
+    const cookie = await adminCookie();
     seedClimbs([
       { wallId: 1, name: "Old", setType: "reset", setDate: "2026-01-01" },
       { wallId: 1, name: "New", setType: "reset", setDate: "2026-02-01" },
@@ -1246,21 +1279,41 @@ describe("POST /api/climbs/grade", () => {
     const res = await request(app)
       .post("/api/climbs/grade")
       .set("Cookie", cookie)
-      .send({ wallId: 1, name: "Old", grade: "V4" });
+      .send({ wallId: 1, setterName: "Old", grade: "V4" });
     expect(res.status).toBe(200);
     expect(res.body.climb.grade).toBe("V4");
   });
 });
 
 describe("GET /api/climbs/needs-grade", () => {
+  async function adminCookie() {
+    const { cookie } = await signup("admin-user");
+    const users = currentUsers();
+    users[0].isAdmin = true;
+    seedUsers(users);
+    return cookie;
+  }
+
+  it("401s without auth", async () => {
+    const res = await request(app).get("/api/climbs/needs-grade");
+    expect(res.status).toBe(401);
+  });
+
+  it("403s a non-admin", async () => {
+    const { cookie } = await signup("cube");
+    const res = await request(app).get("/api/climbs/needs-grade").set("Cookie", cookie);
+    expect(res.status).toBe(403);
+  });
+
   it("lists ungraded archived climbs, newest first", async () => {
+    const cookie = await adminCookie();
     seedClimbs([
       { wallId: 1, name: "OldUngraded", setType: "reset", setDate: "2026-01-01", grade: "" },
       { wallId: 1, name: "MidUngraded", setType: "reset", setDate: "2026-01-15", grade: "" },
       { wallId: 1, name: "Current", setType: "reset", setDate: "2026-02-01", grade: "" },
       { wallId: 1, name: "AlreadyGraded", setType: "reset", setDate: "2026-01-01", grade: "V4" },
     ]);
-    const res = await request(app).get("/api/climbs/needs-grade");
+    const res = await request(app).get("/api/climbs/needs-grade").set("Cookie", cookie);
     expect(res.body.climbs.map((c) => c.name)).toEqual(["MidUngraded", "OldUngraded"]);
   });
 });
@@ -1352,6 +1405,158 @@ describe("POST /api/ascents", () => {
 
     const climbsRes = await request(app).get("/api/climbs");
     expect(climbsRes.body.climbs[0].ascentClaims).toEqual([]);
+  });
+
+  it("queues a named ascent claim as a pending name proposal", async () => {
+    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01", ascentClaims: [] }]);
+    const { cookie } = await signup("cube");
+    await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "X", ascentClaim: { name: "Golden Overhang", pass: false } });
+
+    const climbsRes = await request(app).get("/api/climbs");
+    expect(climbsRes.body.climbs[0].pendingNames).toEqual([
+      expect.objectContaining({ name: "Golden Overhang", claimedBy: "cube" }),
+    ]);
+  });
+
+  it("does not queue a pending name proposal for a pass-only claim", async () => {
+    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01", ascentClaims: [] }]);
+    const { cookie } = await signup("cube");
+    await request(app)
+      .post("/api/ascents")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, climbName: "X", ascentClaim: { name: "", pass: true } });
+
+    const climbsRes = await request(app).get("/api/climbs");
+    expect(climbsRes.body.climbs[0].pendingNames).toEqual([]);
+  });
+});
+
+describe("GET /api/climbs/needs-name-approval", () => {
+  async function modCookie() {
+    const { cookie } = await signup("mod-user");
+    const users = currentUsers();
+    users[0].isModerator = true;
+    seedUsers(users);
+    return cookie;
+  }
+
+  it("401s without auth", async () => {
+    const res = await request(app).get("/api/climbs/needs-name-approval");
+    expect(res.status).toBe(401);
+  });
+
+  it("403s a plain member", async () => {
+    const { cookie } = await signup("member");
+    const res = await request(app).get("/api/climbs/needs-name-approval").set("Cookie", cookie);
+    expect(res.status).toBe(403);
+  });
+
+  it("lists only climbs with pending name proposals", async () => {
+    const cookie = await modCookie();
+    seedClimbs([
+      {
+        wallId: 1,
+        name: "X",
+        setDate: "2026-01-01",
+        pendingNames: [{ id: "p1", name: "Golden Overhang", claimedBy: "cube" }],
+      },
+      { wallId: 1, name: "Y", setDate: "2026-01-02", pendingNames: [] },
+    ]);
+    const res = await request(app).get("/api/climbs/needs-name-approval").set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    expect(res.body.climbs.map((c) => c.name)).toEqual(["X"]);
+  });
+});
+
+describe("POST /api/climbs/approve-name", () => {
+  async function modCookie() {
+    const { cookie } = await signup("mod-user");
+    const users = currentUsers();
+    users[0].isModerator = true;
+    seedUsers(users);
+    return cookie;
+  }
+
+  it("401s without auth", async () => {
+    const res = await request(app).post("/api/climbs/approve-name").send({});
+    expect(res.status).toBe(401);
+  });
+
+  it("403s a plain member", async () => {
+    const { cookie } = await signup("member");
+    const res = await request(app).post("/api/climbs/approve-name").set("Cookie", cookie).send({});
+    expect(res.status).toBe(403);
+  });
+
+  it("400s on missing fields", async () => {
+    const cookie = await modCookie();
+    const res = await request(app).post("/api/climbs/approve-name").set("Cookie", cookie).send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("404s an unknown climb", async () => {
+    const cookie = await modCookie();
+    seedClimbs([]);
+    const res = await request(app)
+      .post("/api/climbs/approve-name")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, setterName: "Ghost", proposalId: "p1", action: "approve" });
+    expect(res.status).toBe(404);
+  });
+
+  it("404s an unknown proposal", async () => {
+    const cookie = await modCookie();
+    seedClimbs([{ wallId: 1, name: "X", pendingNames: [] }]);
+    const res = await request(app)
+      .post("/api/climbs/approve-name")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, setterName: "X", proposalId: "nope", action: "approve" });
+    expect(res.status).toBe(404);
+  });
+
+  it("approving sets the confirmed name and discards the rest of the queue", async () => {
+    const cookie = await modCookie();
+    seedClimbs([
+      {
+        wallId: 1,
+        name: "X",
+        pendingNames: [
+          { id: "p1", name: "Golden Overhang", claimedBy: "cube" },
+          { id: "p2", name: "Other Name", claimedBy: "other" },
+        ],
+      },
+    ]);
+    const res = await request(app)
+      .post("/api/climbs/approve-name")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, setterName: "X", proposalId: "p1", action: "approve" });
+    expect(res.status).toBe(200);
+    expect(res.body.climb.name).toBe("Golden Overhang");
+    expect(res.body.climb.pendingNames).toEqual([]);
+  });
+
+  it("rejecting drops only that proposal", async () => {
+    const cookie = await modCookie();
+    seedClimbs([
+      {
+        wallId: 1,
+        name: "X",
+        pendingNames: [
+          { id: "p1", name: "Golden Overhang", claimedBy: "cube" },
+          { id: "p2", name: "Other Name", claimedBy: "other" },
+        ],
+      },
+    ]);
+    const res = await request(app)
+      .post("/api/climbs/approve-name")
+      .set("Cookie", cookie)
+      .send({ wallId: 1, setterName: "X", proposalId: "p1", action: "reject" });
+    expect(res.status).toBe(200);
+    expect(res.body.climb.name).toBe("X");
+    expect(res.body.climb.pendingNames).toEqual([{ id: "p2", name: "Other Name", claimedBy: "other" }]);
   });
 });
 
@@ -1447,7 +1652,7 @@ describe("GET /api/climbs/grade-distribution", () => {
     ]);
     const res = await request(app)
       .get("/api/climbs/grade-distribution")
-      .query({ wallId: "1", name: "Target" });
+      .query({ wallId: "1", setterName: "Target" });
     const byGrade = Object.fromEntries(res.body.counts.map((c) => [c.grade, c.count]));
     expect(byGrade.V4).toBe(1);
     expect(byGrade.V5).toBe(1);
@@ -1461,7 +1666,7 @@ describe("GET /api/climbs/grade-distribution", () => {
     ]);
     const res = await request(app)
       .get("/api/climbs/grade-distribution")
-      .query({ wallId: "1", name: "Target" });
+      .query({ wallId: "1", setterName: "Target" });
     const total = res.body.counts.reduce((sum, c) => sum + c.count, 0);
     expect(total).toBe(0);
   });
