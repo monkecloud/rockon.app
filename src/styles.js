@@ -415,6 +415,7 @@ export const styles = {
     width: "100%",
     background: "none",
     border: "none",
+    borderTop: "1px solid var(--color-border)",
     borderBottom: "1px solid var(--color-border)",
     borderRadius: 0,
     padding: "6px 0",
