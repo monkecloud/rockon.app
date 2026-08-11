@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { TABS, ADMIN_TAB, GRADES_TAB, APPROVE_TAB, WALLS, WALL_NAME_BY_ID, SETTINGS_OPTIONS } from "./constants.js";
+import { TABS, LOGGED_OUT_PROFILE_TAB, ADMIN_TAB, GRADES_TAB, APPROVE_TAB, WALLS, WALL_NAME_BY_ID, SETTINGS_OPTIONS } from "./constants.js";
 import { STORAGE_KEYS, loadFromStorage, saveToStorage } from "./lib/storage.js";
 import { apiSend, useFetch } from "./lib/fetch.js";
 import { styles } from "./styles.js";
@@ -613,9 +613,10 @@ export default function App() {
 
   // Approve, Grades, and Admin only show up in the tab bar (and their titles
   // only resolve) for accounts with the matching role — see
-  // APPROVE_TAB/GRADES_TAB/ADMIN_TAB.
+  // APPROVE_TAB/GRADES_TAB/ADMIN_TAB. Signed out, the "profile" tab swaps to
+  // LOGGED_OUT_PROFILE_TAB ("Login") since there's no profile to show.
   const visibleTabs = [
-    ...TABS,
+    ...TABS.map((tab) => (tab.id === "profile" && !currentUser ? LOGGED_OUT_PROFILE_TAB : tab)),
     ...(currentUser?.isModerator || currentUser?.isSetter ? [APPROVE_TAB] : []),
     ...(currentUser?.isAdmin ? [GRADES_TAB, ADMIN_TAB] : []),
   ];

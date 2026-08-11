@@ -462,6 +462,7 @@ into `src/` and was never part of the build).
 | Constant | File | Value |
 |---|---|---|
 | `TABS` | `src/constants.js` | Home, Walls (`list`), Search, Profile |
+| `LOGGED_OUT_PROFILE_TAB` | `src/constants.js` | Swapped in for the `profile` tab (by id) in `visibleTabs` when signed out — label/icon become "Login" instead of "Profile" |
 | `ADMIN_TAB` / `GRADES_TAB` / `APPROVE_TAB` | `src/constants.js` | Appended conditionally by role — Grades + Admin for admins, Approve for mod/setter (and admins) |
 | `WALLS` | `src/constants.js` | **Hardcoded**: `{1 Back, 2 Slab, 3 Cave, 4 Front}` |
 | `WALL_NAME_BY_ID` | `src/constants.js` | Derived lookup |
@@ -562,7 +563,7 @@ climbs, currentUser
 
 | Value | Meaning |
 |---|---|
-| `visibleTabs` | `TABS` + Approve (mod/setter) + Admin (admin) |
+| `visibleTabs` | `TABS` (Profile tab swapped for `LOGGED_OUT_PROFILE_TAB` when signed out) + Approve (mod/setter) + Admin (admin) |
 | `topBarTitle` / `showBack` / `handleBack` | One if/else-if ladder, `src/App.jsx` ~line 627 — **the single place to add a new drilled-in screen's title and back behavior** |
 | `isClimbDetail` | Swaps the tab bar for `ClimbActionBar` and mounts `LogAscentSheet` |
 | `isWallsRoot` / `isClimbsList` | Where `+` appears |

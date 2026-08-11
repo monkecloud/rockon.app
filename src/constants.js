@@ -1,4 +1,4 @@
-import { Home, ListChecks, Search, User, Shield, Check, Tag } from "lucide-react";
+import { Home, ListChecks, Search, User, LogIn, Shield, Check, Tag } from "lucide-react";
 
 export const TABS = [
   { id: "home", label: "Home", icon: Home },
@@ -6,6 +6,10 @@ export const TABS = [
   { id: "search", label: "Search", icon: Search },
   { id: "profile", label: "Profile", icon: User },
 ];
+
+// Swapped in for the "profile" tab (by id) in visibleTabs when signed out —
+// see the visibleTabs computation in App().
+export const LOGGED_OUT_PROFILE_TAB = { id: "profile", label: "Login", icon: LogIn };
 
 // Appended to TABS (as the rightmost tab) only when currentUser.isAdmin —
 // see the visibleTabs computation in App().

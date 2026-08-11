@@ -50,14 +50,15 @@ beforeEach(() => {
 });
 
 describe("App() — tab bar", () => {
-  it("renders logged-out with the 4 base tabs, no role-gated tabs", async () => {
+  it("renders logged-out with the 4 base tabs, no role-gated tabs (Profile tab reads Login while signed out)", async () => {
     installFetchMock({ ...BASE_ROUTES, "/api/me": { status: 401, body: { error: "Not logged in." } } });
     render(<App />);
 
     await waitFor(() => expect(screen.getByRole("button", { name: /home/i })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: /walls/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /search/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /profile/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^login$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^profile$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^admin$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^grades$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^approve$/i })).not.toBeInTheDocument();
@@ -192,12 +193,12 @@ describe("App() — Search tab stack", () => {
 });
 
 describe("App() — Profile tab / auth state", () => {
-  it("shows the login/signup form when logged out", async () => {
+  it("shows the login/signup form when logged out (tab bar reads Login, not Profile)", async () => {
     installFetchMock({ ...BASE_ROUTES, "/api/me": { status: 401, body: {} } });
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(await screen.findByRole("button", { name: /profile/i }));
+    await user.click(await screen.findByRole("button", { name: /^login$/i }));
     await waitFor(() => expect(screen.getAllByRole("button", { name: /log in/i }).length).toBeGreaterThan(0));
   });
 
