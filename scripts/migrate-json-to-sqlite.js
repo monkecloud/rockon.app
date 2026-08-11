@@ -48,7 +48,7 @@ async function migrate() {
 
   console.log(`Read ${climbsJson.length} climbs, ${usersJson.length} users.`);
 
-  withTransaction(() => {
+  const orphanedAscents = withTransaction(() => {
     wipeAllTables();
 
     // --- climbs ------------------------------------------------------------
@@ -66,6 +66,13 @@ async function migrate() {
     // wallId + setterName -> the new integer climb id, needed below to
     // resolve each ascent's (wallId, climbName) reference.
     const climbIdByKey = new Map();
+    // setterName alone -> climbId[], a fallback for ascents whose stored
+    // wallId doesn't match the climb it names (found in the real data —
+    // see the ascent-matching loop below). setterName is only guaranteed
+    // unique *within* a wall by the app's own invariant, so this fallback
+    // is only trusted when a name maps to exactly one climb across every
+    // wall combined.
+    const climbIdsBySetterName = new Map();
 
     for (const c of climbsJson) {
       const setterName = c.setterName || c.name; // pre-naming-rights seed data
@@ -83,6 +90,8 @@ async function migrate() {
       );
       const climbId = Number(result.lastInsertRowid);
       climbIdByKey.set(`${c.wallId}::${setterName}`, climbId);
+      if (!climbIdsBySetterName.has(setterName)) climbIdsBySetterName.set(setterName, []);
+      climbIdsBySetterName.get(setterName).push(climbId);
 
       (c.ascentClaims || []).forEach((claim, i) => {
         insertClaim.run(climbId, i + 1, claim.name || "", claim.pass ? 1 : 0);
@@ -136,8 +145,10 @@ async function migrate() {
     console.log(`Migrated ${usersJson.length} users.`);
 
     // Second pass for follows/ascents, once every user has an id.
+    let recoveredAscents = 0;
     let skippedOrphanAscents = 0;
     let totalAscents = 0;
+    const orphanedAscents = [];
     for (const u of usersJson) {
       const userId = userIdByUsername.get(u.username);
 
@@ -148,19 +159,45 @@ async function migrate() {
 
       for (const a of u.ascents || []) {
         totalAscents++;
-        const climbId = climbIdByKey.get(`${a.wallId}::${a.climbName}`);
+        let climbId = climbIdByKey.get(`${a.wallId}::${a.climbName}`);
+
+        if (!climbId) {
+          // The strict (wallId, climbName) match failed. Before giving up,
+          // check whether climbName resolves unambiguously to a climb on a
+          // *different* wall than the ascent recorded — found in the real
+          // data (e.g. an ascent recorded against wall 1 naming a climb
+          // that only ever existed on wall 4). setterName is immutable and
+          // only required to be unique per wall, so only trust this when
+          // exactly one climb anywhere carries that name; two+ matches
+          // means genuine ambiguity, not a fixable mismatch.
+          const candidates = climbIdsBySetterName.get(a.climbName);
+          if (candidates && candidates.length === 1) {
+            climbId = candidates[0];
+            console.warn(
+              `  Recovered ascent via name-only match (stored wallId ${a.wallId} didn't match "${a.climbName}"'s real wall): ${u.username}`
+            );
+            recoveredAscents++;
+          }
+        }
+
         if (!climbId) {
           // References a climb name that doesn't exist anywhere in
-          // climbs.json -- already inert today (computeAscentCount only
-          // ever matches ascents against real current climb keys, so these
-          // never counted toward anything visible). Skipped rather than
-          // fabricating a climb to attach them to.
+          // climbs.json under any wall -- already inert today
+          // (computeAscentCount only ever matches ascents against real
+          // current climb keys, so these never counted toward anything
+          // visible). Skipped rather than fabricating a climb to attach
+          // them to, but recorded to orphaned-ascents.json (below) rather
+          // than silently dropped, since this file is the only place that
+          // data would otherwise survive once climbs.json/users.json stop
+          // being read at runtime.
           console.warn(
             `  Skipping orphaned ascent: ${u.username} -> wall ${a.wallId} "${a.climbName}" (no such climb)`
           );
+          orphanedAscents.push({ username: u.username, ...a });
           skippedOrphanAscents++;
           continue;
         }
+
         insertAscent.run(
           a.id || crypto.randomUUID(),
           userId,
@@ -175,9 +212,21 @@ async function migrate() {
     }
     console.log(
       `Migrated ${totalAscents - skippedOrphanAscents}/${totalAscents} ascents` +
-        (skippedOrphanAscents ? ` (${skippedOrphanAscents} orphaned, skipped).` : ".")
+        (recoveredAscents ? ` (${recoveredAscents} recovered via name-only match)` : "") +
+        (skippedOrphanAscents ? ` (${skippedOrphanAscents} truly orphaned, skipped).` : ".")
     );
+
+    return orphanedAscents;
   });
+
+  if (orphanedAscents.length) {
+    const orphanFile = path.join(__dirname, "..", "server", "orphaned-ascents.json");
+    await fs.writeFile(orphanFile, JSON.stringify(orphanedAscents, null, 2));
+    console.log(
+      `${orphanedAscents.length} ascent(s) could not be matched to any climb and were not migrated ` +
+        `-- full records (including username) written to ${path.relative(process.cwd(), orphanFile)} for review.`
+    );
+  }
 
   console.log("Migration complete.");
 }

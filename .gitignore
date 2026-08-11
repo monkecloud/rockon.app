@@ -15,3 +15,8 @@ APP_SPEC.txt
 server/climbing.db
 server/climbing.db-wal
 server/climbing.db-shm
+
+# Migration-run output (scripts/migrate-json-to-sqlite.js) listing ascents
+# that couldn't be matched to any climb -- includes usernames, so treated
+# like the .db file above rather than committed.
+server/orphaned-ascents.json

@@ -1203,7 +1203,7 @@ implement 13.2-a+b using Option B."*
 | 13.4-h/i Debounce & refetch | P2 | ✅ **DONE 2026-08-10** — Option A: 300ms debounce on the user search, `useFetch`'s `apiCache` fixes refetch-on-mount for `GradeBarChart`/`Leaderboard` for free. See §14.18 |
 | 13.8-c/f Shared grades + dev port | P2 | ✅ **DONE 2026-08-10** — `shared/grades.js` extracted, both sides import it; `vite.config.js` reads `PORT` via `loadEnv`. See §14.19 |
 | 13.8-e `WALLS` hardcoded | P2 | ⚠️ **PARTIAL 2026-08-10** — **DECIDED: fold into §14.3 as a `walls` table** (Derrick, 2026-08-10). Built: `walls` table + `GET /api/walls` (climbs are FK-enforced to a real wall now). Not yet done: the frontend isn't wired to it — `WALLS` in `src/constants.js` (post-§14.16 split) is still the hardcoded source of truth. See §14.3.2 |
-| 13.5-a/b/c + 13.3-h Data-model cleanups | P2/P3 | ✅ **DECIDED: Option A — fold all four into §14.3** (Derrick, 2026-08-10) — **DONE 2026-08-10**: `archived`/`logAttempts` not migrated, `ascents.created_at` added (NULL for pre-migration rows), `ascent_claims` PK caps at 5 structurally. See §14.20. ⚠️ `createdAt` is lost for every ascent logged before the migration (19 real pre-migration ascents affected) |
+| 13.5-a/b/c + 13.3-h Data-model cleanups | P2/P3 | ✅ **DECIDED: Option A — fold all four into §14.3** (Derrick, 2026-08-10) — **DONE 2026-08-10**: `archived`/`logAttempts` not migrated, `ascents.created_at` added (NULL for pre-migration rows), `ascent_claims` PK caps at 5 structurally. See §14.20. ⚠️ `createdAt` is lost for every ascent logged before the migration (23 real pre-migration ascents affected — see §14.3.2's "orphaned ascents" note for how that count was arrived at) |
 | 13.6-c/d/f Frontend UX | P2 | ✅ **DONE 2026-08-10** — Option B: `matchesClimbQuery` shared by both search boxes (in-wall now matches setter too), `GradeBarChart` renders a same-dimension skeleton instead of `null`, `ZoomableImageViewer` keyed by climb at both call sites. See §14.21 |
 | 13.6-e Optimistic UI | P2 | ⏸️ **DEFERRED** (Derrick, 2026-08-10) — cheaper after §14.9's `apiSend` lands. Stays open |
 | All 21 P3 items | P3 | ✅ **BATCH-DECIDED** (Derrick, 2026-08-10). Group 2 (stale comments, package.json, SALT_ROUNDS, reduced-motion) and Group 3 (touchmove scope, image lazy-loading, contrast, star icons, reset warning) **DONE 2026-08-10**. Groups 1 (absorbed elsewhere) and 4 (product question, not a bug) don't need standalone work. See §14.22 |
@@ -1628,6 +1628,43 @@ mechanically (setup/teardown, not assertions).
 **Risk.** This is the largest change in the backlog and it touches every route.
 Do it on a branch, keep the JSON files untouched until it's proven, and keep the
 migration script re-runnable so you can re-import if you need to start over.
+
+#### Orphaned ascents — found and fixed 2026-08-10
+
+Running the migration against the real `server/users.json`/`server/climbs.json`
+surfaced 19 of 38 ascents (across all users) whose `(wallId, climbName)` didn't
+match any climb. Traced this down to **two different causes, not one**:
+
+- **15 genuinely reference a climb that doesn't exist anywhere** in
+  `climbs.json` — not under any wall, current or archived (e.g. "Morning
+  Gaston", "Frozen Gaston", "Golden Overhang"). Unrecoverable; there's no
+  climb record left to attach them to.
+- **4 reference a climb that exists, just under a different wall than the
+  ascent recorded** — e.g. an ascent stored `wallId: 1, climbName: "Copper
+  Nose"`, but "Copper Nose" only ever existed on wall 4. Since `setterName`
+  turned out to be unique across *all* 259 climbs in this dataset, not just
+  per wall, the migration script now falls back to a name-only match when the
+  strict `(wallId, climbName)` lookup fails, and only trusts it when exactly
+  one climb anywhere carries that name (two-plus matches would be genuine
+  ambiguity, not a fixable mismatch) — this recovered all 4.
+
+**Fixed in `scripts/migrate-json-to-sqlite.js`**: the name-only fallback above
+recovers the 4 wall-mismatched ascents (now migrated normally — 23/38 total).
+The remaining 15 true orphans are still skipped (nothing to attach them to),
+but are no longer silently dropped — the script now writes their full records
+(including username) to `server/orphaned-ascents.json` for review, gitignored
+like `climbing.db` since it's migration-run output, not source data, and
+contains usernames. Re-running the script overwrites this file each time,
+same as it overwrites the database.
+
+**Note for whoever eventually runs this for real**: `server/users.json` in
+this repo is dev/test fixture data — every account (`test1`, `derrickk`,
+`cubesnaill`, `lantest`, `httpstest`, `tester`, ...) is an obvious throwaway,
+confirmed by inspecting the actual user list — so none of this was real
+member history. The fix above is still worth having regardless: the
+wall-mismatch bug-shape (an ascent's stored `wallId` disagreeing with the
+climb it names) could recur with real data, and the audit file means a real
+future orphan never just vanishes without a trace.
 
 ---
 
