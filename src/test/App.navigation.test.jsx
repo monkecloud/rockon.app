@@ -241,6 +241,23 @@ describe("App() — Profile tab / auth state", () => {
     await waitFor(() => expect(screen.getByText("cubesnail")).toBeInTheDocument());
     expect(screen.queryAllByRole("button", { name: /log in/i })).toHaveLength(0);
   });
+
+  it("opens Saved climbs from the logged-in profile and backs out to it again", async () => {
+    installFetchMock({ ...BASE_ROUTES, ...signedInAs(memberUser({ username: "cubesnail" })) });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /profile/i }));
+    await waitFor(() => expect(screen.getByText("cubesnail")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: /saved climbs/i }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Saved Climbs" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Back" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Saved Climbs" })).not.toBeInTheDocument());
+    expect(screen.getByText("cubesnail")).toBeInTheDocument();
+  });
 });
 
 describe("App() — §14.9 regression: a wall with zero current climbs", () => {

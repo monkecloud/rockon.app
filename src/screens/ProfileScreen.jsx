@@ -9,6 +9,7 @@ export function ProfileScreen({
   onLogin,
   onOpenSettings,
   onOpenLogbook,
+  onOpenSavedClimbs,
   onSetPassword,
 }) {
   const [mode, setMode] = useState("login"); // "login" | "signup"
@@ -108,6 +109,9 @@ export function ProfileScreen({
         />
         <button style={styles.logbookButton} onClick={onOpenLogbook}>
           Logbook
+        </button>
+        <button style={styles.savedClimbsButton} onClick={onOpenSavedClimbs}>
+          Saved climbs
         </button>
       </div>
     );

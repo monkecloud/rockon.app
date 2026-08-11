@@ -493,7 +493,8 @@ into `src/` and was never part of the build).
 | `NewClimbForm` | `screens/NewClimbForm.jsx` | `+` on a wall's Climbs page. Fixed `wallId`. Always saves as **backfill**; the "Backfill" checkbox only chooses the *date* (today/reset date vs. a picked past date) |
 | `NewWallForm` | `screens/NewWallForm.jsx` | `+` on the Walls root. Wall dropdown, always saves `setType: "reset"` — starts a new cycle |
 | `GradeBarChart` | `components/GradeBarChart.jsx` | The pyramid. Takes **either** `counts` (in-memory) **or** `endpoint` (fetch). Y-axis ticks at 100/75/50/25%, rounded to integers with duplicates blanked |
-| `ProfileScreen` | `screens/ProfileScreen.jsx` | Logged out → login/signup toggle. Logged in → header + pyramid + Logbook. Also handles the forced password reset |
+| `ProfileScreen` | `screens/ProfileScreen.jsx` | Logged out → login/signup toggle. Logged in → header + pyramid + Logbook + Saved climbs. Also handles the forced password reset |
+| `SavedClimbsScreen` | `screens/SavedClimbsScreen.jsx` | Profile tab's Saved climbs button. Static `PLACEHOLDER_SAVED_CLIMBS` rows — no save action exists yet (see §12) |
 | `SettingsScreen` | `screens/SettingsScreen.jsx` | Four options + Log out |
 | `ChangeAvatarForm` | `screens/SettingsScreen.jsx` | FileReader → base64 data URL |
 | `ChangeUsernameForm` | `screens/SettingsScreen.jsx` | |
@@ -537,7 +538,7 @@ creatingClimb, filteringClimbs
 // Climb detail
 attempts, showLogAscentSheet
 // Profile
-showSettings, settingsOption
+showSettings, settingsOption, showSavedClimbs
 // Search (lifted so it survives unmount)
 searchQuery, searchMode, searchUserResults
 searchStack            // [{kind:"profile",user} | {kind:"list",username,listType}]
@@ -584,6 +585,7 @@ climbs, currentUser
 | `handleFollowToggle` | Patches **every** matching stack entry rather than refetching (there's no "get one profile" endpoint) |
 | `handleSubmitAscent` | Guards against archived non-`loggable` climbs as defense in depth |
 | `handleOpenLogbook` | **Empty stub — TODO** |
+| `handleOpenSavedClimbs` | Sets `showSavedClimbs`, opening `SavedClimbsScreen` (placeholder rows — see §12) |
 
 ### 7.4 Grade logic — `shared/grades.js` ✅
 
@@ -794,6 +796,7 @@ duplicated** between client and server (`shared/grades.js`, §14.19).
 | Thing | Where the stub is |
 |---|---|
 | Logbook screen | `handleOpenLogbook` is `() => {}` (`src/App.jsx`); button renders |
+| Saving a climb | No save action anywhere yet; `SavedClimbsScreen` (`src/screens/SavedClimbsScreen.jsx`) — opened via the Profile tab's Saved climbs button — shows hardcoded `PLACEHOLDER_SAVED_CLIMBS` rows, not real data |
 | Climb filters — grade range & setter | `ClimbsFilterForm` (`src/screens/ClimbsFilterForm.jsx`) — sort/reset/backfill are wired up; grade-range and setter fields still render but don't filter |
 | Recent Activity feed | `RECENT_ACTIVITY_PLACEHOLDERS` — five dead rows on Home |
 | Wall management UI | No create/rename/delete wall; `WALLS` is hardcoded |

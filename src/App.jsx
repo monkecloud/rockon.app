@@ -18,6 +18,7 @@ import { ClimbsFilterForm } from "./screens/ClimbsFilterForm.jsx";
 import { NewClimbForm } from "./screens/NewClimbForm.jsx";
 import { NewWallForm } from "./screens/NewWallForm.jsx";
 import { ProfileScreen } from "./screens/ProfileScreen.jsx";
+import { SavedClimbsScreen } from "./screens/SavedClimbsScreen.jsx";
 import {
   SettingsScreen,
   ChangeAvatarForm,
@@ -98,6 +99,7 @@ export default function App() {
   const [showLogAscentSheet, setShowLogAscentSheet] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOption, setSettingsOption] = useState(null);
+  const [showSavedClimbs, setShowSavedClimbs] = useState(false);
   // Stack of screens drilled into from the Search tab — a profile
   // ({ kind: "profile", user }, user in search-result shape: username/
   // name/avatarUrl/counts) or a followers/following list
@@ -221,6 +223,8 @@ export default function App() {
 
   // TODO: wire this up once there's an actual logbook screen to open.
   const handleOpenLogbook = () => {};
+
+  const handleOpenSavedClimbs = () => setShowSavedClimbs(true);
 
   // Shared by the three Settings forms: POST to a /api/users/:username/...
   // route, and on success replace currentUser with the fresh copy the
@@ -381,6 +385,7 @@ export default function App() {
     if (tabId === activeTab && tabId === "profile") {
       setShowSettings(false);
       setSettingsOption(null);
+      setShowSavedClimbs(false);
       return;
     }
     if (tabId === activeTab && tabId === "search") {
@@ -552,6 +557,9 @@ export default function App() {
           />
         );
       case "profile": {
+        if (currentUser && showSavedClimbs) {
+          return <SavedClimbsScreen />;
+        }
         if (currentUser && showSettings) {
           if (settingsOption === "avatar") {
             return <ChangeAvatarForm currentUser={currentUser} onSave={handleUpdateAvatar} />;
@@ -574,6 +582,7 @@ export default function App() {
             onLogin={handleLogin}
             onOpenSettings={handleOpenSettings}
             onOpenLogbook={handleOpenLogbook}
+            onOpenSavedClimbs={handleOpenSavedClimbs}
             onSetPassword={handleUpdatePassword}
           />
         );
@@ -596,6 +605,7 @@ export default function App() {
     showInfo,
     showSettings,
     settingsOption,
+    showSavedClimbs,
     viewingArchivedClimb,
     archiveExpanded,
     archiveWalls,
@@ -662,6 +672,10 @@ export default function App() {
     topBarTitle = viewingSearchUser.username;
     showBack = true;
     handleBack = handlePopSearchStack;
+  } else if (activeTab === "profile" && showSavedClimbs) {
+    topBarTitle = "Saved Climbs";
+    showBack = true;
+    handleBack = () => setShowSavedClimbs(false);
   } else if (activeTab === "profile" && showSettings && settingsOption) {
     topBarTitle = SETTINGS_OPTIONS.find((o) => o.id === settingsOption)?.label ?? "Settings";
     showBack = true;
