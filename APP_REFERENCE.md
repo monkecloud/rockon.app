@@ -503,7 +503,7 @@ into `src/` and was never part of the build).
 | `GradesScreen` | `screens/GradesScreen.jsx` | Grades tab (admin-only). `/api/climbs/needs-grade`; dropdown defaults to the bottom of the setter's range; ✓ confirms and drops the row |
 | `ApproveClimbsScreen` | `screens/ApproveClimbsScreen.jsx` | Approve tab (mod/setter). `/api/climbs/needs-name-approval` — pending naming-rights proposals from ascent claims; reject drops one proposal, approve sets the climb's display `name` and clears the rest of that climb's queue |
 | `TopBar` | `components/TopBar.jsx` | Back / title / (Info \| Add) |
-| `ClimbActionBar` | `components/ClimbActionBar.jsx` | **Replaces the tab bar** on a climb detail page: −, attempts, Log ascent, + |
+| `ClimbActionBar` | `components/ClimbActionBar.jsx` | **Replaces the tab bar** on a climb detail page: −, attempts, Log ascent, +. `disabled` prop greys out the whole bar (view-only archived climb); `logDisabled` additionally greys out just Log ascent (signed out — attempts stay locally adjustable) |
 | `StarRatingInput` | `components/StarRatingInput.jsx` | Whole row is a drag surface; rating tracks pointer x in 0.5 steps |
 | `StarRatingDisplay` | `components/StarRatingDisplay.jsx` | Read-only star row (list rows, comments) — split out of `StarRatingInput` during §14.16 since it has no drag/keyboard logic |
 | `LogAscentSheet` | `components/LogAscentSheet.jsx` | Bottom sheet. Requires rating ≥ 0.5 and attempts ≥ 1. Offers the next ascent claim while fewer than 5 are taken |

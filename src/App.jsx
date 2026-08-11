@@ -405,11 +405,12 @@ export default function App() {
   const handleSubmitAscent = async (fields) => {
     setShowLogAscentSheet(false);
 
-    // Most archived climbs are view-only — the Log Ascent button is
-    // disabled for them (see isClimbActionDisabled below), so this
-    // shouldn't be reachable, but guard against it as defense in depth.
-    // The most recent archived reset+backfill per wall stays loggable
-    // (climb.loggable, set by GET /api/archive), same as a current climb.
+    // Most archived climbs are view-only and being signed out both disable
+    // the Log Ascent button (see ClimbActionBar's disabled/logDisabled
+    // props below), so this shouldn't be reachable, but guard against it as
+    // defense in depth. The most recent archived reset+backfill per wall
+    // stays loggable (climb.loggable, set by GET /api/archive), same as a
+    // current climb.
     const isDisabledArchivedClimb = viewingArchivedClimb && !viewingArchivedClimb.loggable;
     if (!currentUser || !activeClimb || isDisabledArchivedClimb) return;
 
@@ -717,6 +718,7 @@ export default function App() {
           onIncrement={handleIncrementAttempts}
           onLogAscent={handleLogAscent}
           disabled={Boolean(viewingArchivedClimb) && !viewingArchivedClimb.loggable}
+          logDisabled={!currentUser}
         />
       ) : (
         <nav style={styles.tabBar}>

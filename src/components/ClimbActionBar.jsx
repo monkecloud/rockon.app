@@ -3,8 +3,12 @@ import { styles } from "../styles.js";
 
 // Replaces the persistent tab bar while viewing a Climb detail page: an
 // attempts counter (with -/+ buttons on either side) above a center button
-// to log an ascent (see LogAscentSheet).
-export function ClimbActionBar({ attempts, onDecrement, onIncrement, onLogAscent, disabled }) {
+// to log an ascent (see LogAscentSheet). `disabled` covers the whole bar
+// (a view-only archived climb); `logDisabled` additionally covers just the
+// center button (signed-out — the attempts counter is harmless local-only
+// state, but submitting an ascent requires an account).
+export function ClimbActionBar({ attempts, onDecrement, onIncrement, onLogAscent, disabled, logDisabled }) {
+  const logAscentDisabled = disabled || logDisabled;
   return (
     <nav style={styles.climbActionBar}>
       <button
@@ -25,9 +29,12 @@ export function ClimbActionBar({ attempts, onDecrement, onIncrement, onLogAscent
           {attempts}
         </span>
         <button
-          style={{ ...styles.logAscentButton, ...(disabled ? styles.logAscentButtonDisabled : {}) }}
-          onClick={disabled ? undefined : onLogAscent}
-          disabled={disabled}
+          style={{
+            ...styles.logAscentButton,
+            ...(logAscentDisabled ? styles.logAscentButtonDisabled : {}),
+          }}
+          onClick={logAscentDisabled ? undefined : onLogAscent}
+          disabled={logAscentDisabled}
         >
           Log ascent
         </button>
