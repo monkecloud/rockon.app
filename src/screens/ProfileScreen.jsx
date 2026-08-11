@@ -107,11 +107,11 @@ export function ProfileScreen({
           title="Your ascents"
           endpoint={`/api/users/${encodeURIComponent(currentUser.username)}/grade-counts`}
         />
-        <button style={styles.logbookButton} onClick={onOpenLogbook}>
-          Logbook
-        </button>
         <button style={styles.savedClimbsButton} onClick={onOpenSavedClimbs}>
           Saved climbs
+        </button>
+        <button style={styles.logbookButton} onClick={onOpenLogbook}>
+          Logbook
         </button>
       </div>
     );

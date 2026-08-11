@@ -617,6 +617,7 @@ export const styles = {
     borderRadius: 0,
     border: "none",
     borderTop: "1px solid var(--color-border)",
+    borderBottom: "1px solid var(--color-border)",
     background: "transparent",
     color: "var(--color-text-offwhite)",
     fontSize: 15,
