@@ -345,7 +345,7 @@ Base: `/api`. All bodies/responses JSON. Auth is the httpOnly `session` cookie
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| GET | `/api/climbs` | — | **Current climbs only**, with `ascentCount`, `averageStars`, and merged comments |
+| GET | `/api/climbs` | — | **Current climbs only**, with `ascentCount`, `averageStars`, `firstAscentUsername`, and merged comments |
 | POST | `/api/climbs` | **mod/setter** | `{wallId, name, setterGrade, setter, setDate?, photoUrl?, setType?}` — `name` seeds both the immutable `setterName` and the initial display `name`. `setType` defaults to `"backfill"`; only `"reset"` is honored as an alternative. Validated (§14.17): `setterGrade` must parse via `parseSetterGrade`; `setDate` (if given) must be a real `YYYY-MM-DD`, else defaults to today; `setter` must be an existing username. 409 on duplicate `wallId`+`setterName` **across all history**, not just the current set. `grade` always starts `""` |
 | POST | `/api/climbs/grade` | **admin** | `{wallId, setterName, grade}`. `grade` must be in `GRADE_OPTIONS`; climb lookup is case-insensitive (§14.17g). **409 if the climb is still current** |
 | GET | `/api/climbs/needs-grade` | **admin** | Non-current climbs with no `grade`, newest first. Backs the Grades tab |
@@ -431,7 +431,10 @@ All exported (for tests). Grouped by job.
   recently *archived* cycle. Shared with `GET /api/archive`'s `loggable` flag
 - `withAscentStats(climbs)` — queries every ascent (joined to its user +
   climb) once to attach `ascentCount` (distinct users), `averageStars` (one
-  rating per user, their most recent), and merge user comments (id
+  rating per user, their most recent), `firstAscentUsername` (whichever user
+  logged the earliest ascent row for that climb — rows come back in rowid/
+  insertion order, so it's just the first row seen per climb id; `null` if
+  nobody's logged it), and merge user comments (id
   `ascent-<uuid>`, every repeat's comment shown — not deduped). No longer
   `async` (the DB is synchronous) and no longer merges in seeded
   `climb.comments` — none were carried across by the migration (§14.20)
@@ -505,7 +508,7 @@ into `src/` and was never part of the build).
 |---|---|---|
 | `Leaderboard` | `screens/HomeScreen.jsx` | Home podium. Fetches `/api/users/leaderboard`. Renders 2nd/1st/3rd; omits itself entirely if nobody has ascents |
 | `HomeScreen` | `screens/HomeScreen.jsx` | Wall pyramid + Leaderboard + placeholder activity rows |
-| `ZoomableImageViewer` | `components/ZoomableImageViewer.jsx` | Climb photo. **Pointer Events**: drag, two-finger pinch, wheel zoom. Scale clamped 1–4. Writes `transform` **straight to the DOM node via refs**, never React state — setState per pointermove made pinch/drag glitchy on mobile |
+| `ZoomableImageViewer` | `components/ZoomableImageViewer.jsx` | Climb photo. **Pointer Events**: drag, two-finger pinch, wheel zoom. Scale clamped 1–4. Writes `transform` **straight to the DOM node via refs**, never React state — setState per pointermove made pinch/drag glitchy on mobile. Header bar above the image takes a `climb` prop and lays out two columns: grade + "Setter: X" on the left, climb name + "First Ascent: X" (or "First Ascent: None") on the right — the latter read off `climb.firstAscentUsername` |
 | `ClimbInfoScreen` | `screens/ClimbInfoScreen.jsx` | Grade-distribution chart + comments. Delete button only on your own ascent-derived comments (seeded ones have no `ascentId`) |
 | `ListScreen` | `screens/ListScreen.jsx` | Three modes in one component: wall list → climbs list (with local search box + pyramid) → `ZoomableImageViewer` |
 | `ArchiveSection` | `screens/ListScreen.jsx` | Inline expander at the bottom of the wall list. Fully controlled from `App()` so it survives unmount |
@@ -533,7 +536,7 @@ into `src/` and was never part of the build).
 | `StarRatingDisplay` | `components/StarRatingDisplay.jsx` | Read-only star row (list rows, comments) — split out of `StarRatingInput` during §14.16 since it has no drag/keyboard logic |
 | `LogAscentSheet` | `components/LogAscentSheet.jsx` | Bottom sheet. Requires rating ≥ 0.5 and attempts ≥ 1. Offers the next ascent claim while fewer than 5 are taken |
 | `Async` | `components/Async.jsx` | Loading/error/retry wrapper around `useFetch` results (§14.9) |
-| `climbTitleNode` | `components/ClimbGradeLabel.jsx` | Not a component — a helper that composes a climb's title + grade label, used by three screens |
+| `ClimbGradeLabel` | `components/ClimbGradeLabel.jsx` | Colors a climb's grade — muted if unconfirmed (`climb.grade` empty, showing the setter's guess), full-color once confirmed. Used standalone in `ZoomableImageViewer`'s header and inline in list rows |
 
 `PlaceholderScreen` (dead code — nothing rendered it) was deleted during §14.16
 rather than moved; see that section.

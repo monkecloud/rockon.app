@@ -188,27 +188,47 @@ describe("ListScreen — climbs-list mode", () => {
 });
 
 describe("ListScreen — climb-detail mode", () => {
-  it("renders the zoomable image viewer with the climb's grade+name title and setter subtitle", () => {
+  it("renders the zoomable image viewer header with grade+setter on the left and name+first ascent on the right", () => {
     render(
       <ListScreen
         {...baseProps({
           selectedItem: { id: 1, title: "Back" },
           selectedSubItem: "golden-overhang",
           climbsByWall: {
-            1: [climb({ name: "Golden Overhang", setterName: "golden-overhang", setter: "alice", grade: "V3" })],
+            1: [
+              climb({
+                name: "Golden Overhang",
+                setterName: "golden-overhang",
+                setter: "alice",
+                grade: "V3",
+                firstAscentUsername: "bob",
+              }),
+            ],
           },
         })}
       />
     );
 
-    // The grade and name render as separate nested elements (ClimbGradeLabel
-    // + a trailing text node — see climbTitleNode), so getByText's default
-    // own-text-only matching won't find "V3 · Golden Overhang" as a single
-    // node; match the one element whose full textContent equals it instead.
-    expect(
-      screen.getByText((_, element) => element?.textContent === "V3 · Golden Overhang")
-    ).toBeInTheDocument();
-    expect(screen.getByText("Set by alice")).toBeInTheDocument();
+    expect(screen.getByText("V3")).toBeInTheDocument();
+    expect(screen.getByText("Setter: alice")).toBeInTheDocument();
+    expect(screen.getByText("Golden Overhang")).toBeInTheDocument();
+    expect(screen.getByText("First Ascent: bob")).toBeInTheDocument();
+  });
+
+  it("shows 'First Ascent: None' when no one has logged the climb", () => {
+    render(
+      <ListScreen
+        {...baseProps({
+          selectedItem: { id: 1, title: "Back" },
+          selectedSubItem: "golden-overhang",
+          climbsByWall: {
+            1: [climb({ name: "Golden Overhang", setterName: "golden-overhang", setter: "alice" })],
+          },
+        })}
+      />
+    );
+
+    expect(screen.getByText("First Ascent: None")).toBeInTheDocument();
   });
 });
 

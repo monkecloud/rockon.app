@@ -10,14 +10,3 @@ export function ClimbGradeLabel({ climb }) {
     </span>
   );
 }
-
-// "V4 · Climb Name" title shown atop the Climb detail page's image, for
-// both current and archived climbs — the grade colored per ClimbGradeLabel.
-export function climbTitleNode(climb) {
-  return (
-    <>
-      <ClimbGradeLabel climb={climb} />
-      {` · ${climb.name}`}
-    </>
-  );
-}

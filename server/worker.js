@@ -672,11 +672,19 @@ export function withAscentStats(climbs) {
   // entry.
   const latestAscentByUserByClimbId = new Map();
   const userCommentsByClimbId = new Map();
+  // First ascent = whichever username logged the earliest ascent row for a
+  // climb — rows come back in rowid (insertion) order, so the first row
+  // seen per climb id is it; left alone on every later row for that climb.
+  const firstAscentUsernameByClimbId = new Map();
 
   for (const row of stmt.allAscentsWithUserAndClimb.all()) {
     const byUser = latestAscentByUserByClimbId.get(row.climb_id) || new Map();
     byUser.set(row.username, row);
     latestAscentByUserByClimbId.set(row.climb_id, byUser);
+
+    if (!firstAscentUsernameByClimbId.has(row.climb_id)) {
+      firstAscentUsernameByClimbId.set(row.climb_id, row.username);
+    }
 
     // Comments are deliberately unaffected by the dedupe above — every
     // repeat's comment still shows on the Info page. That's a log of
@@ -716,6 +724,7 @@ export function withAscentStats(climbs) {
       // vestigial, no new climb has had one since creation moved to
       // POST /api/climbs), so this is purely ascent-derived now.
       comments: userComments,
+      firstAscentUsername: firstAscentUsernameByClimbId.get(climb.id) || null,
     };
   });
 }

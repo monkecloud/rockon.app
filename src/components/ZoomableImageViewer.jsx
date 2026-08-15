@@ -1,12 +1,16 @@
 import { useEffect, useRef } from "react";
 import { Image as ImageIcon } from "lucide-react";
 import { styles } from "../styles.js";
+import { ClimbGradeLabel } from "./ClimbGradeLabel.jsx";
 
 // A full-height, zoomable/pannable image area with its own toolbar
 // (zoom out / percentage / zoom in / reset) that stays pinned just below
 // the persistent top bar. Uses the Pointer Events API so mouse drag,
 // touch drag, and two-finger pinch all go through the same code path.
-export function ZoomableImageViewer({ title, subtitle, photoUrl }) {
+//
+// The header is two columns: grade + setter on the left, climb name +
+// first ascent on the right, all read straight off `climb`.
+export function ZoomableImageViewer({ climb, photoUrl }) {
   const imageRef = useRef(null);
   const stageRef = useRef(null);
   // Mutable, not React state: on mobile, calling setState on every single
@@ -93,8 +97,24 @@ export function ZoomableImageViewer({ title, subtitle, photoUrl }) {
   return (
     <div>
       <div style={styles.secondaryBar}>
-        <span style={styles.secondaryBarPlaceholder}>{title}</span>
-        {subtitle && <span style={styles.secondaryBarSubtitle}>{subtitle}</span>}
+        {climb ? (
+          <>
+            <div style={styles.secondaryBarLeft}>
+              <span style={styles.secondaryBarPlaceholder}>
+                <ClimbGradeLabel climb={climb} />
+              </span>
+              <span style={styles.secondaryBarSubtitle}>Setter: {climb.setter}</span>
+            </div>
+            <div style={styles.secondaryBarRight}>
+              <span style={styles.secondaryBarPlaceholder}>{climb.name}</span>
+              <span style={styles.secondaryBarSubtitle}>
+                First Ascent: {climb.firstAscentUsername || "None"}
+              </span>
+            </div>
+          </>
+        ) : (
+          <span style={styles.secondaryBarPlaceholder}>Loading…</span>
+        )}
       </div>
 
       <div
