@@ -7,7 +7,6 @@ import { styles } from "./styles.js";
 import { TopBar } from "./components/TopBar.jsx";
 import { ClimbActionBar } from "./components/ClimbActionBar.jsx";
 import { ZoomableImageViewer } from "./components/ZoomableImageViewer.jsx";
-import { climbTitleNode } from "./components/ClimbGradeLabel.jsx";
 import { LogAscentSheet } from "./components/LogAscentSheet.jsx";
 import { HomeScreen } from "./screens/HomeScreen.jsx";
 import { ListScreen, ArchiveWallScreen } from "./screens/ListScreen.jsx";
@@ -590,13 +589,10 @@ export default function App() {
           );
         }
         if (viewingArchivedClimb) {
-          const title = climbTitleNode(viewingArchivedClimb);
-          const subtitle = `Set by ${viewingArchivedClimb.setter}`;
           return (
             <ZoomableImageViewer
               key={`${viewingArchivedClimb.wallId}::${viewingArchivedClimb.setterName}`}
-              title={title}
-              subtitle={subtitle}
+              climb={viewingArchivedClimb}
               photoUrl={viewingArchivedClimb.photoUrl}
             />
           );

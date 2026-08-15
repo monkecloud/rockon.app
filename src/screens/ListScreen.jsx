@@ -7,7 +7,6 @@ import { styles } from "../styles.js";
 import { GradeBarChart } from "../components/GradeBarChart.jsx";
 import { StarRatingDisplay } from "../components/StarRatingDisplay.jsx";
 import { ZoomableImageViewer } from "../components/ZoomableImageViewer.jsx";
-import { climbTitleNode } from "../components/ClimbGradeLabel.jsx";
 
 export function ListScreen({
   selectedItem,
@@ -36,8 +35,6 @@ export function ListScreen({
 
   if (selectedItem && selectedSubItem) {
     const climb = (climbsByWall?.[selectedItem.id] || []).find((c) => c.setterName === selectedSubItem);
-    const title = climb ? climbTitleNode(climb) : "Loading…";
-    const subtitle = climb ? `Set by ${climb.setter}` : undefined;
 
     // key forces a remount (resetting pan/zoom) whenever the climb changes,
     // rather than relying on an intermediate unmount elsewhere in the tree
@@ -45,8 +42,7 @@ export function ListScreen({
     return (
       <ZoomableImageViewer
         key={`${selectedItem.id}::${selectedSubItem}`}
-        title={title}
-        subtitle={subtitle}
+        climb={climb}
         photoUrl={climb?.photoUrl}
       />
     );

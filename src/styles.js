@@ -57,13 +57,29 @@ export const styles = {
     top: 0,
     zIndex: 5,
     display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 2,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
     padding: "10px 12px",
     background: "var(--color-surface-2)",
     borderBottom: "1px solid var(--color-border)",
+  },
+  // Left side of the climb page header: grade on top, setter underneath.
+  secondaryBarLeft: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 2,
+  },
+  // Right side: climb name on top, first ascent underneath — mirrors
+  // secondaryBarLeft but right-aligned since it sits on the opposite edge.
+  secondaryBarRight: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: 2,
+    textAlign: "right",
   },
   secondaryBarPlaceholder: {
     fontSize: 13,
