@@ -359,6 +359,22 @@ Base: `/api`. All bodies/responses JSON. Auth is the httpOnly `session` cookie
 `dist/index.html` for any non-`/api` GET. Registered **after** every route so
 `/api` always wins and unknown `/api` paths 404 properly.
 
+### 5.9 Health check & error handler (§14.12)
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/api/health` | — | Runs `db.prepare("SELECT 1").get()` against the real connection rather than only proving the process is listening — 200 `{status:"ok"}`, or 503 `{status:"error"}` if the datastore can't be read (the failure mode §14.3.1 describes: process alive, data unreadable) |
+
+A catch-all `app.use((err, req, res, next) => …)` is registered last (after
+the static fallback). Any route/middleware that throws synchronously, or an
+async handler that rejects (Express 5 auto-forwards these, unlike Express 4),
+lands here: `logError` writes one JSON line to `console.error` (timestamp,
+method, path, message, stack), and the response is `500 {"error": "Something
+went wrong."}` — deliberately JSON, since before this every uncaught error
+fell through to Express's default HTML error page, which broke every
+`apiSend`/`useFetch` call site's `res.json()` parse (§14.9), discarding the
+real error behind a `SyntaxError`.
+
 ---
 
 ## 6. Server function reference (`server/worker.js`)
@@ -897,14 +913,13 @@ failure modes that take it down until someone notices.
   old array, and the second write silently discards the first's change. Two
   people logging an ascent at the same moment loses one. Fix: serialize writes
   through a queue/mutex, or move to SQLite.
-- [~] **P1 ✅ No Express error handler.** → **DEFERRED to after SQLite, §14.12. Stopgap: set NODE_ENV=production in the systemd unit.** No `app.use((err, req, res, next) => …)`
-  is registered, so an unhandled rejection in any route falls through to
-  Express's default handler and can leak a stack trace.
+- [x] **P1 ✅ No Express error handler.** → **DONE 2026-08-15, §14.12.** `app.use((err, req, res, next) => …)`
+  is registered last, logging structured JSON and returning a clean `500`.
 - [x] **P1 ✅ Corrupt JSON is unrecoverable.** → **Dissolved by §14.3 (SQLite).**  `readUsers`/`readClimbs` handle
   `ENOENT` but rethrow parse errors, 500-ing every request with no fallback or
   backup.
-- [~] **P1 ✅ No health check endpoint.** → **DEFERRED to after SQLite, §14.12.** Nothing for systemd/uptime monitoring
-  to poll, and no way to distinguish "primary up, worker dead" from healthy.
+- [x] **P1 ✅ No health check endpoint.** → **DONE 2026-08-15, §14.12.** `GET /api/health` runs a real
+  `SELECT 1`, so it can actually tell "process alive, data unreadable" from healthy.
 - [x] **P2 ✅ `readUsers()` backfill can write concurrently.** → **Dissolved by §14.3 — backfills are deleted with the schema.**  Two requests
   arriving before the first backfill lands both compute and both write — a
   race in the recovery path itself.
@@ -1200,7 +1215,7 @@ implement 13.2-a+b using Option B."*
 | 13.6-a/b Loading & error states | P1 | ✅ **DONE 2026-08-10** — Option B: `useFetch` hook + `<Async>` wrapper, `apiSend` for writes, url-keyed `apiCache` cleared on every mutation. Verified against a real browser (§14.9). |
 | 13.7-a/b Keyboard access | P1 | ✅ **DONE 2026-08-10** — global `:focus-visible` ring in `index.css`; `ArchiveSection`'s expander + wall rows are real `<button>`s now. See §14.10 |
 | 13.9-a Zero frontend tests | P1 | ✅ **DONE 2026-08-10** — Option B, component-level coverage, both halves complete: priorities 1-2 (pure functions, `App()` state machine, §14.11a) landed before §14.16's split; priorities 3-6 (forms, derived state, data-driven/pointer-driven screens, §14.11b) landed after it, per this item's own ordering note — 96 frontend tests total. **Unblocks §14.10 Option B (CSS Modules).** See §14.11 |
-| 13.2-f/g Error handler & health check | P1 | ⏸️ **DEFERRED: Option C** (Derrick, 2026-08-10) — build after §14.3 lands. **Stopgap (`NODE_ENV=production` in the systemd unit) DONE 2026-08-10** — see §14.12. Error handler + health check itself still open |
+| 13.2-f/g Error handler & health check | P1 | ✅ **DONE 2026-08-15** — trigger fired (§14.3 SQLite landed). Built **Option B**: uniform JSON 500 + structured (one-JSON-line) error logging, plus `GET /api/health` that runs a real `SELECT 1`. See §5.9, §14.12 |
 | 13.7-c/d/e/f A11y cluster | P2 | ✅ **DONE 2026-08-10** — Option C, full closure: 6 icon-only buttons labelled, `role="alert"`/`role="status"` on form messages, tab-order leak fixed, `LogAscentSheet` is a real trapped/labelled dialog with focus restore, `StarRatingInput` is keyboard-operable (`role="slider"`, arrow/Home/End). See §14.13 |
 | 13.9-b CI | P2 | ✅ **DONE 2026-08-10** — `.github/workflows/ci.yml` (test + build). Option A, no linter. See §14.14 |
 | 13.9-c Linter | P2 | ❌ **Not being built** (Derrick, 2026-08-10) — considered and declined as part of §14.14. Stays open in §13.9 |
@@ -2499,18 +2514,28 @@ fixed, so the fix is verified:
 
 ---
 
-### 14.12 — Express error handler & health check  `P1`  ⏸️ deferred
+### 14.12 — Express error handler & health check  `P1`  ✅ DONE 2026-08-15
 
-> ## ⏸️ DECISION: **Option C — defer**
-> Chosen by Derrick, 2026-08-10. Options A (minimal handler + health route) and
-> B (plus structured logging) are **not rejected, just postponed**.
+> ## ✅ DECISION: **Option B — minimal handler + health route + structured logging**
+> Re-entry trigger (§14.3 SQLite landed) fired 2026-08-15; built same day.
+> Chosen by Derrick over Option A (handler + health route, plain
+> `console.error`) specifically for the structured (one-JSON-line) logging,
+> since this box only has `journalctl -u climbing-app` for log viewing and a
+> parseable line is easier to grep than a raw multi-line stack dump. No
+> logging library added — `logError` hand-rolls `JSON.stringify` since it's
+> the only call site. Route name: `GET /api/health`, matching the rest of the
+> `/api/*` namespace (the `/healthz` k8s convention was considered and
+> declined — this is a single systemd-supervised process, not a fleet behind
+> an orchestrator that expects that path).
 >
-> **Re-entry trigger: build this once §14.3 (SQLite) has landed.** The error
-> handler wants to distinguish DB errors specifically, so writing it after the
-> migration avoids doing it twice.
->
-> 🚨 **Do the one-line stopgap below now.** It closes the live exposure without
-> touching any code, so the deferral costs nothing.
+> **Verified**: a real, pre-existing uncaught-throw path (a malformed
+> percent-encoded `Cookie` header crashes `decodeURIComponent` inside
+> `getCookie`) now returns `500 {"error":"Something went wrong."}` with a
+> structured log line, instead of Express's default HTML error page. See
+> `server/worker.test.js`'s "Error handler (§14.12)" and "GET /api/health"
+> describe blocks — the error-handler test deliberately uses this real throw
+> rather than a mock, and the health-check failure test spies on `db.prepare`
+> to simulate the datastore being unreadable.
 
 Backlog refs: §13.2 items 5 and 7.
 

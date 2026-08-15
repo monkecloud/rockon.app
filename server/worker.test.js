@@ -1086,6 +1086,49 @@ describe("GET /api/me", () => {
   });
 });
 
+describe("Error handler (§14.12)", () => {
+  it("returns a clean 500 JSON body instead of leaking a stack trace, for a real uncaught throw", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // decodeURIComponent inside getCookie throws a real URIError on a
+    // malformed percent-encoding — a genuine unhandled-exception path
+    // (not a mock), previously left to Express's default HTML error page.
+    const res = await request(app).get("/api/me").set("Cookie", "session=%");
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: "Something went wrong." });
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const logged = JSON.parse(errorSpy.mock.calls[0][0]);
+    expect(logged).toMatchObject({ method: "GET", path: "/api/me", message: "URI malformed" });
+    expect(logged.stack).toContain("URIError");
+    expect(logged.timestamp).toEqual(expect.any(String));
+
+    errorSpy.mockRestore();
+  });
+});
+
+describe("GET /api/health", () => {
+  it("200s and touches the real DB connection", async () => {
+    const res = await request(app).get("/api/health");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: "ok" });
+  });
+
+  it("503s if the datastore can't be read, rather than reporting healthy", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const prepareSpy = vi.spyOn(db, "prepare").mockImplementationOnce(() => {
+      throw new Error("disk I/O error");
+    });
+
+    const res = await request(app).get("/api/health");
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ status: "error" });
+
+    prepareSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+});
+
 describe("PATCH-style settings routes require the caller to be the same account", () => {
   it("403s /name when acting on someone else's account", async () => {
     const { cookie } = await signup("cube");

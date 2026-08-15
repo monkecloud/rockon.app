@@ -1709,6 +1709,20 @@ app.get("/api/climbs/grade-counts", (req, res) => {
   res.json({ counts: bucketCounts(grades) });
 });
 
+// For systemd/uptime monitoring (§14.12). Touches the real DB connection
+// rather than only proving the process is listening — a process that's up
+// but can't read the database (the failure mode §14.3.1 describes) must NOT
+// report healthy, or the one external signal that matters is a lie.
+app.get("/api/health", (req, res) => {
+  try {
+    db.prepare("SELECT 1").get();
+    res.json({ status: "ok" });
+  } catch (err) {
+    logError(err, req);
+    res.status(503).json({ status: "error" });
+  }
+});
+
 // Serves the built frontend (see DIST_DIR above) so this one server/port can
 // stand in for both the Vite dev server and the API in a persistent
 // deployment — nothing else serves dist/ in production. Registered after
@@ -1723,6 +1737,34 @@ app.use(express.static(DIST_DIR));
 app.use((req, res, next) => {
   if (req.method !== "GET" || req.path.startsWith("/api")) return next();
   res.sendFile(path.join(DIST_DIR, "index.html"));
+});
+
+// One JSON line per error (§14.12 Option B) instead of a raw console.error
+// dump — a deployment that outgrows plain `journalctl -u climbing-app`
+// grepping can pipe stdout into a log aggregator without a rewrite. No
+// logging library added; this is the only call site.
+function logError(err, req) {
+  console.error(
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      method: req.method,
+      path: req.path,
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    })
+  );
+}
+
+// Express 5 auto-forwards a rejected async handler's error here too (unlike
+// Express 4, which needed every route wrapped). Registered last so it's the
+// final stop for anything an earlier route/middleware throws. Returns JSON
+// specifically — until now, an uncaught error fell through to Express's
+// default HTML error page, which broke every apiSend/useFetch call site's
+// res.json() parse (§14.9): the real error was discarded behind a
+// SyntaxError from trying to parse HTML as JSON.
+app.use((err, req, res, next) => {
+  logError(err, req);
+  res.status(500).json({ error: "Something went wrong." });
 });
 
 // Skipped under the test runner (NODE_ENV=test) so importing this module for
