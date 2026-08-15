@@ -27,21 +27,6 @@ export const GRADES_TAB = { id: "grades", label: "Grades", icon: Check };
 // have. See the visibleTabs computation in App().
 export const APPROVE_TAB = { id: "approve", label: "Approve", icon: Tag };
 
-// The 4 walls. Climbs themselves (name, grade, comments) are fetched
-// from the server at /api/climbs — see server/climbs.json — and grouped by
-// wallId; climb counts aren't hardcoded here since which climbs are
-// "current" on a wall changes as sets are reset/backfilled server-side.
-export const WALLS = [
-  { id: 1, name: "Back" },
-  { id: 2, name: "Slab" },
-  { id: 3, name: "Cave" },
-  { id: 4, name: "Front" },
-];
-
-export const LIST_ITEMS = WALLS.map((wall) => ({ id: wall.id, title: wall.name }));
-
-export const WALL_NAME_BY_ID = Object.fromEntries(WALLS.map((wall) => [wall.id, wall.name]));
-
 // Podium block heights, tallest in the middle (1st place) — left-to-right
 // display order is 2nd/1st/3rd, the standard podium arrangement.
 export const PODIUM_HEIGHTS = { 1: 64, 2: 44, 3: 30 };

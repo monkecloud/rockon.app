@@ -35,8 +35,16 @@ function signedInAs(user) {
   return { "/api/me": { body: { user } } };
 }
 
+const WALLS = [
+  { id: 1, name: "Back" },
+  { id: 2, name: "Slab" },
+  { id: 3, name: "Cave" },
+  { id: 4, name: "Front" },
+];
+
 const BASE_ROUTES = {
   "/api/climbs": { body: { climbs: [] } },
+  "/api/walls": { body: { walls: WALLS } },
 };
 
 beforeEach(() => {
@@ -266,6 +274,7 @@ describe("App() — §14.9 regression: a wall with zero current climbs", () => {
     // exact case that used to be indistinguishable from "hasn't fetched
     // yet" before the null-vs-[] fix.
     installFetchMock({
+      ...BASE_ROUTES,
       "/api/climbs": { body: { climbs: [{ wallId: 2, name: "Some Climb", setterName: "Some Climb", setter: "X", setId: "s1", setDate: "2026-01-01", setType: "reset", setterGrade: "V1" }] } },
       "/api/me": { status: 401, body: {} },
     });

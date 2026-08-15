@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, Trash2 } from "lucide-react";
-import { WALL_NAME_BY_ID } from "../constants.js";
 import { apiSend, useFetch } from "../lib/fetch.js";
+import { buildWallNameById } from "../lib/walls.js";
 import { styles } from "../styles.js";
 
 // Opened from the Approve tab (moderators/setters only). Naming rights: a
@@ -14,6 +14,8 @@ import { styles } from "../styles.js";
 // changes either way.
 export function ApproveClimbsScreen() {
   const { data: climbsData, loading, error: fetchError, retry } = useFetch("/api/climbs/needs-name-approval");
+  const { data: wallsData } = useFetch("/api/walls");
+  const wallNameById = useMemo(() => buildWallNameById(wallsData?.walls), [wallsData]);
   const [climbs, setClimbs] = useState(null);
   const [error, setError] = useState("");
   const [savingId, setSavingId] = useState(null);
@@ -65,7 +67,7 @@ export function ApproveClimbsScreen() {
               <div style={styles.climbRowLeft}>
                 <span style={styles.climbTitle}>{proposal.name}</span>
                 <span style={styles.climbSetter}>
-                  {WALL_NAME_BY_ID[climb.wallId] ?? `Wall ${climb.wallId}`} · currently "{climb.name}"
+                  {wallNameById[climb.wallId] ?? `Wall ${climb.wallId}`} · currently "{climb.name}"
                 </span>
                 <span style={styles.climbSetter}>Proposed by {proposal.claimedBy}</span>
               </div>

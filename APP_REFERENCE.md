@@ -971,6 +971,26 @@ failure modes that take it down until someone notices.
   `currentUser` is a cached snapshot. A demoted admin keeps seeing the Admin
   tab (the server correctly rejects the actions, so this is cosmetic, but
   confusing).
+- [ ] **P1 🔵 STILL OPEN — found 2026-08-15, verified in a real browser.** `useFetch`'s
+  effect (`src/lib/fetch.js`) depends on `[url]` only, not `skip` — the inline
+  comment claims this is deliberate ("including `skip` would refetch on every
+  skip toggle"), but the actual effect is that **toggling `skip` from `true`
+  to `false` after mount never fires the fetch**, since nothing re-runs the
+  effect. `App()`'s Archive section is exactly this shape
+  (`useFetch("/api/archive", { skip: !archiveExpanded })`, archiveExpanded
+  starts `false`) — **tapping "Archive" has never worked**: it expands and
+  shows "Loading…" forever, with `GET /api/archive` never actually issued
+  (confirmed via a live Playwright session: `archiveExpanded` flips, the
+  section visibly expands, and no `/api/archive` request appears in the
+  network log). Unrelated to §13.8-e/§14.3.2 (walls) — found while verifying
+  that item in a browser. `GradeBarChart`'s `useFetch(endpoint, { skip:
+  !endpoint })` has the same shape; check whether any of its call sites
+  actually change `endpoint` from falsy to truthy post-mount before assuming
+  it's affected too. Fix is presumably adding `skip` to the effect's deps (the
+  existing "refetch on every skip toggle" concern in the comment reads
+  backwards — re-running on a `skip: true → false` transition is exactly the
+  behavior wanted here; re-running on `false → true` would be a no-op change
+  since the effect returns immediately when `skip` is true).
 - [x] **P2 ✅ `setDate` is never validated as `YYYY-MM-DD`.** → **DECIDED, §14.17(d) — the highest-value item in that group.** `currentClimbsOnly`,
   `groupIntoCycles`, and `archivedClimbsByWall` all compare dates as **strings**.
   One malformed date silently corrupts which climbs are considered current on
@@ -1224,12 +1244,13 @@ implement 13.2-a+b using Option B."*
 | 13.3-d/e/f/g Climb validation | P2 | ✅ **DONE 2026-08-10** — setDate, setterGrade, grade, setter existence all validated; grade lookup now case-insensitive. See §14.17 |
 | 13.4-h/i Debounce & refetch | P2 | ✅ **DONE 2026-08-10** — Option A: 300ms debounce on the user search, `useFetch`'s `apiCache` fixes refetch-on-mount for `GradeBarChart`/`Leaderboard` for free. See §14.18 |
 | 13.8-c/f Shared grades + dev port | P2 | ✅ **DONE 2026-08-10** — `shared/grades.js` extracted, both sides import it; `vite.config.js` reads `PORT` via `loadEnv`. See §14.19 |
-| 13.8-e `WALLS` hardcoded | P2 | ⚠️ **PARTIAL 2026-08-10** — **DECIDED: fold into §14.3 as a `walls` table** (Derrick, 2026-08-10). Built: `walls` table + `GET /api/walls` (climbs are FK-enforced to a real wall now). Not yet done: the frontend isn't wired to it — `WALLS` in `src/constants.js` (post-§14.16 split) is still the hardcoded source of truth. See §14.3.2 |
+| 13.8-e `WALLS` hardcoded | P2 | ✅ **DONE 2026-08-15** — frontend now wired to `GET /api/walls`. `WALLS`/`LIST_ITEMS`/`WALL_NAME_BY_ID` removed from `src/constants.js`; `App.jsx` fetches once (`wallsFetch`, threaded into `ListScreen`/`NewWallForm`), `GradesScreen`/`ApproveClimbsScreen`/`SavedClimbsScreen` self-fetch (matching their existing zero-props pattern). New `src/lib/walls.js` (`buildWallNameById`) replaces the constant lookup. See §14.3.2 |
 | 13.5-a/b/c + 13.3-h Data-model cleanups | P2/P3 | ✅ **DECIDED: Option A — fold all four into §14.3** (Derrick, 2026-08-10) — **DONE 2026-08-10**: `archived`/`logAttempts` not migrated, `ascents.created_at` added (NULL for pre-migration rows), `ascent_claims` PK caps at 5 structurally. See §14.20. ⚠️ `createdAt` is lost for every ascent logged before the migration (23 real pre-migration ascents affected — see §14.3.2's "orphaned ascents" note for how that count was arrived at) |
 | 13.6-c/d/f Frontend UX | P2 | ✅ **DONE 2026-08-10** — Option B: `matchesClimbQuery` shared by both search boxes (in-wall now matches setter too), `GradeBarChart` renders a same-dimension skeleton instead of `null`, `ZoomableImageViewer` keyed by climb at both call sites. See §14.21 |
 | 13.6-e Optimistic UI | P2 | ⏸️ **DEFERRED** (Derrick, 2026-08-10) — cheaper after §14.9's `apiSend` lands. Stays open |
 | All 21 P3 items | P3 | ✅ **BATCH-DECIDED** (Derrick, 2026-08-10). Group 2 (stale comments, package.json, SALT_ROUNDS, reduced-motion) and Group 3 (touchmove scope, image lazy-loading, contrast, star icons, reset warning) **DONE 2026-08-10**. Groups 1 (absorbed elsewhere) and 4 (product question, not a bug) don't need standalone work. See §14.22 |
 | 13.1-f Password strength | P1 | 🔵 **STILL OPEN** — never discussed. The last undecided P1 |
+| `useFetch`'s `skip` toggle never fires | P1 | 🔵 **STILL OPEN** — found 2026-08-15 verifying §13.8-e in a browser. Archive section has never worked (see §13.3 entry). No option drafted yet |
 
 Everything else in §13 has no options drafted yet.
 
@@ -3455,3 +3476,50 @@ both call sites.
   defaults to the same number. It isn't broken, but it's unclear what a user is
   being asked for. **Needs a product call from Derrick, not an engineering
   fix** — left open deliberately.
+
+---
+
+### 14.23 — `WALLS` hardcoded → wired to `GET /api/walls`  `P2`  ✅ DONE 2026-08-15
+
+Backlog ref: §13.8 item e.
+
+The `walls` table + `GET /api/walls` route already existed (built as part of
+§14.3); this item was just the frontend catching up. `WALLS`, `LIST_ITEMS`,
+and `WALL_NAME_BY_ID` are gone from `src/constants.js` — walls are real
+server data now, so a moderator/setter adding a wall via the "+" form no
+longer needs a code change + redeploy to show up.
+
+**Two different threading patterns, matching each consumer's existing
+convention rather than introducing a third:**
+- `App.jsx` fetches once (`wallsFetch = useFetch("/api/walls")`), derives
+  `wallNameById` via the new `buildWallNameById` helper
+  (`src/lib/walls.js`), and threads `walls`/`wallNameById` into `ListScreen`
+  and `NewWallForm` as props — the same pattern `climbsByWall` already uses.
+- `GradesScreen`, `ApproveClimbsScreen`, `SavedClimbsScreen` were already
+  zero-props, self-contained screens (each already calls `useFetch` for its
+  own primary data) — matching that, they each call
+  `useFetch("/api/walls")` directly rather than gaining new props from
+  `App()`.
+
+`ListScreen`'s root wall-list view is now loading/error-aware
+(`walls === null` → "Loading walls…", `wallsError` → the same retry pattern
+`climbsError` uses) — previously immediate since `LIST_ITEMS` was a
+hardcoded constant. `ArchiveSection` gained a `wallNameById` prop, distinct
+from its pre-existing `walls` prop (archived climb groups, not the wall
+reference list — a real naming collision risk, resolved by not reusing the
+name). `NewWallForm`'s wall `<select>` is guarded against `walls` being
+`null` while loading, and a small `useEffect` picks the first wall once it
+arrives if nothing's been selected yet (the original `useState(walls?.[0]
+?.id ?? "")` only ran once, so if the form mounted before the fetch
+resolved, nothing would ever get auto-selected).
+
+**Verified**: `npm test` (616/616), a full production build
+(`npm run build`), and a live Playwright session against the real dev
+server — the Walls tab lists all 4 real wall names fetched from
+`GET /api/walls`, and drilling into "Back" shows it as the top bar title
+with real climb data underneath. See §13.3's new entry for a **pre-existing,
+unrelated bug found during this verification**: the Archive section has
+never actually loaded data in the browser (`useFetch`'s `skip` toggle
+doesn't retrigger its effect), so point 3 of the original verification plan
+(archive wall names) could only be confirmed via `ListScreen.test.jsx`'s
+prop-driven unit test and code review, not live interaction.

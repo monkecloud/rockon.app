@@ -26,10 +26,20 @@ function climb(overrides = {}) {
   };
 }
 
+const WALLS = [
+  { id: 1, name: "Back" },
+  { id: 2, name: "Slab" },
+  { id: 3, name: "Cave" },
+  { id: 4, name: "Front" },
+];
+
 function baseProps(overrides = {}) {
   return {
     selectedItem: null,
     selectedSubItem: null,
+    walls: WALLS,
+    wallsError: null,
+    onRetryWalls: vi.fn(),
     climbsByWall: null,
     climbsError: null,
     onRetryClimbs: vi.fn(),
@@ -68,6 +78,21 @@ describe("ListScreen — wall-list mode", () => {
 
     await user.click(screen.getByRole("button", { name: /back\s*1 climbs/i }));
     expect(onSelectItem).toHaveBeenCalledWith({ id: 1, title: "Back" });
+  });
+
+  it("shows 'Loading walls…' while walls is null", () => {
+    render(<ListScreen {...baseProps({ walls: null })} />);
+    expect(screen.getByText("Loading walls…")).toBeInTheDocument();
+  });
+
+  it("shows the walls fetch error with a working Retry button instead of the wall list", async () => {
+    const onRetryWalls = vi.fn();
+    const user = userEvent.setup();
+    render(<ListScreen {...baseProps({ walls: null, wallsError: "Couldn't reach the server.", onRetryWalls })} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't reach the server.");
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetryWalls).toHaveBeenCalled();
   });
 
   it("toggles the Archive section and lists its fetched walls", async () => {

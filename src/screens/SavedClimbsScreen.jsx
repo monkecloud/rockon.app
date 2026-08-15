@@ -1,5 +1,7 @@
+import { useMemo } from "react";
 import { climbDisplayGrade } from "../../shared/grades.js";
-import { WALL_NAME_BY_ID } from "../constants.js";
+import { useFetch } from "../lib/fetch.js";
+import { buildWallNameById } from "../lib/walls.js";
 import { styles } from "../styles.js";
 import { StarRatingDisplay } from "../components/StarRatingDisplay.jsx";
 
@@ -13,6 +15,9 @@ const PLACEHOLDER_SAVED_CLIMBS = [
 ];
 
 export function SavedClimbsScreen() {
+  const { data: wallsData } = useFetch("/api/walls");
+  const wallNameById = useMemo(() => buildWallNameById(wallsData?.walls), [wallsData]);
+
   return (
     <div style={styles.screen}>
       <p style={styles.placeholderText}>Saving a climb isn't wired up yet — here's what this'll look like.</p>
@@ -25,7 +30,7 @@ export function SavedClimbsScreen() {
             </div>
             <div style={styles.climbRowRight}>
               <span style={styles.climbTitle}>{climb.name}</span>
-              <span style={styles.climbSetter}>{WALL_NAME_BY_ID[climb.wallId]}</span>
+              <span style={styles.climbSetter}>{wallNameById[climb.wallId]}</span>
             </div>
           </div>
         ))}

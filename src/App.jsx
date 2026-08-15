@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { TABS, LOGGED_OUT_PROFILE_TAB, ADMIN_TAB, GRADES_TAB, APPROVE_TAB, WALLS, WALL_NAME_BY_ID, SETTINGS_OPTIONS } from "./constants.js";
+import { TABS, LOGGED_OUT_PROFILE_TAB, ADMIN_TAB, GRADES_TAB, APPROVE_TAB, SETTINGS_OPTIONS } from "./constants.js";
 import { STORAGE_KEYS, loadFromStorage, saveToStorage } from "./lib/storage.js";
 import { apiSend, useFetch } from "./lib/fetch.js";
+import { buildWallNameById } from "./lib/walls.js";
 import { styles } from "./styles.js";
 import { TopBar } from "./components/TopBar.jsx";
 import { ClimbActionBar } from "./components/ClimbActionBar.jsx";
@@ -136,6 +137,14 @@ export default function App() {
   // handleSubmitAscent below).
   const climbsFetch = useFetch("/api/climbs");
   const climbs = climbsFetch.data?.climbs ?? null;
+
+  // Walls (§13.8-e) — the walls table replaced the hardcoded WALLS constant
+  // server-side back in §14.3, but the frontend kept its own copy in
+  // src/constants.js until now. Fetched once here, same as climbs, and
+  // threaded down to whatever needs a wall's name from its id.
+  const wallsFetch = useFetch("/api/walls");
+  const walls = wallsFetch.data?.walls ?? null;
+  const wallNameById = useMemo(() => buildWallNameById(walls), [walls]);
 
   const climbsByWall = useMemo(() => {
     if (!climbs) return null;
@@ -276,7 +285,7 @@ export default function App() {
   // handleSelectListItem + handleSelectSubItem do together.
   const handleSelectSearchClimb = (climb) => {
     setActiveTab("list");
-    setSelectedListItem({ id: climb.wallId, title: WALL_NAME_BY_ID[climb.wallId] ?? "" });
+    setSelectedListItem({ id: climb.wallId, title: wallNameById[climb.wallId] ?? "" });
     setSelectedSubItem(climb.setterName);
     setShowInfo(false);
     setCreatingClimb(false);
@@ -460,7 +469,7 @@ export default function App() {
           // Opened from the "+" on the Walls root list: no wall selected
           // yet, and this always starts a new "reset" cycle rather than
           // adding to whatever's current — see NewWallForm.
-          return <NewWallForm walls={WALLS} onSave={handleCreateClimb} />;
+          return <NewWallForm walls={walls} onSave={handleCreateClimb} />;
         }
         if (filteringClimbs) {
           return (
@@ -503,6 +512,9 @@ export default function App() {
           <ListScreen
             selectedItem={selectedListItem}
             selectedSubItem={selectedSubItem}
+            walls={walls}
+            wallsError={wallsFetch.error}
+            onRetryWalls={wallsFetch.retry}
             climbsByWall={climbsByWall}
             climbsError={climbsFetch.error}
             onRetryClimbs={climbsFetch.retry}
@@ -601,6 +613,7 @@ export default function App() {
     currentUser,
     selectedListItem,
     selectedSubItem,
+    walls,
     climbsByWall,
     showInfo,
     showSettings,
@@ -653,7 +666,7 @@ export default function App() {
     showBack = true;
     handleBack = () => setViewingArchivedClimb(null);
   } else if (activeTab === "list" && viewingArchiveWallId) {
-    topBarTitle = WALL_NAME_BY_ID[viewingArchiveWallId] ?? "Archive";
+    topBarTitle = wallNameById[viewingArchiveWallId] ?? "Archive";
     showBack = true;
     handleBack = () => setViewingArchiveWallId(null);
   } else if (activeTab === "list" && selectedListItem && selectedSubItem) {

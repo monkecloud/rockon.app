@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Camera } from "lucide-react";
 import { GRADE_OPTIONS, composeSetterGrade } from "../../shared/grades.js";
 import { useFetch } from "../lib/fetch.js";
@@ -27,6 +27,14 @@ export function NewWallForm({ walls, onSave }) {
   const [saving, setSaving] = useState(false);
   const [selectedWallId, setSelectedWallId] = useState(walls?.[0]?.id ?? "");
   const [setDate, setSetDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  // walls is null until GET /api/walls resolves (§13.8-e) — the initial
+  // useState above only runs once, so if this form mounted before that
+  // fetch settled, nothing would ever be selected. Only fires while nothing
+  // has been picked yet, so it can't clobber a user's actual choice.
+  useEffect(() => {
+    if (!selectedWallId && walls?.length) setSelectedWallId(walls[0].id);
+  }, [walls, selectedWallId]);
 
   const handlePhotoChange = (e) => {
     const file = e.target.files?.[0];
@@ -95,7 +103,7 @@ export function NewWallForm({ walls, onSave }) {
             value={selectedWallId}
             onChange={(e) => setSelectedWallId(Number(e.target.value))}
           >
-            {walls.map((wall) => (
+            {(walls || []).map((wall) => (
               <option key={wall.id} value={wall.id}>
                 {wall.name}
               </option>

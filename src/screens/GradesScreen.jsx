@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
 import { GRADE_OPTIONS } from "../../shared/grades.js";
-import { WALL_NAME_BY_ID } from "../constants.js";
 import { apiSend, useFetch } from "../lib/fetch.js";
+import { buildWallNameById } from "../lib/walls.js";
 import { styles } from "../styles.js";
 
 // Opened from the Grades tab (admin only). Lists every climb that's been
@@ -13,6 +13,8 @@ import { styles } from "../styles.js";
 // confirms it and drops the row from this list.
 export function GradesScreen() {
   const { data: climbsData, loading, error: fetchError, retry } = useFetch("/api/climbs/needs-grade");
+  const { data: wallsData } = useFetch("/api/walls");
+  const wallNameById = useMemo(() => buildWallNameById(wallsData?.walls), [wallsData]);
   const [climbs, setClimbs] = useState(null);
   const [error, setError] = useState("");
   const [gradeByKey, setGradeByKey] = useState({});
@@ -62,7 +64,7 @@ export function GradesScreen() {
               <div style={styles.climbRowLeft}>
                 <span style={styles.climbTitle}>{climb.name}</span>
                 <span style={styles.climbSetter}>
-                  {WALL_NAME_BY_ID[climb.wallId] ?? `Wall ${climb.wallId}`} · Set by {climb.setter}
+                  {wallNameById[climb.wallId] ?? `Wall ${climb.wallId}`} · Set by {climb.setter}
                 </span>
                 <span style={styles.climbSetter}>Setter grade: {climb.setterGrade}</span>
               </div>

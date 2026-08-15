@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronRight, Filter } from "lucide-react";
 import { bucketCounts, climbBucketGrade, climbDisplayGrade } from "../../shared/grades.js";
-import { LIST_ITEMS, WALL_NAME_BY_ID } from "../constants.js";
 import { matchesClimbQuery, sortClimbs } from "../lib/climbs.js";
+import { buildWallNameById } from "../lib/walls.js";
 import { styles } from "../styles.js";
 import { GradeBarChart } from "../components/GradeBarChart.jsx";
 import { StarRatingDisplay } from "../components/StarRatingDisplay.jsx";
@@ -12,6 +12,9 @@ import { climbTitleNode } from "../components/ClimbGradeLabel.jsx";
 export function ListScreen({
   selectedItem,
   selectedSubItem,
+  walls,
+  wallsError,
+  onRetryWalls,
   climbsByWall,
   climbsError,
   onRetryClimbs,
@@ -29,6 +32,7 @@ export function ListScreen({
   showBackfillClimbs,
 }) {
   const [climbSearch, setClimbSearch] = useState("");
+  const wallNameById = useMemo(() => buildWallNameById(walls), [walls]);
 
   if (selectedItem && selectedSubItem) {
     const climb = (climbsByWall?.[selectedItem.id] || []).find((c) => c.setterName === selectedSubItem);
@@ -136,18 +140,34 @@ export function ListScreen({
   return (
     <div style={styles.screen}>
       <div style={{ ...styles.list, gap: 0, marginLeft: -20, marginRight: -20 }}>
-        {LIST_ITEMS.map((item) => (
-          <button key={item.id} style={styles.wallRow} onClick={() => onSelectItem(item)}>
-            <div>
-              <p style={styles.listTitle}>{item.title}</p>
-              <p style={styles.listMeta}>{(climbsByWall?.[item.id] || []).length} climbs</p>
-            </div>
-            <ChevronRight size={18} color="var(--color-text-muted)" />
-          </button>
-        ))}
+        {wallsError ? (
+          <div style={styles.asyncError}>
+            <p style={styles.formError} role="alert">{wallsError}</p>
+            <button type="button" style={styles.retryButton} onClick={onRetryWalls}>
+              Retry
+            </button>
+          </div>
+        ) : walls === null ? (
+          <p style={styles.placeholderText}>Loading walls…</p>
+        ) : (
+          walls.map((wall) => (
+            <button
+              key={wall.id}
+              style={styles.wallRow}
+              onClick={() => onSelectItem({ id: wall.id, title: wall.name })}
+            >
+              <div>
+                <p style={styles.listTitle}>{wall.name}</p>
+                <p style={styles.listMeta}>{(climbsByWall?.[wall.id] || []).length} climbs</p>
+              </div>
+              <ChevronRight size={18} color="var(--color-text-muted)" />
+            </button>
+          ))
+        )}
         <ArchiveSection
           expanded={archiveExpanded}
           walls={archiveWalls}
+          wallNameById={wallNameById}
           error={archiveError}
           onRetry={onRetryArchive}
           onToggle={onToggleArchive}
@@ -170,7 +190,7 @@ export function ListScreen({
 // survives ListScreen unmounting — e.g. switching tabs away and back, or
 // drilling into a wall/climb and backing out — instead of resetting every
 // time this component remounts.
-export function ArchiveSection({ expanded, walls, error, onRetry, onToggle, onSelectWall }) {
+export function ArchiveSection({ expanded, walls, wallNameById, error, onRetry, onToggle, onSelectWall }) {
   return (
     <>
       <button type="button" style={styles.archiveBar} onClick={onToggle}>
@@ -204,7 +224,7 @@ export function ArchiveSection({ expanded, walls, error, onRetry, onToggle, onSe
             >
               <div>
                 <p style={styles.listTitle}>
-                  {WALL_NAME_BY_ID[wall.wallId] ?? `Wall ${wall.wallId}`}
+                  {wallNameById[wall.wallId] ?? `Wall ${wall.wallId}`}
                 </p>
                 <p style={styles.listMeta}>{wall.climbs.length} climbs</p>
               </div>
