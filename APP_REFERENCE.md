@@ -971,26 +971,16 @@ failure modes that take it down until someone notices.
   `currentUser` is a cached snapshot. A demoted admin keeps seeing the Admin
   tab (the server correctly rejects the actions, so this is cosmetic, but
   confusing).
-- [ ] **P1 🔵 STILL OPEN — found 2026-08-15, verified in a real browser.** `useFetch`'s
-  effect (`src/lib/fetch.js`) depends on `[url]` only, not `skip` — the inline
-  comment claims this is deliberate ("including `skip` would refetch on every
-  skip toggle"), but the actual effect is that **toggling `skip` from `true`
-  to `false` after mount never fires the fetch**, since nothing re-runs the
-  effect. `App()`'s Archive section is exactly this shape
-  (`useFetch("/api/archive", { skip: !archiveExpanded })`, archiveExpanded
-  starts `false`) — **tapping "Archive" has never worked**: it expands and
-  shows "Loading…" forever, with `GET /api/archive` never actually issued
-  (confirmed via a live Playwright session: `archiveExpanded` flips, the
-  section visibly expands, and no `/api/archive` request appears in the
-  network log). Unrelated to §13.8-e/§14.3.2 (walls) — found while verifying
-  that item in a browser. `GradeBarChart`'s `useFetch(endpoint, { skip:
-  !endpoint })` has the same shape; check whether any of its call sites
-  actually change `endpoint` from falsy to truthy post-mount before assuming
-  it's affected too. Fix is presumably adding `skip` to the effect's deps (the
-  existing "refetch on every skip toggle" concern in the comment reads
-  backwards — re-running on a `skip: true → false` transition is exactly the
-  behavior wanted here; re-running on `false → true` would be a no-op change
-  since the effect returns immediately when `skip` is true).
+- [x] **P1 ✅ `useFetch`'s effect deps omitted `skip` and `nonce`.** → **FIXED 2026-08-15, §14.24.**
+  Found 2026-08-15 verifying §13.8-e in a real browser. Worse than the
+  Archive section alone: **`retry()` — every "Retry" button in the app —
+  was a no-op**, confirmed with an isolated probe against a mocked failing
+  fetch (`calls` stayed at 1 after clicking Retry). Both bugs shared one
+  cause: the effect only depended on `[url]`, so neither `setNonce` (from
+  `retry()`) nor a `skip: true → false` transition ever re-ran it. Fixed by
+  adding `skip`/`nonce` to the deps; see §14.24 for why that's safe for
+  every other `useFetch` call site (none of which vary `skip` after mount)
+  and doesn't reintroduce a refetch-on-every-toggle problem.
 - [x] **P2 ✅ `setDate` is never validated as `YYYY-MM-DD`.** → **DECIDED, §14.17(d) — the highest-value item in that group.** `currentClimbsOnly`,
   `groupIntoCycles`, and `archivedClimbsByWall` all compare dates as **strings**.
   One malformed date silently corrupts which climbs are considered current on
@@ -1250,7 +1240,7 @@ implement 13.2-a+b using Option B."*
 | 13.6-e Optimistic UI | P2 | ⏸️ **DEFERRED** (Derrick, 2026-08-10) — cheaper after §14.9's `apiSend` lands. Stays open |
 | All 21 P3 items | P3 | ✅ **BATCH-DECIDED** (Derrick, 2026-08-10). Group 2 (stale comments, package.json, SALT_ROUNDS, reduced-motion) and Group 3 (touchmove scope, image lazy-loading, contrast, star icons, reset warning) **DONE 2026-08-10**. Groups 1 (absorbed elsewhere) and 4 (product question, not a bug) don't need standalone work. See §14.22 |
 | 13.1-f Password strength | P1 | 🔵 **STILL OPEN** — never discussed. The last undecided P1 |
-| `useFetch`'s `skip` toggle never fires | P1 | 🔵 **STILL OPEN** — found 2026-08-15 verifying §13.8-e in a browser. Archive section has never worked (see §13.3 entry). No option drafted yet |
+| `useFetch`'s `skip`/`nonce` deps bug | P1 | ✅ **DONE 2026-08-15** — found verifying §13.8-e in a browser; fixed same day. `retry()` (every Retry button) and Archive (skip-gated fetch) both silently never worked. See §14.24 |
 
 Everything else in §13 has no options drafted yet.
 
@@ -3517,9 +3507,65 @@ resolved, nothing would ever get auto-selected).
 (`npm run build`), and a live Playwright session against the real dev
 server — the Walls tab lists all 4 real wall names fetched from
 `GET /api/walls`, and drilling into "Back" shows it as the top bar title
-with real climb data underneath. See §13.3's new entry for a **pre-existing,
-unrelated bug found during this verification**: the Archive section has
-never actually loaded data in the browser (`useFetch`'s `skip` toggle
-doesn't retrigger its effect), so point 3 of the original verification plan
-(archive wall names) could only be confirmed via `ListScreen.test.jsx`'s
-prop-driven unit test and code review, not live interaction.
+with real climb data underneath. Point 3 of the original verification plan
+(archive wall names) turned up a separate, pre-existing bug — see §14.24 —
+that also blocked verifying it live at the time; once that landed, the
+Archive section was re-verified in the same session and does show the
+correct wall names.
+
+---
+
+### 14.24 — `useFetch`'s `skip`/`nonce` effect-deps bug  `P1`  ✅ DONE 2026-08-15
+
+Backlog ref: §13.3, found while verifying §13.8-e (§14.23) in a browser, not
+a pre-planned backlog item.
+
+**What was broken.** `useFetch`'s effect (`src/lib/fetch.js`) had
+`}, [url]);` as its dependency array — `skip` and `nonce` were read inside
+the effect but not listed, with a comment claiming this was deliberate
+("including `skip` would refetch on every skip toggle"). Since React only
+re-runs an effect when a *listed* dependency changes, neither actually
+worked:
+
+- **`retry()`** calls `setNonce(n => n + 1)`. That's a state update (causes
+  a re-render), but with `nonce` absent from the deps, the effect that
+  already ran keeps closing over the value it captured at mount — the
+  re-render never re-triggers it. **Every "Retry" button in the app
+  (`<Async>`'s error branch, used everywhere) silently did nothing.**
+- **`skip: true → false`** (`App()`'s `useFetch("/api/archive", { skip:
+  !archiveExpanded })`, `GradeBarChart`'s `useFetch(endpoint, { skip:
+  !endpoint })`) has the same problem — the effect's mount-time run hit
+  `if (skip) return` and exited before fetching anything; nothing re-runs
+  it once `skip` later becomes `false`. **The Archive section has never
+  loaded data in a real browser** — tapping it expands the section and
+  shows "Loading…" forever.
+
+**Verified empirically**, not just by reading the code: an isolated probe
+component rendered against a mocked `fetch` that fails once then succeeds
+showed `retry()` never issuing a second request (call count stuck at 1,
+state stuck on the error) before the fix, and recovering correctly after.
+A live Playwright session against the real dev server showed `skip:
+!archiveExpanded` flipping, the Archive section visibly expanding, and
+`GET /api/archive` never appearing in the network log — before the fix.
+
+**Fix**: `}, [url, skip, nonce]);`. Confirmed safe for every *other*
+`useFetch` call site (climbs, walls, leaderboard, grade-counts,
+needs-grade, needs-name-approval, setters, user search, follow lists) —
+none of them vary `skip` after mount, so `skip` being a stable `false`
+(or omitted) changes nothing for them; only the two skip-gated call sites
+above are affected. The original comment's "refetch on every skip toggle"
+concern doesn't materialize: a `skip: false → true` transition still just
+hits the early return and changes nothing, and a `skip: true → false`
+transition after the underlying data is already cached serves from
+`apiCache` rather than re-fetching (same `nonce === 0 && apiCache.has(url)`
+branch as before) — so repeatedly collapsing/re-expanding Archive still
+costs one network request total, exactly as the existing usage comment in
+`App.jsx` already promised.
+
+**New regression coverage**: `src/test/fetch.test.jsx` (didn't exist
+before — nothing exercised the real hook; every other test either mocks
+`useFetch`'s return value or drives a component's `onRetry` prop directly).
+Confirmed each new test actually catches the bug by reverting the fix and
+re-running: the retry-recovery and skip-fetches-once tests fail against the
+old `[url]`-only deps, and the two "doesn't over-fetch" tests still pass
+(they were never broken, and stay that way).

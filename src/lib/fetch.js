@@ -62,11 +62,19 @@ export function useFetch(url, { skip = false } = {}) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `skip` and
-    // `nonce` are read above but only `url` should re-trigger the base
-    // fetch; `nonce` incrementing (via retry()) is what re-runs it on
-    // demand, and including `skip` would refetch on every skip toggle.
-  }, [url]);
+    // `nonce` in the deps is what makes retry() actually re-run this effect
+    // — setNonce alone only triggers a re-render, not a re-fetch, without
+    // it. `skip` has to be in the deps too, for the same reason: a
+    // skip:true -> false transition (e.g. ArchiveSection expanding) must
+    // re-run the effect to fetch at all, since the mount-time run returned
+    // immediately at the `if (skip) return` above and nothing else
+    // schedules a fetch afterward. Both were previously omitted — verified
+    // via a probe against a mocked fetch that neither retry() nor a skip
+    // flip actually issued a second request; every "Retry" button in the
+    // app was silently a no-op, and any skip-gated useFetch (ArchiveSection)
+    // could never load. A `skip: false -> true` transition still costs
+    // nothing extra: the effect just hits the early return again.
+  }, [url, skip, nonce]);
 
   return { ...state, retry: () => setNonce((n) => n + 1) };
 }
