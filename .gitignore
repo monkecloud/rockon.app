@@ -20,3 +20,8 @@ server/climbing.db-shm
 # that couldn't be matched to any climb -- includes usernames, so treated
 # like the .db file above rather than committed.
 server/orphaned-ascents.json
+
+# Avatar/climb-photo uploads (§14.5 step 2) -- content-addressed files
+# written by saveDataUrlImage in server/worker.js. A second piece of state
+# alongside climbing.db; back it up the same way, outside git.
+server/uploads/

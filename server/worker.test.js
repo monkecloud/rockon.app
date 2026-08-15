@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import crypto from "crypto";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import bcrypt from "bcryptjs";
 import request from "supertest";
 
@@ -9,6 +12,14 @@ process.env.NODE_ENV = "test";
 // datastore's tests did (§14.3). Tables are wiped and reseeded per test via
 // the seedUsers/seedClimbs helpers below, not per file.
 process.env.DB_PATH = ":memory:";
+// A throwaway directory for saveDataUrlImage's writes (§14.5 step 2) so test
+// runs don't litter the real server/uploads/.
+process.env.UPLOADS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "uploads-test-"));
+
+// The smallest valid PNG (a 1x1 transparent pixel) — real magic bytes so it
+// passes saveDataUrlImage's sniffing, unlike an arbitrary base64 string.
+const TINY_PNG_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
 const { db } = await import("./db.js");
 
@@ -1101,14 +1112,26 @@ describe("POST /api/users/:username/avatar", () => {
     expect(res.status).toBe(400);
   });
 
-  it("sets the avatar", async () => {
+  it("400s on a data URL that isn't a real image", async () => {
     const { cookie } = await signup("cube");
     const res = await request(app)
       .post("/api/users/cube/avatar")
       .set("Cookie", cookie)
       .send({ avatarUrl: "data:image/png;base64,xyz" });
+    expect(res.status).toBe(400);
+  });
+
+  it("sets the avatar, saving it to disk under a content-hash filename", async () => {
+    const { cookie } = await signup("cube");
+    const res = await request(app)
+      .post("/api/users/cube/avatar")
+      .set("Cookie", cookie)
+      .send({ avatarUrl: TINY_PNG_DATA_URL });
     expect(res.status).toBe(200);
-    expect(res.body.user.avatarUrl).toBe("data:image/png;base64,xyz");
+    expect(res.body.user.avatarUrl).toMatch(/^\/uploads\/[0-9a-f]{32}\.png$/);
+
+    const savedPath = path.join(process.env.UPLOADS_DIR, path.basename(res.body.user.avatarUrl));
+    expect(fs.existsSync(savedPath)).toBe(true);
   });
 });
 

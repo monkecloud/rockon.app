@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
@@ -83,6 +84,70 @@ const __dirname = path.dirname(__filename);
 // Vite dev server on 5173 serves the UI and only proxies /api here — see
 // vite.config.js), so it's fine that DIST_DIR won't exist yet in that mode.
 const DIST_DIR = path.join(__dirname, "..", "dist");
+
+// Avatars and climb photos used to be stored as base64 data URLs directly in
+// the database (§14.5) — every app load re-downloaded every photo inline in
+// the JSON response, with none of the caching a real file gets. UPLOADS_DIR
+// is overridable (mirrors DB_PATH's pattern) so tests write to a throwaway
+// directory instead of littering the real one.
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, "uploads");
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+// Generous for a climb photo/avatar; the outer express.json 5 MB body limit
+// (set below) still bounds the request itself.
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+
+// Sniffed from the decoded bytes, never the client-declared data: URL MIME
+// type — that's attacker-controlled and must not be trusted (§14.5 step 2).
+const IMAGE_SNIFFERS = [
+  {
+    ext: "png",
+    check: (buf) =>
+      buf.length >= 8 &&
+      buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+      buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a,
+  },
+  {
+    ext: "jpg",
+    check: (buf) => buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff,
+  },
+  {
+    ext: "webp",
+    check: (buf) =>
+      buf.length >= 12 &&
+      buf.toString("ascii", 0, 4) === "RIFF" &&
+      buf.toString("ascii", 8, 12) === "WEBP",
+  },
+];
+
+class ImageValidationError extends Error {}
+
+// Decodes a data:image/...;base64,... upload, validates it by its actual
+// decoded bytes, and writes it to UPLOADS_DIR under a content-hash filename
+// — identical uploads dedupe for free, and a content-addressed URL can be
+// cached forever (see the express.static mount below). Returns the
+// "/uploads/<name>" path to store in place of the old inline data URL.
+function saveDataUrlImage(dataUrl) {
+  const match = /^data:image\/(?:png|jpeg|webp);base64,([a-z0-9+/=]+)$/is.exec(dataUrl || "");
+  if (!match) {
+    throw new ImageValidationError("Image must be a PNG, JPEG, or WebP data URL.");
+  }
+  const buffer = Buffer.from(match[1], "base64");
+  if (buffer.length === 0 || buffer.length > MAX_IMAGE_BYTES) {
+    throw new ImageValidationError("Image must be under 2 MB.");
+  }
+  const sniffer = IMAGE_SNIFFERS.find((s) => s.check(buffer));
+  if (!sniffer) {
+    throw new ImageValidationError("Unrecognized image format.");
+  }
+  const hash = crypto.createHash("sha256").update(buffer).digest("hex").slice(0, 32);
+  const filename = `${hash}.${sniffer.ext}`;
+  const filePath = path.join(UPLOADS_DIR, filename);
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, buffer);
+  }
+  return `/uploads/${filename}`;
+}
 
 export const app = express();
 // "loopback" trusts X-Forwarded-* headers only from a proxy connecting via
@@ -945,7 +1010,17 @@ app.post("/api/users/:username/avatar", authenticate, requireSelf, (req, res) =>
     return res.status(400).json({ error: "An image is required." });
   }
 
-  stmt.updateUserAvatar.run(avatarUrl, req.user.id);
+  let savedAvatarUrl;
+  try {
+    savedAvatarUrl = saveDataUrlImage(avatarUrl);
+  } catch (err) {
+    if (err instanceof ImageValidationError) {
+      return res.status(400).json({ error: err.message });
+    }
+    throw err;
+  }
+
+  stmt.updateUserAvatar.run(savedAvatarUrl, req.user.id);
   const user = mapUserRow(stmt.getUserById.get(req.user.id));
   const ctx = buildAscentCountContext();
   res.json({ user: toClientUser(user, ascentCountForUser(user.id, ctx)) });
@@ -1260,6 +1335,18 @@ app.post("/api/climbs", authenticate, requireModeratorOrSetter, (req, res) => {
     return res.status(400).json({ error: "Unknown setter." });
   }
 
+  let savedPhotoUrl = "";
+  if (photoUrl) {
+    try {
+      savedPhotoUrl = saveDataUrlImage(photoUrl);
+    } catch (err) {
+      if (err instanceof ImageValidationError) {
+        return res.status(400).json({ error: err.message });
+      }
+      throw err;
+    }
+  }
+
   const resolvedSetDate = setDate || new Date().toISOString().slice(0, 10);
   const resolvedSetType = setType === "reset" ? "reset" : "backfill";
 
@@ -1272,7 +1359,7 @@ app.post("/api/climbs", authenticate, requireModeratorOrSetter, (req, res) => {
       trimmedSetterGrade,
       "", // grade — not confirmed yet, see POST /api/climbs/grade
       trimmedSetter,
-      photoUrl || "",
+      savedPhotoUrl,
       crypto.randomUUID(),
       resolvedSetDate,
       resolvedSetType
@@ -1628,6 +1715,10 @@ app.get("/api/climbs/grade-counts", (req, res) => {
 // every /api route above so those always win; falls through to index.html
 // for anything else (client-side routing), except /api itself, which should
 // 404 through Express's default handler rather than get index.html back.
+// Content-addressed filenames (see saveDataUrlImage above) mean these are
+// safe to cache forever — registered ahead of the DIST_DIR fallback below so
+// the SPA catch-all never swallows an /uploads request.
+app.use("/uploads", express.static(UPLOADS_DIR, { maxAge: "1y", immutable: true }));
 app.use(express.static(DIST_DIR));
 app.use((req, res, next) => {
   if (req.method !== "GET" || req.path.startsWith("/api")) return next();

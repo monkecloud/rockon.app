@@ -307,7 +307,7 @@ Base: `/api`. All bodies/responses JSON. Auth is the httpOnly `session` cookie
 | Method | Path | Body | Notes |
 |---|---|---|---|
 | POST | `/api/users/:username/name` | `{name}` | Trimmed |
-| POST | `/api/users/:username/avatar` | `{avatarUrl}` | base64 data URL, stored inline. Body limit is 5mb |
+| POST | `/api/users/:username/avatar` | `{avatarUrl}` | base64 data URL (5mb body limit). Validated by decoded magic bytes (png/jpeg/webp), capped at 2mb decoded, written to `server/uploads/<hash>.<ext>` (§14.5 step 2) — stores a `/uploads/...` path, not the data URL itself |
 | POST | `/api/users/:username/username` | `{newUsername}` | 409 if taken. Pure case changes on your own name allowed. **Does not cascade into others' followers/following** |
 | POST | `/api/users/:username/password` | `{currentPassword, newPassword}` | `currentPassword` skipped when `passwordHash` is `""` |
 | DELETE | `/api/users/:username/ascents/:ascentId/comment` | — | Blanks `ascent.comment` only; the rest of the ascent survives |
@@ -764,18 +764,21 @@ or rejects it on the Approve tab. Approving sets `climb.name` only —
    mutable, display-only `name` without orphaning ascents. Anything that
    still keys off `climb.name` instead of `climb.setterName` will break the
    moment a name proposal is approved.
-2. **Base64 images inline in the database.** Avatars and climb photos are
-   stored as data URLs directly in `users.avatar_url`/`climbs.photo_url` TEXT
-   columns — moving to SQLite didn't change this. One oversized test photo
-   was stripped and `compression` added (§14.5 step 1), so this isn't
-   biting yet, but nothing stops the next real upload from growing the
-   database the same way. Body limit is 5 MB. This will not scale — real
-   file storage (§14.5 step 2, not yet built) is the eventual fix.
+2. ~~Base64 images inline in the database.~~ **RESOLVED 2026-08-15** — §14.5
+   step 2 shipped: `saveDataUrlImage` in `server/worker.js` decodes, sniffs
+   magic bytes (never the client-declared MIME type), caps at 2 MB, and
+   writes to `server/uploads/<sha256-hash>.<ext>`; `users.avatar_url` /
+   `climbs.photo_url` now store a `/uploads/...` path, served via
+   `express.static` with a 1-year immutable cache header. No frontend
+   changes needed — the client already POSTed a data URL and renders
+   whatever URL comes back.
 3. **Duplicate `setterName`s are rejected across all history**, not just the
    current set — so a name can never be reused on a wall at creation time
    (`UNIQUE (wall_id, setter_name)`). `name` (the mutable display name) has
-   no such uniqueness check.
-4. **The root `App.jsx` is stale.** Only `src/App.jsx` is built.
+   no such uniqueness check. **Discussed 2026-08-15 — leave as-is** (Derrick);
+   not a reported problem, no one has hit it.
+4. ~~The root `App.jsx` is stale.~~ **RESOLVED** — it no longer exists in the
+   working tree (last touched in the initial commit); this note was stale.
 
 Retired by the SQLite migration (§14.3), kept here only so a stale mental
 model doesn't linger: **worker memory is no longer disposable** (there's no
@@ -1190,7 +1193,7 @@ implement 13.2-a+b using Option B."*
 | 13.2-c+d Atomic writes & locking | P0 | ✅ **DONE 2026-08-10** — Option D, SQLite (`node:sqlite`). See §14.3 |
 | 13.2-e Hot-swap is a no-op | P0 | ✅ **DONE 2026-08-10** — Option (ii), `server/index.js`/`index.test.js` deleted, `worker.js` binds `PORT` directly |
 | 13.1-b Login rate limiting | P0 | ✅ **DONE 2026-08-10** — hand-rolled dual-key (IP+username) escalating-delay limiter on login; signup gets it too (IP-only, every attempt counts). See §14.4 |
-| 13.4-a/b/c Payload trio | P1 | ✅ **Step 1 DONE 2026-08-10** — picturetest climb deleted, `compression` added. **Step 2 (Option B, files on disk) not started.** See §14.5 |
+| 13.4-a/b/c Payload trio | P1 | ✅ **DONE** — Step 1 (2026-08-10): picturetest climb deleted, `compression` added. **Step 2 (2026-08-15): Option B, files on disk** — `saveDataUrlImage` validates+writes to `server/uploads/`, served via `express.static` with 1yr cache. See §14.5 |
 | 13.3-a Ascent validation | P1 | ✅ **DONE 2026-08-10** — validate-then-mutate, `isLoggable`, repeats allowed but counted distinct across all 5 call sites. See §14.6 |
 | 13.3-b Stale `ascentCount` | P1 | ✅ **DONE 2026-08-10** — dropped the stored field entirely, derived on read via `computeAscentCount`+`currentClimbKeys`. See §14.7 |
 | 13.3-c Client trusts localStorage | P1 | ✅ **DONE 2026-08-10** — `GET /api/me` called on mount, verified in a real browser. See §14.8. ⚠️ Mid-session expiry still unhandled — tracked as a separate open item |
@@ -1767,16 +1770,17 @@ scope for this item, but the same limiter covers it in one extra line.
 
 ---
 
-### 14.5 — Payload trio: the 1 MB photo, compression, base64 storage  `P1`  ✅ decided
+### 14.5 — Payload trio: the 1 MB photo, compression, base64 storage  `P1`  ✅ DONE 2026-08-15
 
 > ## ✅ DECISION: immediate fix, then **Option B — files on disk**
 > Chosen by Derrick, 2026-08-10. Options A (cap size, keep base64) and C (BLOBs
 > in SQLite) are recorded as **rejected**.
 >
-> ⏳ **Do this soon.** Verified 2026-08-10: **exactly one image exists in the
-> entire system** — the `picturetest` photo being deleted in step 1 — and zero
-> avatars. So Option B needs **no data migration at all** if built now. That
-> cost is zero today and rises with every photo anyone uploads.
+> **Both steps done.** Step 1 landed 2026-08-10. Step 2 landed 2026-08-15 as
+> drafted below — no data migration needed (zero real images existed at the
+> time), `UPLOADS_DIR` env var mirrors `DB_PATH`'s override pattern so tests
+> write to a throwaway temp dir, and `server/worker.test.js`'s avatar tests
+> now exercise a real 1x1 PNG instead of a fake base64 string.
 
 Backlog refs: §13.4 items 1, 2, 3.
 
