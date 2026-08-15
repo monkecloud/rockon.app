@@ -1,0 +1,45 @@
+# systemd unit for the second app instance, reached at api.cubesnail.rip.
+#
+# The front proxy (fwder.front.monke) terminates TLS and forwards each
+# hostname straight to a port on this machine:
+#
+#   cubesnail.rip      -> :80     (Caddy, static files from /var/www/html)
+#   app.cubesnail.rip  -> :25100  (climbing-app)
+#   api.cubesnail.rip  -> :25101  (this unit)
+#
+# So the port below is load-bearing: it must match the front proxy's
+# upstream, and ufw has to allow it, or the proxy gets a 502.
+#
+# Install:
+#   sudo cp deploy/climbing-api.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now climbing-api
+
+[Unit]
+Description=Climbing app API instance (api.cubesnail.rip, port 25101)
+After=network.target
+# Give up after 5 restarts in 5 minutes and land in a failed state rather
+# than retrying a broken build or crash-on-import every 5s forever.
+# These are [Unit] keys, not [Service] — systemd ignores them in [Service].
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
+[Service]
+Type=simple
+User=cubesnail
+WorkingDirectory=/home/cubesnail/app/site
+# Reachable from the public internet through the front proxy, so keep
+# Express's default error handler from leaking stack traces in 500s. The
+# session cookie's `secure` flag comes from req.secure, not NODE_ENV, so
+# this is correct regardless of how the request arrives.
+Environment=NODE_ENV=production
+Environment=PORT=25101
+# No ExecStartPre=npm run build here, unlike climbing-app.service: both
+# units share one dist/ directory, and two concurrent `vite build` runs
+# writing the same output would race. climbing-app owns the build.
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
