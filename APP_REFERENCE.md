@@ -147,8 +147,14 @@ runtime, and no longer committed either (§14.1, done 2026-08-15): both are
 real data, gitignored now. The script falls back to the committed,
 sanitized `server/*.example.json` when the real files aren't present (a
 fresh clone). Re-runnable — wipes and reseeds every table from whichever
-pair it found each time. `server/climbing.db` itself is also gitignored
-and needs its own backup story in any real deployment.
+pair it found each time. `server/climbing.db` itself is also gitignored —
+continuously tracking it would mean a fresh commit per login/ascent/comment
+and would recommit live credentials into history forever, the same problem
+§14.1 just fixed for the JSON files. `backups/` holds occasional manual,
+dated snapshots instead (not automated — see `backups/README.md`); that's
+a deliberate exception to the gitignore rule, not an ongoing backup
+strategy. A real deployment still needs its own actual backup story
+outside git.
 
 ### 4.1 `climbs` table
 
