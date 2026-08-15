@@ -11,8 +11,10 @@ import { vi } from "vitest";
 // `routes` keys are "METHOD path" (path only implies GET), matched against
 // the request URL's pathname (query string ignored) so
 // "/api/users/alice/follow" and "/api/users/bob/follow" share one entry.
-// A value is either a static { status, body } or a function
-// (url, init) => { status, body }.
+// A value is either a static { status, body }, a function
+// (url, init) => { status, body }, or a function returning a Promise of one
+// — the latter lets a test hold a request pending (e.g. to inspect
+// optimistic-update state, §13.6-e) and resolve it on demand.
 export function installFetchMock(routes = {}) {
   const calls = [];
 
@@ -23,7 +25,7 @@ export function installFetchMock(routes = {}) {
     calls.push({ url, method, pathname, init });
 
     const entry = routes[`${method} ${pathname}`] ?? (method === "GET" ? routes[pathname] : undefined);
-    const resolved = typeof entry === "function" ? entry(url, init) : entry;
+    const resolved = await (typeof entry === "function" ? entry(url, init) : entry);
     if (resolved?.networkError) throw new TypeError("Failed to fetch");
     const { status = 200, body = {} } = resolved ?? {};
 

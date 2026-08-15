@@ -111,6 +111,10 @@ export default function App() {
   // a follow/following list can lead to viewing yet another profile on
   // top of the one you were already on.
   const [searchStack, setSearchStack] = useState([]);
+  // Username currently mid-follow-toggle (§13.6-e) — disables that user's
+  // Follow/Unfollow button for the round trip so a double-tap can't fire a
+  // second request on top of the optimistic update below.
+  const [followTogglePending, setFollowTogglePending] = useState(null);
   // Set only when the search stack's bottom entry came from the Leaderboard
   // (see handleSelectLeaderboardUser) rather than the Search tab itself, so
   // backing out of it returns to the tab it was opened from instead of
@@ -341,29 +345,61 @@ export default function App() {
     });
   };
 
-  // Shared by UserProfileScreen's Follow/Unfollow button — hits whichever
-  // endpoint matches the requested direction, then patches every stacked
-  // profile entry for that user (there's no single "get this user's
-  // profile" endpoint; the stack entry is the same search-result-shaped
-  // object this patches) rather than refetching.
+  // Shared by UserProfileScreen's Follow/Unfollow button — patches every
+  // stacked profile entry for that user (there's no single "get this
+  // user's profile" endpoint; the stack entry is the same
+  // search-result-shaped object this patches) rather than refetching.
+  //
+  // Optimistic (§13.6-e): flips isFollowing/followersCount immediately,
+  // before the request resolves — the round trip used to be the only thing
+  // that made the button feel like it worked. followTogglePending disables
+  // the button meanwhile so a double-tap can't race two toggles against
+  // each other. On success, the server's response (the actual new
+  // followersCount, not just a +1/-1 guess) overwrites the optimistic
+  // value, correcting any drift; on failure, the pre-toggle snapshot is
+  // restored.
   const handleFollowToggle = async (targetUsername, follow) => {
     if (!currentUser) return;
+
+    let previousEntry = null;
+    setSearchStack((prev) =>
+      prev.map((entry) => {
+        if (entry.kind !== "profile" || entry.user.username !== targetUsername) return entry;
+        previousEntry = entry;
+        return {
+          ...entry,
+          user: {
+            ...entry.user,
+            isFollowing: follow,
+            followersCount: entry.user.followersCount + (follow ? 1 : -1),
+          },
+        };
+      })
+    );
+    setFollowTogglePending(targetUsername);
+
     const result = await apiSend(
       `/api/users/${encodeURIComponent(targetUsername)}/${follow ? "follow" : "unfollow"}`,
       {}
     );
-    if (!result.success) return;
-    const data = result.data;
+
     setSearchStack((prev) =>
-      prev.map((entry) =>
-        entry.kind === "profile" && entry.user.username === targetUsername
-          ? {
-              ...entry,
-              user: { ...entry.user, isFollowing: data.isFollowing, followersCount: data.followersCount },
-            }
-          : entry
-      )
+      prev.map((entry) => {
+        if (entry.kind !== "profile" || entry.user.username !== targetUsername) return entry;
+        if (result.success) {
+          return {
+            ...entry,
+            user: {
+              ...entry.user,
+              isFollowing: result.data.isFollowing,
+              followersCount: result.data.followersCount,
+            },
+          };
+        }
+        return previousEntry ?? entry;
+      })
     );
+    setFollowTogglePending(null);
   };
 
   const handleViewArchivedClimb = (climb) => {
@@ -428,19 +464,80 @@ export default function App() {
     const isDisabledArchivedClimb = viewingArchivedClimb && !viewingArchivedClimb.loggable;
     if (!currentUser || !activeClimb || isDisabledArchivedClimb) return;
 
+    // Optimistic, partial (§13.6-e): the comment (if any) appears on the
+    // climb's Info page immediately, rather than waiting for the refetch
+    // below — comments are purely additive server-side (withAscentStats
+    // shows every ascent's comment, never deduped), so appending one
+    // locally can't conflict with anything real. ascentCount/averageStars
+    // are deliberately NOT faked here: both depend on whether this climber
+    // already has a prior ascent/rating on this exact climb, which the
+    // client doesn't have — guessing would risk a visibly wrong number
+    // that "corrects" itself a moment later. Those two still wait on
+    // climbsFetch.retry() below, same as before. No-ops harmlessly if
+    // activeClimb isn't in climbsFetch's current-climbs list (e.g. logging
+    // against a still-loggable archived climb) — retry() alone still
+    // covers that case, just without the optimistic step.
+    const trimmedComment = (fields.comment || "").trim();
+    if (trimmedComment) {
+      const { wallId, setterName } = activeClimb;
+      climbsFetch.setData(
+        (data) =>
+          data && {
+            ...data,
+            climbs: data.climbs.map((c) =>
+              c.wallId === wallId && c.setterName === setterName
+                ? {
+                    ...c,
+                    comments: [
+                      ...(c.comments || []),
+                      { id: `optimistic-${Date.now()}`, author: currentUser.username, text: trimmedComment },
+                    ],
+                  }
+                : c
+            ),
+          }
+      );
+    }
+
     await apiSend("/api/ascents", {
       body: { wallId: activeClimb.wallId, climbName: activeClimb.setterName, ...fields },
     });
+    // Unconditional, same as before adding the optimistic step above — this
+    // is what corrects the optimistic comment (or removes it) if the
+    // submission actually failed, on top of refreshing ascentCount/
+    // averageStars either way.
     climbsFetch.retry();
   };
 
   const handleDeleteComment = async (ascentId) => {
     if (!currentUser) return;
 
-    await apiSend(`/api/users/${encodeURIComponent(currentUser.username)}/ascents/${ascentId}/comment`, {
-      method: "DELETE",
-    });
-    climbsFetch.retry();
+    // Optimistic (§13.6-e): deleting a comment only clears that one
+    // ascent's comment field server-side — it doesn't touch ascentCount or
+    // averageStars (see DELETE .../comment in server/worker.js) — so
+    // removing it locally first is exactly correct, not a guess that later
+    // needs reconciling against the server.
+    climbsFetch.setData(
+      (data) =>
+        data && {
+          ...data,
+          climbs: data.climbs.map((c) => ({
+            ...c,
+            comments: (c.comments || []).filter((comment) => comment.ascentId !== ascentId),
+          })),
+        }
+    );
+
+    const result = await apiSend(
+      `/api/users/${encodeURIComponent(currentUser.username)}/ascents/${ascentId}/comment`,
+      { method: "DELETE" }
+    );
+    // Only on failure — a success already matches the optimistic patch
+    // exactly, so refetching would just be an extra round trip for the
+    // same data. On failure, resync from truth rather than trying to
+    // restore a stashed snapshot, which could reintroduce other staleness
+    // if something else changed concurrently.
+    if (!result.success) climbsFetch.retry();
   };
 
   const content = useMemo(() => {
@@ -550,6 +647,7 @@ export default function App() {
               currentUser={currentUser}
               onFollow={() => handleFollowToggle(viewingSearchUser.username, true)}
               onUnfollow={() => handleFollowToggle(viewingSearchUser.username, false)}
+              followPending={followTogglePending === viewingSearchUser.username}
               onViewFollowers={() => handlePushFollowList(viewingSearchUser.username, "followers")}
               onViewFollowing={() => handlePushFollowList(viewingSearchUser.username, "following")}
             />
@@ -630,6 +728,7 @@ export default function App() {
     showBackfillClimbs,
     climbs,
     searchStack,
+    followTogglePending,
     searchQuery,
     searchMode,
     searchUserResults,

@@ -8,7 +8,15 @@ import { GradeBarChart } from "../components/GradeBarChart.jsx";
 // owner should see or do (Settings, Logbook) — but with a Follow/Unfollow
 // button in Settings' spot, and the follower/following counts tappable to
 // drill into that list, neither of which make sense on your own profile.
-export function UserProfileScreen({ user, currentUser, onFollow, onUnfollow, onViewFollowers, onViewFollowing }) {
+export function UserProfileScreen({
+  user,
+  currentUser,
+  onFollow,
+  onUnfollow,
+  followPending,
+  onViewFollowers,
+  onViewFollowing,
+}) {
   const initials = user.username.slice(0, 2).toUpperCase();
   const isSelf = currentUser?.username === user.username;
 
@@ -40,6 +48,7 @@ export function UserProfileScreen({ user, currentUser, onFollow, onUnfollow, onV
               type="button"
               style={user.isFollowing ? styles.settingsButton : styles.followButton}
               onClick={user.isFollowing ? onUnfollow : onFollow}
+              disabled={followPending}
             >
               {user.isFollowing ? "Unfollow" : "Follow"}
             </button>

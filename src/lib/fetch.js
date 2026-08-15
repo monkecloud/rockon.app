@@ -76,7 +76,23 @@ export function useFetch(url, { skip = false } = {}) {
     // nothing extra: the effect just hits the early return again.
   }, [url, skip, nonce]);
 
-  return { ...state, retry: () => setNonce((n) => n + 1) };
+  // Optimistic-update escape hatch (§13.6-e): lets a caller patch this
+  // hook's data immediately, without waiting on a round trip — e.g.
+  // removing a just-deleted comment, or appending one just submitted.
+  // Keeps `apiCache` in sync too, so the patched value survives an
+  // unrelated remount (tab switch) until the next real fetch overwrites
+  // it. Deliberately raw (no rollback bookkeeping here) — callers that
+  // need to revert on failure keep their own snapshot, same as any other
+  // optimistic-update pattern.
+  const setData = (updater) => {
+    setState((s) => {
+      const nextData = typeof updater === "function" ? updater(s.data) : updater;
+      apiCache.set(url, { data: nextData });
+      return { ...s, data: nextData };
+    });
+  };
+
+  return { ...state, retry: () => setNonce((n) => n + 1), setData };
 }
 
 // Every write (POST/DELETE) in the app goes through this instead of a

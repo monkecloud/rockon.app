@@ -1095,7 +1095,7 @@ failure modes that take it down until someone notices.
   setter; the in-wall climb search matches name only.
 - [x] **P2 ✅ `GradeBarChart` renders `null` while loading** → **DECIDED, §14.21(d) — needs its OWN skeleton; §14.9’s generic loading branch will not fix the jump.**, so content below it
   jumps when data lands.
-- [~] **P2 ✅ No optimistic UI anywhere.** → **DEFERRED 2026-08-10 — cheaper after §14.9’s apiSend. Still open.**  Follow, ascent log, and comment delete
+- [x] **P2 ✅ No optimistic UI anywhere.** → **DONE 2026-08-15, §14.25.** Follow, ascent log, and comment delete
   all wait on a round trip before anything changes.
 - [x] **P2 ⚠️ `ZoomableImageViewer` keeps its zoom in a ref, not state.** → **DECIDED, §14.21(f) — add a `key` rather than investigate.** It
   should unmount between climbs (the list re-renders in between), so pan/zoom
@@ -1237,7 +1237,7 @@ implement 13.2-a+b using Option B."*
 | 13.8-e `WALLS` hardcoded | P2 | ✅ **DONE 2026-08-15** — frontend now wired to `GET /api/walls`. `WALLS`/`LIST_ITEMS`/`WALL_NAME_BY_ID` removed from `src/constants.js`; `App.jsx` fetches once (`wallsFetch`, threaded into `ListScreen`/`NewWallForm`), `GradesScreen`/`ApproveClimbsScreen`/`SavedClimbsScreen` self-fetch (matching their existing zero-props pattern). New `src/lib/walls.js` (`buildWallNameById`) replaces the constant lookup. See §14.3.2 |
 | 13.5-a/b/c + 13.3-h Data-model cleanups | P2/P3 | ✅ **DECIDED: Option A — fold all four into §14.3** (Derrick, 2026-08-10) — **DONE 2026-08-10**: `archived`/`logAttempts` not migrated, `ascents.created_at` added (NULL for pre-migration rows), `ascent_claims` PK caps at 5 structurally. See §14.20. ⚠️ `createdAt` is lost for every ascent logged before the migration (23 real pre-migration ascents affected — see §14.3.2's "orphaned ascents" note for how that count was arrived at) |
 | 13.6-c/d/f Frontend UX | P2 | ✅ **DONE 2026-08-10** — Option B: `matchesClimbQuery` shared by both search boxes (in-wall now matches setter too), `GradeBarChart` renders a same-dimension skeleton instead of `null`, `ZoomableImageViewer` keyed by climb at both call sites. See §14.21 |
-| 13.6-e Optimistic UI | P2 | ⏸️ **DEFERRED** (Derrick, 2026-08-10) — cheaper after §14.9's `apiSend` lands. Stays open |
+| 13.6-e Optimistic UI | P2 | ✅ **DONE 2026-08-15** — follow/unfollow and comment delete fully optimistic (exact, server-reconciled); ascent logging partially (comment appears instantly, ascentCount/averageStars still wait for refetch — deliberately not faked, see §14.25). See §14.25 |
 | All 21 P3 items | P3 | ✅ **BATCH-DECIDED** (Derrick, 2026-08-10). Group 2 (stale comments, package.json, SALT_ROUNDS, reduced-motion) and Group 3 (touchmove scope, image lazy-loading, contrast, star icons, reset warning) **DONE 2026-08-10**. Groups 1 (absorbed elsewhere) and 4 (product question, not a bug) don't need standalone work. See §14.22 |
 | 13.1-f Password strength | P1 | 🔵 **STILL OPEN** — never discussed. The last undecided P1 |
 | `useFetch`'s `skip`/`nonce` deps bug | P1 | ✅ **DONE 2026-08-15** — found verifying §13.8-e in a browser; fixed same day. `retry()` (every Retry button) and Archive (skip-gated fetch) both silently never worked. See §14.24 |
@@ -3569,3 +3569,68 @@ Confirmed each new test actually catches the bug by reverting the fix and
 re-running: the retry-recovery and skip-fetches-once tests fail against the
 old `[url]`-only deps, and the two "doesn't over-fetch" tests still pass
 (they were never broken, and stay that way).
+
+---
+
+### 14.25 — Optimistic UI: follow, comment delete, ascent log (partial)  `P2`  ✅ DONE 2026-08-15
+
+Backlog ref: §13.6 item 5.
+
+Three mutations used to wait on a full round trip before anything visibly
+changed. Each got a different depth of optimism, based on how precisely the
+client can predict the server's outcome without guessing:
+
+- **Follow/unfollow** — fully optimistic. `handleFollowToggle` (`App.jsx`)
+  flips `isFollowing`/`followersCount` in `searchStack` immediately, before
+  the request resolves, and disables the button meanwhile
+  (`followTogglePending`) so a double-tap can't race two toggles. On
+  success, the server's actual response overwrites the optimistic guess
+  (correcting any drift, e.g. a concurrent follower); on failure, the
+  pre-toggle snapshot is restored.
+- **Comment delete** — fully optimistic, and exact rather than a guess:
+  `DELETE .../ascents/:id/comment` only clears that one ascent's comment
+  field (see `server/worker.js`) — it doesn't touch `ascentCount` or
+  `averageStars` — so removing it from local state first is always
+  correct, never something that needs reconciling. `handleDeleteComment`
+  skips the post-success refetch entirely (nothing to correct); on
+  failure it calls `climbsFetch.retry()` to resync from truth rather than
+  restoring a stashed snapshot (safer if something else changed
+  concurrently).
+- **Ascent logging** — partial, deliberately. The submitted comment (if
+  any) is appended to the climb's local comment list immediately —
+  comments are purely additive server-side, so this can't conflict with
+  anything. `ascentCount`/`averageStars` are **not** faked: both depend on
+  whether *this* climber already has a prior ascent/rating on this climb
+  (`withAscentStats` dedupes to each user's most recent), which the client
+  doesn't have without extra data. Guessing risked a visibly wrong number
+  correcting itself a moment later — worse than the (already fast)
+  existing wait. `climbsFetch.retry()` after the request still runs
+  unconditionally, which is also what corrects the optimistic comment (or
+  removes it) if the submission actually failed.
+
+**New capability**: `useFetch` gained a `setData` escape hatch
+(`src/lib/fetch.js`) — lets a caller patch the hook's cached/state data
+directly (SWR/React Query's `mutate` pattern), which is what comment-delete
+and ascent-log's optimistic paths patch through. Deliberately raw (no
+rollback bookkeeping in the hook itself) — callers that need to revert on
+failure keep their own snapshot or just re-fetch.
+
+**Verified**: `npm test` (625/625, including 5 new tests in
+`src/test/App.optimistic.test.jsx` — the first tests in the whole suite
+that hold a mocked request pending specifically to observe the UI *before*
+it resolves, via a small extension to `installFetchMock` supporting a
+Promise-returning route). Confirmed each test actually catches a
+regression by reverting `App.jsx`/`UserProfileScreen.jsx` and re-running —
+all 5 fail against the old code. Also verified live in a real browser
+against an isolated in-memory backend (fresh signup + a seeded climb, not
+the real `climbing.db`) — follow, ascent-log-with-comment, and
+comment-delete all worked end to end, screenshotted at each step.
+
+**Found in passing, not fixed**: `LogAscentSheet` requires
+`attempts >= 1` to submit, and `attemptsThisSession` (fed from `App()`'s
+`attempts` state) starts at `0` — logging an ascent without first tapping
+the `+` attempts button on `ClimbActionBar` silently blocks submission
+(`setShowValidation(true)`, no error surfaced beyond the inline field
+highlight). Not new, not part of this item's scope, but easy to hit by
+habit; worth a P3 UX look (e.g. defaulting `attempts` to `1`) if it comes
+up again.
