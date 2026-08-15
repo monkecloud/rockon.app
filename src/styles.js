@@ -82,7 +82,7 @@ export const styles = {
     textAlign: "right",
   },
   secondaryBarPlaceholder: {
-    fontSize: 13,
+    fontSize: 17,
     fontWeight: 600,
     letterSpacing: 0.5,
     color: "var(--color-text-secondary)",
