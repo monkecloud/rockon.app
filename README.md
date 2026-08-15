@@ -30,9 +30,11 @@ it from the bundled seed data with:
 node scripts/migrate-json-to-sqlite.js
 ```
 
-Re-runnable — it wipes and reseeds every table from `server/users.json` /
-`server/climbs.json` each time, so run it again any time you want to reset
-back to the seed data.
+Re-runnable — it wipes and reseeds every table each time, so run it again
+any time you want to reset back to the seed data. Reads from
+`server/users.json` / `server/climbs.json` if present (real data, gitignored,
+not part of a fresh clone), otherwise falls back to the committed
+`server/users.example.json` / `server/climbs.example.json`.
 
 Then open the local URL Vite prints (usually `http://localhost:5173`).
 

@@ -6,15 +6,24 @@ APP_SPEC.txt
 .claude/settings.local.json
 .claude/worktrees/
 
-# SQLite datastore (§14.3) -- unlike the users.json/climbs.json files it
-# replaces, this is a binary file that changes on every mutation, so it's
-# not tracked in git the way those were (§14.1 remains open/deferred on
-# whether that should also apply retroactively to the JSON files still in
-# the repo). Needs its own backup story outside git -- see the "Running it
-# persistently" section of README.md.
+# SQLite datastore (§14.3) -- a binary file that changes on every mutation,
+# so it's not tracked in git. Needs its own backup story outside git -- see
+# the "Running it persistently" section of README.md.
 server/climbing.db
 server/climbing.db-wal
 server/climbing.db-shm
+
+# Real user/climb data (§14.1, Option A, done 2026-08-15). These used to be
+# the runtime datastore and were tracked from the first commit -- migrating
+# to SQLite (§14.3) stopped the app from reading them at runtime, but they
+# kept sitting in git as a real, unrotated snapshot (bcrypt hashes + live
+# session tokens included). Untracked; server/*.example.json (committed)
+# are the sanitized stand-ins scripts/migrate-json-to-sqlite.js falls back
+# to when these aren't present, e.g. on a fresh clone. Still present
+# locally on this machine (git rm --cached doesn't delete the working
+# copy) so the real migration path is unaffected here.
+server/users.json
+server/climbs.json
 
 # Migration-run output (scripts/migrate-json-to-sqlite.js) listing ascents
 # that couldn't be matched to any climb -- includes usernames, so treated

@@ -142,11 +142,13 @@ snake_case rows to the app's existing camelCase shape
 with plain camelCase objects, same as before the migration.
 
 **One-time setup:** `node scripts/migrate-json-to-sqlite.js` populates the
-database from `server/users.json`/`server/climbs.json` (kept in the repo as
-the migration's input, no longer read at runtime). Re-runnable — wipes and
-reseeds every table from those two files each time. `server/climbing.db`
-itself is gitignored (unlike the JSON files it replaced) and needs its own
-backup story in any real deployment.
+database from `server/users.json`/`server/climbs.json` — no longer read at
+runtime, and no longer committed either (§14.1, done 2026-08-15): both are
+real data, gitignored now. The script falls back to the committed,
+sanitized `server/*.example.json` when the real files aren't present (a
+fresh clone). Re-runnable — wipes and reseeds every table from whichever
+pair it found each time. `server/climbing.db` itself is also gitignored
+and needs its own backup story in any real deployment.
 
 ### 4.1 `climbs` table
 
@@ -845,14 +847,20 @@ Full audit, 2026-08-10. Priorities: **P0** data loss / security / outage ·
 
 ### 13.1 Security — P0
 
-- [~] **P0 ✅ `server/users.json` is committed to git** ⏸️ **DEFERRED by Derrick 2026-08-10 (§14.1). STILL LIVE.**, containing live bcrypt
-  password hashes and active session tokens (14 occurrences at HEAD). Anyone
-  with repo access can steal a session token and log in as that user. Fix:
-  add `server/users.json` (and probably `server/climbs.json`) to `.gitignore`,
-  `git rm --cached` them, ship `.example` seed files instead, **and rotate
-  every session token** — the ones in history are already exposed. Note the
-  history itself still contains them; a fresh repo or history rewrite is the
-  only complete fix.
+- [x] **P0 ✅ `server/users.json` is committed to git** → **DONE 2026-08-15, Option A, §14.1.** Both files untracked
+  (`.gitignore` + `git rm --cached`, working copies kept locally), replaced
+  in-repo by sanitized `server/*.example.json`
+  (`scripts/migrate-json-to-sqlite.js` falls back to them when the real
+  files aren't present). **Also rotated the live database**, not just the
+  git-tracked snapshot: `UPDATE users SET password_hash = ''` +
+  `DELETE FROM sessions` against the real `server/climbing.db` (all 11
+  real users, 5 active sessions at the time), while `climbing-app.service`
+  was live — verified the service stayed healthy (`GET /api/health`)
+  throughout and that a blanked-hash account logs back in via the
+  existing `needsPasswordReset` flow (`POST /api/login`), no new code
+  needed. History itself still contains the old hashes/tokens (Option A
+  doesn't rewrite it — see below), but they're now worthless: the live
+  hashes they'd have to match no longer exist.
 - [x] **P0 ✅ No rate limiting on `/api/login`.** Unlimited password guesses.
   bcrypt cost 10 slows this but doesn't stop it. Add per-IP + per-username
   throttling. → **DECIDED 2026-08-10: Option B, spec in §14.4.**
@@ -1213,7 +1221,7 @@ implement 13.2-a+b using Option B."*
 
 | Item | Priority | Status |
 |---|---|---|
-| 13.1-a Data files in git | P0 | ⏸️ **Deferred** by Derrick, 2026-08-10 — "will deal with it later" |
+| 13.1-a Data files in git | P0 | ✅ **DONE 2026-08-15** — Option A: untracked, sanitized example seeds committed, live database credentials rotated. See §14.1 |
 | 13.2-a+b Worker crash recovery | P0 | ❌ **CANCELLED** 2026-08-10 — superseded by §14.3.1(ii); the code it patches is being deleted |
 | 13.2-c+d Atomic writes & locking | P0 | ✅ **DONE 2026-08-10** — Option D, SQLite (`node:sqlite`). See §14.3 |
 | 13.2-e Hot-swap is a no-op | P0 | ✅ **DONE 2026-08-10** — Option (ii), `server/index.js`/`index.test.js` deleted, `worker.js` binds `PORT` directly |
@@ -1257,9 +1265,47 @@ Everything else in §13 has no options drafted yet.
 
 ---
 
-### 14.1 — Data files committed to git  `P0`  ⏸️ deferred
+### 14.1 — Data files committed to git  `P0`  ✅ DONE 2026-08-15
 
 Backlog ref: §13.1 item 1.
+
+> ## ✅ DONE 2026-08-15 — Option A, adapted for post-§14.3 (SQLite)
+> The plan below was drafted 2026-08-10, before the SQLite migration — it
+> assumed `users.json`/`climbs.json` were still the live runtime store
+> (`readUsers`/`readClimbs`, a first-run `ENOENT` fallback in `worker.js`
+> itself). None of that exists anymore; here's what actually ran:
+>
+> 1. **Untracked both files** — added to `.gitignore`, `git rm --cached`
+>    (working copies kept locally; still present on this machine, so
+>    `scripts/migrate-json-to-sqlite.js` behaves identically here).
+> 2. **Committed sanitized replacements**: `server/users.example.json`
+>    (`[]`) and `server/climbs.example.json` (a straight copy of
+>    `climbs.json` — climb data was never the sensitive part, only
+>    `users.json`'s hashes/tokens were).
+> 3. **Adapted the fallback to today's architecture**: rather than a
+>    `readUsers`/`readClimbs` `ENOENT` branch (doesn't exist post-migration),
+>    `scripts/migrate-json-to-sqlite.js`'s `readJson` now tries the real
+>    file first and falls back to the matching `.example.json` — verified
+>    both paths (real files present; real files moved aside) against a
+>    `:memory:` DB.
+> 4. **Rotated the LIVE database, not the frozen JSON** — the JSON snapshot
+>    stopped being read/written back on 2026-08-10 (the same day as the
+>    SQLite migration); the real, current, still-changing data is
+>    `server/climbing.db`. Ran `UPDATE users SET password_hash = ''` +
+>    `DELETE FROM sessions` directly against it via `server/db.js` (default
+>    `DB_PATH`) while `climbing-app.service` was live — **11 real users, 5
+>    active sessions** at the time. Verified: the service stayed healthy
+>    (`GET /api/health`, §14.12) throughout, and a blanked-hash test account
+>    correctly logs back in via the existing `needsPasswordReset` branch of
+>    `POST /api/login` (any password accepted, session reissued, client told
+>    to force a password change) — no new code needed, exactly as the
+>    original plan below anticipated.
+>
+> **Trade-off accepted, same as the original plan**: bcrypt hashes/tokens
+> stay in git *history* (Option A doesn't rewrite it) — but they're now
+> worthless regardless, since the live hashes they'd need to match no
+> longer exist. See Options B/C below if a full history purge is ever
+> wanted later; not done here.
 
 **Verified facts** (2026-08-10, so a new session needn't re-check):
 - `server/users.json` tracked since the **first commit** (`a29efa3`), touched by

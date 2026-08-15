@@ -127,12 +127,17 @@ of its own).
 
 **One-time setup:** a fresh clone/deploy needs
 `node scripts/migrate-json-to-sqlite.js` run once to populate the database
-from `server/users.json`/`server/climbs.json` (kept in the repo as the
-migration's input, no longer read at runtime). The script is re-runnable —
-it wipes and reseeds every table from those two files each time, so re-run
-it if you need to start over. `server/climbing.db` itself is gitignored
-(unlike the JSON files it replaced — see the comment in `.gitignore`); back
-it up separately in any real deployment.
+from `server/users.json`/`server/climbs.json` — no longer read at runtime,
+and no longer committed either (§14.1, done 2026-08-15): they're real data
+(bcrypt hashes, live session tokens) that sat in git unrotated since before
+the SQLite migration retired them as the runtime store. Both are gitignored
+now; the migration script falls back to the committed, sanitized
+`server/*.example.json` when the real files aren't present (e.g. a fresh
+clone), so `npm test`/a fresh dev setup still works without them. The
+script is re-runnable — it wipes and reseeds every table from whichever
+pair it found each time, so re-run it if you need to start over.
+`server/climbing.db` itself is also gitignored; back it up separately in
+any real deployment.
 
 - **Climbs have a real id now**, but `wallId` + `setterName` (immutable,
   `UNIQUE` per wall, `COLLATE NOCASE` so lookups/uniqueness are

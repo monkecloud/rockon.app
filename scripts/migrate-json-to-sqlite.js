@@ -14,13 +14,25 @@ import { db, withTransaction } from "../server/db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const USERS_FILE = path.join(__dirname, "..", "server", "users.json");
+const USERS_EXAMPLE_FILE = path.join(__dirname, "..", "server", "users.example.json");
 const CLIMBS_FILE = path.join(__dirname, "..", "server", "climbs.json");
+const CLIMBS_EXAMPLE_FILE = path.join(__dirname, "..", "server", "climbs.example.json");
 
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
-async function readJson(file) {
+// server/users.json / server/climbs.json are real data, gitignored (§14.1)
+// — present on a machine that's actually run this app before, absent on a
+// fresh clone. The matching *.example.json (committed, sanitized) is the
+// fallback so a fresh clone still gets *something* to develop against
+// instead of silently migrating to nothing.
+async function readJson(file, exampleFile) {
   try {
     return JSON.parse(await fs.readFile(file, "utf-8"));
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+  }
+  try {
+    return JSON.parse(await fs.readFile(exampleFile, "utf-8"));
   } catch (err) {
     if (err.code === "ENOENT") return [];
     throw err;
@@ -43,8 +55,8 @@ function wipeAllTables() {
 }
 
 async function migrate() {
-  const climbsJson = await readJson(CLIMBS_FILE);
-  const usersJson = await readJson(USERS_FILE);
+  const climbsJson = await readJson(CLIMBS_FILE, CLIMBS_EXAMPLE_FILE);
+  const usersJson = await readJson(USERS_FILE, USERS_EXAMPLE_FILE);
 
   console.log(`Read ${climbsJson.length} climbs, ${usersJson.length} users.`);
 
