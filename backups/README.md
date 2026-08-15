@@ -21,4 +21,4 @@ cp server/climbing.db backups/climbing-$(date +%F).db
 
 | File | Notes |
 |---|---|
-| `climbing-2026-08-15.db` | Taken right after §14.1's live credential rotation — every `password_hash` is blank, no sessions. |
+| `climbing-2026-08-15.db` | Refreshed after the photo migration (§14.5) — no climb still has an inline base64 `photo_url`. Also still reflects §14.1's live credential rotation: every `password_hash` is blank, no sessions. Overwrites the same-day snapshot taken right after rotation, before the photo migration ran. |
