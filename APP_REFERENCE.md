@@ -1855,10 +1855,29 @@ scope for this item, but the same limiter covers it in one extra line.
 > in SQLite) are recorded as **rejected**.
 >
 > **Both steps done.** Step 1 landed 2026-08-10. Step 2 landed 2026-08-15 as
-> drafted below — no data migration needed (zero real images existed at the
-> time), `UPLOADS_DIR` env var mirrors `DB_PATH`'s override pattern so tests
-> write to a throwaway temp dir, and `server/worker.test.js`'s avatar tests
-> now exercise a real 1x1 PNG instead of a fake base64 string.
+> drafted below — no data migration needed *for `server/climbs.json`* (zero
+> real images in that frozen snapshot), `UPLOADS_DIR` env var mirrors
+> `DB_PATH`'s override pattern so tests write to a throwaway temp dir, and
+> `server/worker.test.js`'s avatar tests now exercise a real 1x1 PNG
+> instead of a fake base64 string.
+>
+> ⚠️ **That "zero images" fact was about the frozen JSON snapshot, not the
+> live database** — real usage between the 2026-08-10 snapshot and step 2
+> shipping had put 3 real climb photos (real phone camera JPEGs, ~3–3.8 MB
+> decoded each — all three individually over `MAX_IMAGE_BYTES`) into
+> `climbs.photo_url` as inline base64, predating `saveDataUrlImage` and
+> therefore untouched by it (that function only runs on new writes).
+> Backfilled 2026-08-15 by `scripts/migrate-photos-to-disk.js` — same
+> sniff-then-hash-then-write scheme as `saveDataUrlImage`, deliberately not
+> importing `worker.js` itself (would `app.listen()` and collide with the
+> live process), and deliberately **not** enforcing `MAX_IMAGE_BYTES`
+> against this pre-existing data — that cap bounds new uploads, not
+> whether to discard a real photo that already made it in. Verified against
+> a throwaway copy of the live db first (idempotent: a second run found 0
+> rows), then run for real — confirmed via `GET /api/climbs`/`GET
+> /api/archive` on the live server that all three now return short
+> `/uploads/...` paths, and that `/uploads/<hash>.jpg` 200s with no restart
+> needed (`express.static` reads the directory live).
 
 Backlog refs: §13.4 items 1, 2, 3.
 
