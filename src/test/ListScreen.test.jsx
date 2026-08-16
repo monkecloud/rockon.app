@@ -211,6 +211,7 @@ describe("ListScreen — climb-detail mode", () => {
 
     expect(screen.getByText("V3")).toBeInTheDocument();
     expect(screen.getByText("Setter: alice")).toBeInTheDocument();
+    expect(screen.getByText("2026-01-01")).toBeInTheDocument();
     expect(screen.getByText("Golden Overhang")).toBeInTheDocument();
     expect(screen.getByText("First Ascent: bob")).toBeInTheDocument();
   });

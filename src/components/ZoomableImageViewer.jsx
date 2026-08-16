@@ -104,6 +104,7 @@ export function ZoomableImageViewer({ climb, photoUrl }) {
                 <ClimbGradeLabel climb={climb} />
               </span>
               <span style={styles.secondaryBarSubtitle}>Setter: {climb.setter}</span>
+              <span style={styles.secondaryBarSubtitle}>{climb.setDate}</span>
             </div>
             <div style={styles.secondaryBarRight}>
               <span style={styles.secondaryBarPlaceholder}>{climb.name}</span>
