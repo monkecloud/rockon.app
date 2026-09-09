@@ -4,5 +4,4 @@ kind: Kustomization
 # built for this app-environment, so the same manifests serve prod and dev unchanged.
 resources:
   - site.yaml
-  # Not listed yet — no domain decided. See the header comment in ingress.yaml.
-  # - ingress.yaml
+  - ingress.yaml
