@@ -35,7 +35,7 @@ spec:
         - name: app
           # CI rewrites this tag on every push. Never `:latest` — the tag is how rollback
           # works, and a moving tag means a restarted pod silently changes version.
-          image: ghcr.io/monkecloud/rockon.app:4c27f30
+          image: ghcr.io/monkecloud/rockon.app:fb849a2
           ports:
             - containerPort: 8080
           readinessProbe:
