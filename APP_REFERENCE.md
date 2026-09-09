@@ -3801,10 +3801,13 @@ the non-root `node` user, listens on `PORT=8080` to match the cluster
 template's fixed `containerPort`). `k8s/` holds the Deployment (2 replicas,
 required pod anti-affinity, a `PodDisruptionBudget`, `readinessProbe`/
 `livenessProbe` against the existing `GET /api/health`), Service, and an
-Ingress that exists but isn't wired into `kustomization.yaml` yet (waiting
-on DNS for `app.cubesnail.ca`/`app-dev.cubesnail.ca` to actually resolve to
-the cluster — an Ingress for a domain that doesn't would just leave its
-Let's-Encrypt HTTP-01 challenge pending forever). `DATABASE_URL` and
+Ingress. Prod's Ingress (`app.cubesnail.ca`) is live — DNS confirmed
+pointing at the house's public IP 2026-09-09, cert-manager issued a real
+Let's-Encrypt cert, deployed and verified serving real traffic end to end.
+Dev's copy (`app-dev.cubesnail.ca`) stays commented out of dev's
+`k8s/kustomization.yaml` until that domain has DNS too — an Ingress for a
+domain that doesn't resolve here just leaves its HTTP-01 challenge pending
+forever with no useful error. `DATABASE_URL` and
 `S3_ENDPOINT`/`S3_BUCKET`/`S3_ACCESS_KEY`/`S3_SECRET_KEY` arrive as env
 vars from Kubernetes Secrets — never committed, never read from a file at
 runtime in the cluster. `.github/workflows/build-and-deploy.yml` builds the
@@ -3819,12 +3822,36 @@ of nothing (SQLite needed no configuration at all; local S3 needs a real
 endpoint even in dev, e.g. a local MinIO/Garage). Nothing previously loaded
 `.env` into `process.env` for the server process — Vite's own `.env`
 handling only ever covered the frontend build (`import.meta.env`), not
-`node server/worker.js`. Added `dotenv` as a devDependency and
+`node server/worker.js`. Added `dotenv` and
 `import "dotenv/config"` as the first line of `server/worker.js` (before
 `./db.js` is imported, since it reads `DATABASE_URL` at module-load time to
 construct the pool) — a no-op when no `.env` file exists, so safe in the
 container/CI/test paths, which inject real env vars directly and should
 never read a dotenv file.
+
+**Two real deploy-time crashes, caught only by actually running the built
+container against the cluster, not by `npm test`/`npm run build`:**
+- `dotenv` was first added as a **devDependency**. The Dockerfile's runtime
+  stage runs `npm ci --omit=dev`, which correctly strips it — but
+  `worker.js`'s `import "dotenv/config"` is unconditional, so every
+  production pod crash-looped on `ERR_MODULE_NOT_FOUND` at startup. Tests
+  never caught this because `npm test` runs against the full `node_modules`
+  install, devDependencies included. Fix: `dotenv` moved to
+  `dependencies` — its *effect* only matters in dev, but the *import*
+  itself is unconditional in code that ships to production, so it has to
+  be a real dependency regardless.
+- The Dockerfile's runtime stage only `COPY`'d `dist/` and `server/`, but
+  `worker.js` imports `../shared/grades.js` — a second `ERR_MODULE_NOT_FOUND`
+  crash, same reason tests didn't catch it (tests run from the repo root,
+  where `shared/` already exists on disk). Fix: added `COPY shared ./shared`
+  to the runtime stage.
+- **Lesson generalized**: neither of these is something a passing test
+  suite or a successful `docker build` catches — both only surface when the
+  built image is actually *run*. Before trusting a Dockerfile change (or
+  any dependency-category change) as done, `docker build` the image and
+  `docker run` it, even with fake env vars — a crash on bad config (like a
+  Postgres connection refusal) is a fine outcome to see; a crash on a
+  missing module is not.
 
 **Testing.** `server/worker.test.js` needs a real reachable Postgres now —
 there's no async equivalent of SQLite's `":memory:"` — via `DATABASE_URL`
