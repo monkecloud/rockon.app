@@ -51,7 +51,7 @@ spec:
             # dev branch's manifests (this app-environment's overlay) use uri_dev instead.
             - name: DATABASE_URL
               valueFrom:
-                secretKeyRef: { name: cubesnail-pg, key: uri }
+                secretKeyRef: { name: cubesnail-pg, key: uri_dev }
             # Garage (S3-compatible). Not AWS: every call needs the endpoint set
             # explicitly and path-style addressing. Bucket + key are per app-environment
             # (rockon-garage), not the owner's, so dev's key cannot reach prod's objects.
