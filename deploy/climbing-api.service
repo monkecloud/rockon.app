@@ -1,4 +1,11 @@
 # systemd unit for the second app instance, reached at api.cubesnail.rip.
+# This is the non-cluster, single-host deploy path; Dockerfile + k8s/ is the
+# primary path now (Flux-applied on the Tamarin cluster), but this still
+# works for self-hosting outside Kubernetes.
+#
+# As of the Postgres/S3 migration (§14.26), this app has no local SQLite
+# file or local uploads directory to fall back to — DATABASE_URL and the
+# S3_* vars below must be filled in with real values or it won't start.
 #
 # The front proxy (fwder.front.monke) terminates TLS and forwards each
 # hostname straight to a port on this machine:
@@ -34,6 +41,12 @@ WorkingDirectory=/home/cubesnail/app/site
 # this is correct regardless of how the request arrives.
 Environment=NODE_ENV=production
 Environment=PORT=25101
+# Required — no local-file fallback exists any more. Fill in real values.
+#Environment=DATABASE_URL=postgresql://user:password@host:5432/dbname
+#Environment=S3_ENDPOINT=https://s3.example.com
+#Environment=S3_BUCKET=rockon
+#Environment=S3_ACCESS_KEY=changeme
+#Environment=S3_SECRET_KEY=changeme
 # No ExecStartPre=npm run build here, unlike climbing-app.service: both
 # units share one dist/ directory, and two concurrent `vite build` runs
 # writing the same output would race. climbing-app owns the build.

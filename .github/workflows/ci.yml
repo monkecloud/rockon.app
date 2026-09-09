@@ -3,6 +3,19 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rockon_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -11,4 +24,6 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm test
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5433/rockon_test
       - run: npm run build

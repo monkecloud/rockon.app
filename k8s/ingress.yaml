@@ -1,0 +1,38 @@
+# Public exposure. cert-manager sees this Ingress and issues the certificate itself.
+#
+# Domain: app.cubesnail.ca (prod). The dev branch's copy of this file uses
+# app-dev.cubesnail.ca instead — the two branches deploy different Ingress content
+# deliberately, since this app's dev/prod environments use different hostnames (unlike
+# the rest of k8s/, which stays identical across branches).
+#
+# NOT yet listed in kustomization.yaml — DNS for this domain isn't set up yet. An
+# Ingress for a domain whose DNS doesn't resolve to this cluster leaves its
+# Let's-Encrypt HTTP-01 challenge pending indefinitely with no useful error, so leave
+# this uncommented-out-of-the-build until DNS is confirmed pointing at the house's
+# public IP, then add `- ingress.yaml` to kustomization.yaml's resources list.
+#
+# Renaming this Ingress silently breaks renewal: the Certificate is owned by the Ingress
+# that requested it, so deleting one garbage-collects the Certificate while the TLS Secret
+# survives, and a new Ingress refuses to adopt it. After any rename, delete the orphaned
+# Secret too and let cert-manager reissue.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rockon
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [app.cubesnail.ca]
+      secretName: rockon-tls
+  rules:
+    - host: app.cubesnail.ca
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rockon
+                port: { number: 80 }

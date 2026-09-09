@@ -1,0 +1,20 @@
+node_modules
+dist
+.git
+.github
+.claude
+deploy
+backups
+*.md
+
+# Runtime state that no longer belongs in the image or its build context —
+# the app talks to Postgres/S3 now, not a local SQLite file or uploads dir.
+server/climbing.db
+server/climbing.db-wal
+server/climbing.db-shm
+server/uploads
+server/users.json
+server/climbs.json
+server/orphaned-ascents.json
+
+.env

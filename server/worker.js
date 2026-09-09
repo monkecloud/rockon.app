@@ -1,13 +1,19 @@
+// Must be first: everything below (including ./db.js, which reads
+// DATABASE_URL at module-load time to construct its connection pool) needs
+// process.env already populated. No-ops silently when there's no .env file
+// (the container/k8s/CI paths inject real env vars directly and never carry
+// one) — safe everywhere, only does real work in local dev.
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
 import path from "path";
-import fs from "fs";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import { db, withTransaction } from "./db.js";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { pool, withTransaction, isUniqueViolation, ensureSchema } from "./db.js";
 import {
   GRADE_OPTIONS,
   gradeToBucket,
@@ -28,19 +34,19 @@ export { gradeToBucket, climbBucketGrade };
 // app — see APP_REFERENCE.md §14.3.1 for the primary/worker hot-swap this
 // replaced.
 //
-// The datastore is SQLite (server/db.js), not hand-rolled JSON files
-// (§14.3) — see APP_REFERENCE.md §14.3 for the full history of why: a
-// crash mid `fs.writeFile` could truncate users.json/climbs.json, and two
-// interleaved requests had no isolation from each other and could lose
-// one's changes. node:sqlite's DatabaseSync is synchronous, so a request
-// handler's read-modify-write has no `await` point in the middle for
-// another request to interleave through, and every multi-row mutation is
-// wrapped in withTransaction (real BEGIN/COMMIT/ROLLBACK) so it's
-// all-or-nothing.
+// The datastore is Postgres (server/db.js), reached over DATABASE_URL — this
+// app runs as multiple stateless replicas on a Kubernetes cluster, so
+// there's no local disk and no single shared connection to lean on the way
+// node:sqlite's synchronous DatabaseSync once did. Every multi-statement
+// mutation is wrapped in withTransaction (a real BEGIN/COMMIT/ROLLBACK on
+// one pooled client) so it's all-or-nothing, and every place whose
+// correctness used to lean on "nothing else can interleave" now leans on a
+// real UNIQUE index plus an isUniqueViolation() catch instead — see
+// server/db.js's header comment for the full reasoning.
 //
-// Passwords are hashed with bcrypt before they're ever written to disk —
-// the server owner (or anyone who reads the database file) sees only a
-// one-way hash, never the plain-text password.
+// Passwords are hashed with bcrypt before they're ever written to the
+// database — anyone who reads the users table sees only a one-way hash,
+// never the plain-text password.
 //
 // Every login/signup issues a random session token, stored in the
 // `sessions` table (with real server-side expiry — the old users.json
@@ -87,11 +93,24 @@ const DIST_DIR = path.join(__dirname, "..", "dist");
 
 // Avatars and climb photos used to be stored as base64 data URLs directly in
 // the database (§14.5) — every app load re-downloaded every photo inline in
-// the JSON response, with none of the caching a real file gets. UPLOADS_DIR
-// is overridable (mirrors DB_PATH's pattern) so tests write to a throwaway
-// directory instead of littering the real one.
-const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, "uploads");
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+// the JSON response, with none of the caching a real file gets. Now stored in
+// S3-compatible object storage (Garage, on the cluster) instead of on local
+// disk: pods are stateless with no PVC, and more than one replica needs to
+// see the same uploads. S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY/S3_SECRET_KEY are
+// injected by Kubernetes from the app's own Garage Secret in the cluster
+// (see k8s/site.yaml), and read from .env locally (see .env.example).
+// forcePathStyle is required for Garage — it isn't real AWS and doesn't
+// support virtual-hosted-style bucket addressing.
+const s3 = new S3Client({
+  endpoint: process.env.S3_ENDPOINT,
+  region: "garage",
+  forcePathStyle: true,
+  credentials: {
+    accessKeyId: process.env.S3_ACCESS_KEY,
+    secretAccessKey: process.env.S3_SECRET_KEY,
+  },
+});
+const S3_BUCKET = process.env.S3_BUCKET;
 
 // Generous for a climb photo/avatar; the outer express.json 5 MB body limit
 // (set below) still bounds the request itself.
@@ -122,12 +141,16 @@ const IMAGE_SNIFFERS = [
 
 class ImageValidationError extends Error {}
 
+const CONTENT_TYPE_BY_EXT = { png: "image/png", jpg: "image/jpeg", webp: "image/webp" };
+
 // Decodes a data:image/...;base64,... upload, validates it by its actual
-// decoded bytes, and writes it to UPLOADS_DIR under a content-hash filename
-// — identical uploads dedupe for free, and a content-addressed URL can be
-// cached forever (see the express.static mount below). Returns the
-// "/uploads/<name>" path to store in place of the old inline data URL.
-function saveDataUrlImage(dataUrl) {
+// decoded bytes, and puts it in the S3 bucket under a content-hash filename
+// — a content-addressed URL can be cached forever (see the /uploads route
+// below). Returns the "/uploads/<name>" path to store in place of the old
+// inline data URL. No existence pre-check before the PUT (unlike the old
+// disk version's fs.existsSync dedupe) — an S3 PUT of identical bytes to the
+// same key is a harmless overwrite, not worth an extra round trip to avoid.
+async function saveDataUrlImage(dataUrl) {
   const match = /^data:image\/(?:png|jpeg|webp);base64,([a-z0-9+/=]+)$/is.exec(dataUrl || "");
   if (!match) {
     throw new ImageValidationError("Image must be a PNG, JPEG, or WebP data URL.");
@@ -142,10 +165,14 @@ function saveDataUrlImage(dataUrl) {
   }
   const hash = crypto.createHash("sha256").update(buffer).digest("hex").slice(0, 32);
   const filename = `${hash}.${sniffer.ext}`;
-  const filePath = path.join(UPLOADS_DIR, filename);
-  if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, buffer);
-  }
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: S3_BUCKET,
+      Key: filename,
+      Body: buffer,
+      ContentType: CONTENT_TYPE_BY_EXT[sniffer.ext],
+    })
+  );
   return `/uploads/${filename}`;
 }
 
@@ -280,132 +307,217 @@ function mapAscentRow(row) {
 }
 
 // ---------------------------------------------------------------------------
-// Prepared statements — compiled once at module load rather than per call.
+// Query helpers — thin async wrappers around `pool.query`, one per shape the
+// routes below need. Replaces the old `stmt` object of node:sqlite prepared
+// statements: Postgres has nothing to precompile client-side the way
+// node:sqlite's db.prepare() did, so these are just named functions using
+// $1/$2/... placeholders. A statement that only ever runs as part of a
+// larger multi-statement mutation is written inline in its withTransaction()
+// block instead (via that transaction's own `client`), not here — see e.g.
+// POST /api/signup, POST /api/climbs, POST /api/ascents below.
 // ---------------------------------------------------------------------------
 
-const stmt = {
-  getUserByUsername: db.prepare("SELECT * FROM users WHERE username = ?"), // COLLATE NOCASE on the column
-  getUserById: db.prepare("SELECT * FROM users WHERE id = ?"),
-  getUserBySessionToken: db.prepare(`
-    SELECT users.* FROM users
-    JOIN sessions ON sessions.user_id = users.id
-    WHERE sessions.token = ? AND sessions.expires_at > datetime('now')
-  `),
-  insertUser: db.prepare(
-    "INSERT INTO users (username, name, password_hash) VALUES (?, ?, ?)"
-  ),
-  updateUserName: db.prepare("UPDATE users SET name = ? WHERE id = ?"),
-  updateUserAvatar: db.prepare("UPDATE users SET avatar_url = ? WHERE id = ?"),
-  updateUsername: db.prepare("UPDATE users SET username = ? WHERE id = ?"),
-  updateUserPassword: db.prepare("UPDATE users SET password_hash = ? WHERE id = ?"),
-  updateUserRole: db.prepare(
-    "UPDATE users SET is_moderator = ?, is_setter = ?, is_admin = ? WHERE id = ?"
-  ),
-  searchUsers: db.prepare(
-    "SELECT * FROM users WHERE username LIKE ? OR name LIKE ? ORDER BY username"
-  ),
-  allUsers: db.prepare("SELECT * FROM users ORDER BY username"),
-  setterUsers: db.prepare("SELECT * FROM users WHERE is_setter = 1 ORDER BY username"),
+async function getUserByUsername(username) {
+  // Case-insensitive, matching the functional lowercase unique index on
+  // users.username (see server/db.js) — was COLLATE NOCASE on the column
+  // under SQLite.
+  const { rows } = await pool.query("SELECT * FROM users WHERE LOWER(username) = LOWER($1)", [username]);
+  return rows[0];
+}
+async function getUserById(id) {
+  const { rows } = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
+  return rows[0];
+}
+async function getUserBySessionToken(token) {
+  const { rows } = await pool.query(
+    `SELECT users.* FROM users
+     JOIN sessions ON sessions.user_id = users.id
+     WHERE sessions.token = $1 AND sessions.expires_at > now()`,
+    [token]
+  );
+  return mapUserRow(rows[0]);
+}
+async function updateUserName(name, id) {
+  await pool.query("UPDATE users SET name = $1 WHERE id = $2", [name, id]);
+}
+async function updateUserAvatar(avatarUrl, id) {
+  await pool.query("UPDATE users SET avatar_url = $1 WHERE id = $2", [avatarUrl, id]);
+}
+async function updateUsername(username, id) {
+  await pool.query("UPDATE users SET username = $1 WHERE id = $2", [username, id]);
+}
+async function updateUserPassword(passwordHash, id) {
+  await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [passwordHash, id]);
+}
+async function updateUserRole(isModerator, isSetter, isAdmin, id) {
+  await pool.query(
+    "UPDATE users SET is_moderator = $1, is_setter = $2, is_admin = $3 WHERE id = $4",
+    [isModerator, isSetter, isAdmin, id]
+  );
+}
+async function searchUsers(like) {
+  const { rows } = await pool.query(
+    "SELECT * FROM users WHERE username ILIKE $1 OR name ILIKE $1 ORDER BY username",
+    [like]
+  );
+  return rows;
+}
+async function allUsers() {
+  const { rows } = await pool.query("SELECT * FROM users ORDER BY username");
+  return rows;
+}
+async function setterUsers() {
+  const { rows } = await pool.query("SELECT * FROM users WHERE is_setter = true ORDER BY username");
+  return rows;
+}
 
-  insertSession: db.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)"),
-  deleteSessionsForUser: db.prepare("DELETE FROM sessions WHERE user_id = ?"),
+async function deleteSessionsForUser(userId) {
+  await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
+}
 
-  countFollowers: db.prepare("SELECT COUNT(*) AS n FROM follows WHERE followee_id = ?"),
-  countFollowing: db.prepare("SELECT COUNT(*) AS n FROM follows WHERE follower_id = ?"),
-  isFollowing: db.prepare(
-    "SELECT 1 FROM follows WHERE follower_id = ? AND followee_id = ? LIMIT 1"
-  ),
-  addFollow: db.prepare("INSERT OR IGNORE INTO follows (follower_id, followee_id) VALUES (?, ?)"),
-  removeFollow: db.prepare("DELETE FROM follows WHERE follower_id = ? AND followee_id = ?"),
-  followerRows: db.prepare(`
-    SELECT users.* FROM follows JOIN users ON users.id = follows.follower_id
-    WHERE follows.followee_id = ? ORDER BY users.username
-  `),
-  followingRows: db.prepare(`
-    SELECT users.* FROM follows JOIN users ON users.id = follows.followee_id
-    WHERE follows.follower_id = ? ORDER BY users.username
-  `),
+async function countFollowers(userId) {
+  const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM follows WHERE followee_id = $1", [userId]);
+  return rows[0].n;
+}
+async function countFollowing(userId) {
+  const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM follows WHERE follower_id = $1", [userId]);
+  return rows[0].n;
+}
+async function isFollowingRow(followerId, followeeId) {
+  const { rows } = await pool.query(
+    "SELECT 1 FROM follows WHERE follower_id = $1 AND followee_id = $2 LIMIT 1",
+    [followerId, followeeId]
+  );
+  return rows.length > 0;
+}
+async function addFollow(followerId, followeeId) {
+  // ON CONFLICT DO NOTHING => idempotent, same as the old INSERT OR IGNORE.
+  await pool.query(
+    "INSERT INTO follows (follower_id, followee_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    [followerId, followeeId]
+  );
+}
+async function removeFollow(followerId, followeeId) {
+  await pool.query("DELETE FROM follows WHERE follower_id = $1 AND followee_id = $2", [followerId, followeeId]);
+}
+async function followerRows(userId) {
+  const { rows } = await pool.query(
+    `SELECT users.* FROM follows JOIN users ON users.id = follows.follower_id
+     WHERE follows.followee_id = $1 ORDER BY users.username`,
+    [userId]
+  );
+  return rows;
+}
+async function followingRows(userId) {
+  const { rows } = await pool.query(
+    `SELECT users.* FROM follows JOIN users ON users.id = follows.followee_id
+     WHERE follows.follower_id = $1 ORDER BY users.username`,
+    [userId]
+  );
+  return rows;
+}
 
-  allClimbs: db.prepare("SELECT * FROM climbs ORDER BY id"),
-  getClimbById: db.prepare("SELECT * FROM climbs WHERE id = ?"),
-  getClimbByWallAndSetterName: db.prepare(
-    "SELECT * FROM climbs WHERE wall_id = ? AND setter_name = ?" // COLLATE NOCASE on the column
-  ),
-  insertClimb: db.prepare(`
-    INSERT INTO climbs (wall_id, setter_name, name, setter_grade, grade, setter, photo_url, set_id, set_date, set_type)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `),
-  updateClimbGrade: db.prepare("UPDATE climbs SET grade = ? WHERE id = ?"),
-  updateClimbName: db.prepare("UPDATE climbs SET name = ? WHERE id = ?"),
+async function allClimbsRows() {
+  const { rows } = await pool.query("SELECT * FROM climbs ORDER BY id");
+  return rows;
+}
+async function getClimbById(id) {
+  const { rows } = await pool.query("SELECT * FROM climbs WHERE id = $1", [id]);
+  return rows[0];
+}
+async function getClimbByWallAndSetterName(wallId, setterName) {
+  // Case-insensitive, matching the functional lowercase unique index on
+  // (wall_id, setter_name) — was COLLATE NOCASE on the column under SQLite.
+  const { rows } = await pool.query(
+    "SELECT * FROM climbs WHERE wall_id = $1 AND LOWER(setter_name) = LOWER($2)",
+    [wallId, setterName]
+  );
+  return rows[0];
+}
+async function updateClimbGrade(grade, id) {
+  await pool.query("UPDATE climbs SET grade = $1 WHERE id = $2", [grade, id]);
+}
 
-  allAscentClaims: db.prepare("SELECT * FROM ascent_claims ORDER BY climb_id, ordinal"),
-  claimsForClimb: db.prepare("SELECT * FROM ascent_claims WHERE climb_id = ? ORDER BY ordinal"),
-  countClaims: db.prepare("SELECT COUNT(*) AS n FROM ascent_claims WHERE climb_id = ?"),
-  insertClaim: db.prepare(
-    "INSERT INTO ascent_claims (climb_id, ordinal, name, pass) VALUES (?, ?, ?, ?)"
-  ),
+async function allAscentClaims() {
+  const { rows } = await pool.query("SELECT * FROM ascent_claims ORDER BY climb_id, ordinal");
+  return rows;
+}
+async function countClaims(climbId) {
+  const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM ascent_claims WHERE climb_id = $1", [climbId]);
+  return rows[0].n;
+}
 
-  allNameProposals: db.prepare("SELECT * FROM name_proposals ORDER BY climb_id, created_at"),
-  proposalById: db.prepare("SELECT * FROM name_proposals WHERE id = ? AND climb_id = ?"),
-  insertProposal: db.prepare(
-    "INSERT INTO name_proposals (id, climb_id, name, claimed_by) VALUES (?, ?, ?, ?)"
-  ),
-  deleteProposal: db.prepare("DELETE FROM name_proposals WHERE id = ?"),
-  deleteProposalsForClimb: db.prepare("DELETE FROM name_proposals WHERE climb_id = ?"),
-  climbIdsWithProposals: db.prepare("SELECT DISTINCT climb_id FROM name_proposals"),
+async function allNameProposals() {
+  const { rows } = await pool.query("SELECT * FROM name_proposals ORDER BY climb_id, created_at");
+  return rows;
+}
+async function proposalById(id, climbId) {
+  const { rows } = await pool.query("SELECT * FROM name_proposals WHERE id = $1 AND climb_id = $2", [id, climbId]);
+  return rows[0];
+}
+async function climbIdsWithProposals() {
+  const { rows } = await pool.query("SELECT DISTINCT climb_id FROM name_proposals");
+  return rows;
+}
 
-  insertAscent: db.prepare(`
-    INSERT INTO ascents (id, user_id, climb_id, star_rating, grade, comment, attempts, attempts_this_session, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `),
-  ascentsForUser: db.prepare(`
-    SELECT ascents.*, climbs.wall_id, climbs.setter_name FROM ascents
-    JOIN climbs ON climbs.id = ascents.climb_id
-    WHERE ascents.user_id = ? ORDER BY ascents.rowid
-  `),
-  distinctClimbIdsForUser: db.prepare(
-    "SELECT DISTINCT climb_id FROM ascents WHERE user_id = ?"
-  ),
-  ascentById: db.prepare("SELECT * FROM ascents WHERE id = ? AND user_id = ?"),
-  clearAscentComment: db.prepare("UPDATE ascents SET comment = '' WHERE id = ?"),
-  // Every ascent ever logged against a climb, oldest first (rowid order),
-  // across all users — the shape withAscentStats/grade-distribution need.
-  allAscentsForClimb: db.prepare(`
-    SELECT ascents.*, users.username FROM ascents
-    JOIN users ON users.id = ascents.user_id
-    WHERE ascents.climb_id = ? ORDER BY ascents.rowid
-  `),
-  allAscentsWithUserAndClimb: db.prepare(`
+async function ascentsForUser(userId) {
+  const { rows } = await pool.query(
+    `SELECT ascents.*, climbs.wall_id, climbs.setter_name FROM ascents
+     JOIN climbs ON climbs.id = ascents.climb_id
+     WHERE ascents.user_id = $1 ORDER BY ascents.seq`,
+    [userId]
+  );
+  return rows;
+}
+async function ascentById(id, userId) {
+  const { rows } = await pool.query("SELECT * FROM ascents WHERE id = $1 AND user_id = $2", [id, userId]);
+  return rows[0];
+}
+async function clearAscentComment(id) {
+  await pool.query("UPDATE ascents SET comment = '' WHERE id = $1", [id]);
+}
+// Every ascent ever logged against a climb, oldest first (seq order —
+// insertion order; see the ascents.seq column comment in server/db.js),
+// across all users — the shape withAscentStats/grade-distribution need.
+async function allAscentsForClimb(climbId) {
+  const { rows } = await pool.query(
+    `SELECT ascents.*, users.username FROM ascents
+     JOIN users ON users.id = ascents.user_id
+     WHERE ascents.climb_id = $1 ORDER BY ascents.seq`,
+    [climbId]
+  );
+  return rows;
+}
+async function allAscentsWithUserAndClimb() {
+  const { rows } = await pool.query(`
     SELECT ascents.*, users.username, climbs.wall_id, climbs.setter_name FROM ascents
     JOIN users ON users.id = ascents.user_id
     JOIN climbs ON climbs.id = ascents.climb_id
-    ORDER BY ascents.rowid
-  `),
-};
+    ORDER BY ascents.seq
+  `);
+  return rows;
+}
 
 // Constant-time-in-practice: sessions are looked up by an indexed primary
 // key (sessions.token) rather than scanned linearly the way users.json's
 // sessionToken field used to be — this is the "real fix" the old
 // tokensMatch() comparison called out as only a partial measure for (see
-// git history / APP_REFERENCE.md §14.15). A SQLite index lookup's timing
+// git history / APP_REFERENCE.md §14.15). A Postgres index lookup's timing
 // doesn't depend on *where* in a scan the match would have been, so there's
 // no separate constant-time comparison needed on top of it.
-function getUserBySessionToken(token) {
-  return mapUserRow(stmt.getUserBySessionToken.get(token));
-}
 
 // Populates req.user (the full server-side user record, incl. passwordHash
 // — never sent back as-is, see toClientUser) from the session cookie. This
 // is the one source of truth for "who is making this request" from here on;
 // route handlers should never trust a username handed to them via
 // params/body/query instead.
-export function authenticate(req, res, next) {
+export async function authenticate(req, res, next) {
   const token = getCookie(req, SESSION_COOKIE);
   if (!token) {
     return res.status(401).json({ error: "Not logged in." });
   }
 
-  const user = getUserBySessionToken(token);
+  const user = await getUserBySessionToken(token);
   if (!user) {
     return res.status(401).json({ error: "Session expired. Please log in again." });
   }
@@ -418,7 +530,7 @@ export function authenticate(req, res, next) {
 // still want to know who (if anyone) is viewing — e.g. so a profile lookup
 // can report whether the viewer already follows this user — rather than
 // hard-failing the request when there's no session.
-export function resolveSessionUser(req) {
+export async function resolveSessionUser(req) {
   const token = getCookie(req, SESSION_COOKIE);
   if (!token) return null;
   return getUserBySessionToken(token);
@@ -459,22 +571,22 @@ export function requireModeratorOrSetter(req, res, next) {
 
 export const climbKey = (wallId, name) => `${wallId}::${name}`;
 
-function getAllClimbs() {
-  return stmt.allClimbs.all().map(mapClimbRow);
+async function getAllClimbs() {
+  return (await allClimbsRows()).map(mapClimbRow);
 }
 
 // Attaches ascentClaims/pendingNames to a list of mapped climbs — one bulk
 // query for each (grouped in JS by climb_id) rather than N+1 per-climb
 // queries, since every route that lists climbs needs both.
-function attachClaimsAndProposals(climbs) {
+async function attachClaimsAndProposals(climbs) {
   const claimsByClimbId = new Map();
-  for (const row of stmt.allAscentClaims.all()) {
+  for (const row of await allAscentClaims()) {
     const list = claimsByClimbId.get(row.climb_id) || [];
     list.push({ name: row.name, pass: !!row.pass });
     claimsByClimbId.set(row.climb_id, list);
   }
   const proposalsByClimbId = new Map();
-  for (const row of stmt.allNameProposals.all()) {
+  for (const row of await allNameProposals()) {
     const list = proposalsByClimbId.get(row.climb_id) || [];
     list.push({ id: row.id, name: row.name, claimedBy: row.claimed_by });
     proposalsByClimbId.set(row.climb_id, list);
@@ -612,11 +724,12 @@ export function currentClimbKeys(climbs) {
 // currentClimbKeys(climbs) above; this is not stored on the user record
 // (§14.7) — it's derived fresh on every read specifically so a wall reset
 // can never leave it stale. `climbsById` maps a climb id to its
-// {wallId, setterName} for building the key — see computeAscentCountForUser
-// below, which is what routes actually call.
-function computeAscentCount(userId, currentKeys, climbsById) {
+// {wallId, setterName} for building the key — see ascentCountForUser below,
+// which is what routes actually call.
+async function computeAscentCount(userId, currentKeys, climbsById) {
   const distinctKeys = new Set();
-  for (const row of stmt.distinctClimbIdsForUser.all(userId)) {
+  const { rows } = await pool.query("SELECT DISTINCT climb_id FROM ascents WHERE user_id = $1", [userId]);
+  for (const row of rows) {
     const climb = climbsById.get(row.climb_id);
     if (!climb) continue;
     const key = climbKey(climb.wallId, climb.setterName);
@@ -628,14 +741,14 @@ function computeAscentCount(userId, currentKeys, climbsById) {
 // Bundles what every ascentCount computation needs so call sites don't each
 // re-fetch/re-index climbs: the current-climb-key Set, and a climb-id ->
 // {wallId, setterName} map (ascents only store climb_id).
-function buildAscentCountContext() {
-  const climbs = getAllClimbs();
+async function buildAscentCountContext() {
+  const climbs = await getAllClimbs();
   const currentKeys = currentClimbKeys(climbs);
   const climbsById = new Map(climbs.map((c) => [c.id, c]));
   return { currentKeys, climbsById };
 }
 
-function ascentCountForUser(userId, ctx) {
+async function ascentCountForUser(userId, ctx) {
   return computeAscentCount(userId, ctx.currentKeys, ctx.climbsById);
 }
 
@@ -662,22 +775,22 @@ export function isLoggable(climb, climbs) {
 // Ascent stats (ascentCount, averageStars) and merged comments for a list
 // of climbs — computed fresh from the ascents table on every request rather
 // than kept in sync on the climb row.
-export function withAscentStats(climbs) {
+export async function withAscentStats(climbs) {
   // Per climb id: a Map of username -> that user's most-recent ascent
   // against it. Repeats are allowed (climbers legitimately resend/reclimb a
   // project), but must count once per user, not once per row — a climb
   // logged five times by one person is 1 ascent, not 5 (§14.6). Rows come
-  // back in rowid (insertion) order, so later occurrences in this loop
+  // back in seq (insertion) order, so later occurrences in this loop
   // overwrite earlier ones in the Map, leaving each user's most recent
   // entry.
   const latestAscentByUserByClimbId = new Map();
   const userCommentsByClimbId = new Map();
   // First ascent = whichever username logged the earliest ascent row for a
-  // climb — rows come back in rowid (insertion) order, so the first row
-  // seen per climb id is it; left alone on every later row for that climb.
+  // climb — rows come back in seq (insertion) order, so the first row seen
+  // per climb id is it; left alone on every later row for that climb.
   const firstAscentUsernameByClimbId = new Map();
 
-  for (const row of stmt.allAscentsWithUserAndClimb.all()) {
+  for (const row of await allAscentsWithUserAndClimb()) {
     const byUser = latestAscentByUserByClimbId.get(row.climb_id) || new Map();
     byUser.set(row.username, row);
     latestAscentByUserByClimbId.set(row.climb_id, byUser);
@@ -736,13 +849,14 @@ export function withAscentStats(climbs) {
 // read off the user object, so it can never go stale.
 // ---------------------------------------------------------------------------
 
-export function toClientUser(user, ascentCount = 0) {
+export async function toClientUser(user, ascentCount = 0) {
+  const [followers, following] = await Promise.all([countFollowers(user.id), countFollowing(user.id)]);
   return {
     username: user.username,
     name: user.name || "",
     avatarUrl: user.avatarUrl || "",
-    followersCount: stmt.countFollowers.get(user.id).n,
-    followingCount: stmt.countFollowing.get(user.id).n,
+    followersCount: followers,
+    followingCount: following,
     ascentCount,
     isModerator: !!user.isModerator,
     isSetter: !!user.isSetter,
@@ -760,16 +874,18 @@ export function toRoleListEntry(user) {
   };
 }
 
-export function toSearchResultEntry(user, viewer, ascentCount = 0) {
-  const isFollowing = Boolean(
-    viewer && stmt.isFollowing.get(viewer.id, user.id)
-  );
+export async function toSearchResultEntry(user, viewer, ascentCount = 0) {
+  const [isFollowing, followers, following] = await Promise.all([
+    viewer ? isFollowingRow(viewer.id, user.id) : Promise.resolve(false),
+    countFollowers(user.id),
+    countFollowing(user.id),
+  ]);
   return {
     username: user.username,
     name: user.name || "",
     avatarUrl: user.avatarUrl || "",
-    followersCount: stmt.countFollowers.get(user.id).n,
-    followingCount: stmt.countFollowing.get(user.id).n,
+    followersCount: followers,
+    followingCount: following,
     ascentCount,
     isFollowing,
   };
@@ -882,10 +998,12 @@ app.post("/api/signup", async (req, res) => {
     return sendRateLimited(res, waitMs);
   }
 
-  // Case-insensitive uniqueness comes from the users.username column's
-  // COLLATE NOCASE (see server/db.js) — "Cubesnail" and "cubesnail" can't
-  // both exist.
-  if (stmt.getUserByUsername.get(username)) {
+  // Case-insensitive uniqueness comes from the users table's functional
+  // lowercase unique index (see server/db.js) — "Cubesnail" and "cubesnail"
+  // can't both exist. This pre-check exists purely to give a friendly 409 in
+  // the common case; the isUniqueViolation catch below is the actual
+  // backstop for two signups racing this same username concurrently.
+  if (await getUserByUsername(username)) {
     recordRateLimitFailure(rateLimitKeys);
     return res.status(409).json({ error: "That username is already taken." });
   }
@@ -893,18 +1011,33 @@ app.post("/api/signup", async (req, res) => {
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
   const sessionToken = generateSessionToken();
 
-  const userId = withTransaction(() => {
-    const result = stmt.insertUser.run(username, name ? name.trim() : "", passwordHash);
-    const id = Number(result.lastInsertRowid);
-    const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_MS).toISOString();
-    stmt.insertSession.run(sessionToken, id, expiresAt);
-    return id;
-  });
+  let userId;
+  try {
+    userId = await withTransaction(async (client) => {
+      const { rows } = await client.query(
+        "INSERT INTO users (username, name, password_hash) VALUES ($1, $2, $3) RETURNING id",
+        [username, name ? name.trim() : "", passwordHash]
+      );
+      const id = rows[0].id;
+      const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_MS).toISOString();
+      await client.query(
+        "INSERT INTO sessions (token, user_id, expires_at) VALUES ($1, $2, $3)",
+        [sessionToken, id, expiresAt]
+      );
+      return id;
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      recordRateLimitFailure(rateLimitKeys);
+      return res.status(409).json({ error: "That username is already taken." });
+    }
+    throw err;
+  }
   recordRateLimitFailure(rateLimitKeys);
 
   setSessionCookie(req, res, sessionToken);
-  const user = mapUserRow(stmt.getUserById.get(userId));
-  res.json({ user: toClientUser(user, 0) });
+  const user = mapUserRow(await getUserById(userId));
+  res.json({ user: await toClientUser(user, 0) });
 });
 
 app.post("/api/login", async (req, res) => {
@@ -924,23 +1057,26 @@ app.post("/api/login", async (req, res) => {
     return sendRateLimited(res, waitMs);
   }
 
-  const user = mapUserRow(stmt.getUserByUsername.get(username));
+  const user = mapUserRow(await getUserByUsername(username));
 
   // An empty passwordHash means the account password was reset (e.g. by an
   // admin) — let anyone in as that user, but flag the client to immediately
   // prompt for a real password before continuing.
   if (user && !user.passwordHash) {
     const sessionToken = generateSessionToken();
-    withTransaction(() => {
-      stmt.deleteSessionsForUser.run(user.id);
+    await withTransaction(async (client) => {
+      await client.query("DELETE FROM sessions WHERE user_id = $1", [user.id]);
       const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_MS).toISOString();
-      stmt.insertSession.run(sessionToken, user.id, expiresAt);
+      await client.query(
+        "INSERT INTO sessions (token, user_id, expires_at) VALUES ($1, $2, $3)",
+        [sessionToken, user.id, expiresAt]
+      );
     });
     recordRateLimitSuccess(rateLimitKeys);
     setSessionCookie(req, res, sessionToken);
-    const ctx = buildAscentCountContext();
+    const ctx = await buildAscentCountContext();
     return res.json({
-      user: toClientUser(user, ascentCountForUser(user.id, ctx)),
+      user: await toClientUser(user, await ascentCountForUser(user.id, ctx)),
       needsPasswordReset: true,
     });
   }
@@ -960,31 +1096,31 @@ app.post("/api/login", async (req, res) => {
 
   // Opportunistic rehash: a successful login is the one moment we hold the
   // plaintext password, so it's the only place a hash created under an
-  // older, lower SALT_ROUNDS can be upgraded. bcrypt.hash is async, so this
-  // happens before the (fully synchronous) transaction below rather than
-  // inside it — DatabaseSync has no `await` point to interleave through
-  // regardless, so there's no atomicity lost by doing it first.
+  // older, lower SALT_ROUNDS can be upgraded.
   if (bcrypt.getRounds(user.passwordHash) < SALT_ROUNDS) {
     user.passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-    stmt.updateUserPassword.run(user.passwordHash, user.id);
+    await updateUserPassword(user.passwordHash, user.id);
   }
 
   const sessionToken = generateSessionToken();
-  withTransaction(() => {
-    stmt.deleteSessionsForUser.run(user.id);
+  await withTransaction(async (client) => {
+    await client.query("DELETE FROM sessions WHERE user_id = $1", [user.id]);
     const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_MS).toISOString();
-    stmt.insertSession.run(sessionToken, user.id, expiresAt);
+    await client.query(
+      "INSERT INTO sessions (token, user_id, expires_at) VALUES ($1, $2, $3)",
+      [sessionToken, user.id, expiresAt]
+    );
   });
   recordRateLimitSuccess(rateLimitKeys);
   setSessionCookie(req, res, sessionToken);
-  const ctx = buildAscentCountContext();
-  res.json({ user: toClientUser(user, ascentCountForUser(user.id, ctx)) });
+  const ctx = await buildAscentCountContext();
+  res.json({ user: await toClientUser(user, await ascentCountForUser(user.id, ctx)) });
 });
 
 // Clears the session both server-side (so the old token can't be replayed)
 // and client-side (drops the cookie).
-app.post("/api/logout", authenticate, (req, res) => {
-  stmt.deleteSessionsForUser.run(req.user.id);
+app.post("/api/logout", authenticate, async (req, res) => {
+  await deleteSessionsForUser(req.user.id);
   res.clearCookie(SESSION_COOKIE, { path: "/" });
   res.json({ success: true });
 });
@@ -995,24 +1131,24 @@ app.post("/api/logout", authenticate, (req, res) => {
 // cached at last page load. 401 means "the cookie says you're logged out";
 // the client must not conflate that with a network error, or a phone with
 // patchy gym wifi would get logged out on every blip (§14.8).
-app.get("/api/me", authenticate, (req, res) => {
-  const ctx = buildAscentCountContext();
-  res.json({ user: toClientUser(req.user, ascentCountForUser(req.user.id, ctx)) });
+app.get("/api/me", authenticate, async (req, res) => {
+  const ctx = await buildAscentCountContext();
+  res.json({ user: await toClientUser(req.user, await ascentCountForUser(req.user.id, ctx)) });
 });
 
 // The Settings-page actions below all require a valid session cookie
 // (see `authenticate`) belonging to the same account named in the URL
 // (see `requireSelf`) — no longer just trusting the :username in the URL.
 
-app.post("/api/users/:username/name", authenticate, requireSelf, (req, res) => {
+app.post("/api/users/:username/name", authenticate, requireSelf, async (req, res) => {
   const { name } = req.body || {};
-  stmt.updateUserName.run((name || "").trim(), req.user.id);
-  const user = mapUserRow(stmt.getUserById.get(req.user.id));
-  const ctx = buildAscentCountContext();
-  res.json({ user: toClientUser(user, ascentCountForUser(user.id, ctx)) });
+  await updateUserName((name || "").trim(), req.user.id);
+  const user = mapUserRow(await getUserById(req.user.id));
+  const ctx = await buildAscentCountContext();
+  res.json({ user: await toClientUser(user, await ascentCountForUser(user.id, ctx)) });
 });
 
-app.post("/api/users/:username/avatar", authenticate, requireSelf, (req, res) => {
+app.post("/api/users/:username/avatar", authenticate, requireSelf, async (req, res) => {
   const { avatarUrl } = req.body || {};
 
   if (!avatarUrl) {
@@ -1021,7 +1157,7 @@ app.post("/api/users/:username/avatar", authenticate, requireSelf, (req, res) =>
 
   let savedAvatarUrl;
   try {
-    savedAvatarUrl = saveDataUrlImage(avatarUrl);
+    savedAvatarUrl = await saveDataUrlImage(avatarUrl);
   } catch (err) {
     if (err instanceof ImageValidationError) {
       return res.status(400).json({ error: err.message });
@@ -1029,13 +1165,13 @@ app.post("/api/users/:username/avatar", authenticate, requireSelf, (req, res) =>
     throw err;
   }
 
-  stmt.updateUserAvatar.run(savedAvatarUrl, req.user.id);
-  const user = mapUserRow(stmt.getUserById.get(req.user.id));
-  const ctx = buildAscentCountContext();
-  res.json({ user: toClientUser(user, ascentCountForUser(user.id, ctx)) });
+  await updateUserAvatar(savedAvatarUrl, req.user.id);
+  const user = mapUserRow(await getUserById(req.user.id));
+  const ctx = await buildAscentCountContext();
+  res.json({ user: await toClientUser(user, await ascentCountForUser(user.id, ctx)) });
 });
 
-app.post("/api/users/:username/username", authenticate, requireSelf, (req, res) => {
+app.post("/api/users/:username/username", authenticate, requireSelf, async (req, res) => {
   const { username } = req.params;
   const { newUsername } = req.body || {};
   const trimmed = (newUsername || "").trim();
@@ -1044,13 +1180,13 @@ app.post("/api/users/:username/username", authenticate, requireSelf, (req, res) 
     return res.status(400).json({ error: "A new username is required." });
   }
 
-  // Case-insensitive, same as signup (COLLATE NOCASE on the column) — but a
-  // pure case change on your own name (e.g. "cube" -> "Cube") is still
-  // allowed, hence excluding a match against the caller's own row (by id,
-  // not by string-equality against the URL param — "Cube" !== "cube" would
-  // otherwise make the self-exclusion never fire on exactly the case-change
-  // request it exists for).
-  const existing = stmt.getUserByUsername.get(trimmed);
+  // Case-insensitive, same as signup (the functional lowercase unique
+  // index) — but a pure case change on your own name (e.g. "cube" ->
+  // "Cube") is still allowed, hence excluding a match against the caller's
+  // own row (by id, not by string-equality against the URL param — "Cube"
+  // !== "cube" would otherwise make the self-exclusion never fire on
+  // exactly the case-change request it exists for).
+  const existing = await getUserByUsername(trimmed);
   if (existing && existing.id !== req.user.id) {
     return res.status(409).json({ error: "That username is already taken." });
   }
@@ -1058,10 +1194,10 @@ app.post("/api/users/:username/username", authenticate, requireSelf, (req, res) 
   // Note: usernames aren't denormalized anywhere else (follows/ascents all
   // reference user id), so unlike the old JSON version, this never risked
   // leaving other users' followers/following arrays pointing at a stale name.
-  stmt.updateUsername.run(trimmed, req.user.id);
-  const user = mapUserRow(stmt.getUserById.get(req.user.id));
-  const ctx = buildAscentCountContext();
-  res.json({ user: toClientUser(user, ascentCountForUser(user.id, ctx)) });
+  await updateUsername(trimmed, req.user.id);
+  const user = mapUserRow(await getUserById(req.user.id));
+  const ctx = await buildAscentCountContext();
+  res.json({ user: await toClientUser(user, await ascentCountForUser(user.id, ctx)) });
 });
 
 app.post("/api/users/:username/password", authenticate, requireSelf, async (req, res) => {
@@ -1084,7 +1220,7 @@ app.post("/api/users/:username/password", authenticate, requireSelf, async (req,
   }
 
   const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-  stmt.updateUserPassword.run(newHash, req.user.id);
+  await updateUserPassword(newHash, req.user.id);
   res.json({ success: true });
 });
 
@@ -1096,26 +1232,28 @@ app.post("/api/users/:username/password", authenticate, requireSelf, async (req,
 // button).
 const ROLES = ["member", "moderator", "setter", "admin"];
 
-app.get("/api/users", authenticate, requireAdmin, (req, res) => {
-  const users = stmt.allUsers.all().map(mapUserRow);
+app.get("/api/users", authenticate, requireAdmin, async (req, res) => {
+  const users = (await allUsers()).map(mapUserRow);
   res.json({ users: users.map(toRoleListEntry) });
 });
 
 // Backs the Search tab's "Users" mode — public (unlike GET /api/users
 // above, which is admin-only and returns roles), matches on username or
 // display name, case-insensitive substring.
-app.get("/api/users/search", (req, res) => {
+app.get("/api/users/search", async (req, res) => {
   const q = (req.query.q || "").toString().trim().toLowerCase();
   if (!q) return res.json({ users: [] });
 
-  const viewer = resolveSessionUser(req);
+  const viewer = await resolveSessionUser(req);
   const like = `%${q}%`;
-  const matches = stmt.searchUsers.all(like, like).map(mapUserRow);
+  const matches = (await searchUsers(like)).map(mapUserRow);
 
-  const ctx = buildAscentCountContext();
-  res.json({
-    users: matches.map((u) => toSearchResultEntry(u, viewer, ascentCountForUser(u.id, ctx))),
-  });
+  const ctx = await buildAscentCountContext();
+  const results = [];
+  for (const u of matches) {
+    results.push(await toSearchResultEntry(u, viewer, await ascentCountForUser(u.id, ctx)));
+  }
+  res.json({ users: results });
 });
 
 // Public "top ascenders" leaderboard — backs the Home tab's podium.
@@ -1124,98 +1262,108 @@ app.get("/api/users/search", (req, res) => {
 // excluded so a brand-new gym doesn't show hollow "0 ascents" podium spots.
 // `limit` defaults to 3 (a podium) but is overridable, clamped to a sane
 // range.
-app.get("/api/users/leaderboard", (req, res) => {
+app.get("/api/users/leaderboard", async (req, res) => {
   const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 3));
 
-  const viewer = resolveSessionUser(req);
-  const users = stmt.allUsers.all().map(mapUserRow);
-  const ctx = buildAscentCountContext();
+  const viewer = await resolveSessionUser(req);
+  const users = (await allUsers()).map(mapUserRow);
+  const ctx = await buildAscentCountContext();
   // Compute every user's derived ascentCount up front (once each, via the
   // shared ctx) so ranking can sort/filter on it directly, rather than a
   // stored field that could go stale after a reset.
-  const ranked = users
-    .map((u) => ({ user: u, ascentCount: ascentCountForUser(u.id, ctx) }))
-    .filter((r) => r.ascentCount > 0)
-    .sort((a, b) => b.ascentCount - a.ascentCount || a.user.username.localeCompare(b.user.username))
-    .slice(0, limit);
+  const ranked = [];
+  for (const u of users) {
+    const ascentCount = await ascentCountForUser(u.id, ctx);
+    if (ascentCount > 0) ranked.push({ user: u, ascentCount });
+  }
+  ranked.sort((a, b) => b.ascentCount - a.ascentCount || a.user.username.localeCompare(b.user.username));
+  const top = ranked.slice(0, limit);
 
-  res.json({ users: ranked.map((r) => toSearchResultEntry(r.user, viewer, r.ascentCount)) });
+  const results = [];
+  for (const r of top) {
+    results.push(await toSearchResultEntry(r.user, viewer, r.ascentCount));
+  }
+  res.json({ users: results });
 });
 
 // Follow/unfollow — the acting user comes from the session cookie (see
 // authenticate), the target from :username in the URL. Both sides of the
 // relationship are one `follows` row, so there's no risk of the two ever
 // disagreeing the way two separately-updated JSON arrays could.
-app.post("/api/users/:username/follow", authenticate, (req, res) => {
+app.post("/api/users/:username/follow", authenticate, async (req, res) => {
   const { username } = req.params;
   if (username === req.user.username) {
     return res.status(400).json({ error: "You can't follow yourself." });
   }
 
-  const target = mapUserRow(stmt.getUserByUsername.get(username));
+  const target = mapUserRow(await getUserByUsername(username));
   if (!target) {
     return res.status(404).json({ error: "User not found." });
   }
 
-  stmt.addFollow.run(req.user.id, target.id); // INSERT OR IGNORE => idempotent
-  res.json({ isFollowing: true, followersCount: stmt.countFollowers.get(target.id).n });
+  await addFollow(req.user.id, target.id); // ON CONFLICT DO NOTHING => idempotent
+  res.json({ isFollowing: true, followersCount: await countFollowers(target.id) });
 });
 
-app.post("/api/users/:username/unfollow", authenticate, (req, res) => {
+app.post("/api/users/:username/unfollow", authenticate, async (req, res) => {
   const { username } = req.params;
 
-  const target = mapUserRow(stmt.getUserByUsername.get(username));
+  const target = mapUserRow(await getUserByUsername(username));
   if (!target) {
     return res.status(404).json({ error: "User not found." });
   }
 
-  stmt.removeFollow.run(req.user.id, target.id);
-  res.json({ isFollowing: false, followersCount: stmt.countFollowers.get(target.id).n });
+  await removeFollow(req.user.id, target.id);
+  res.json({ isFollowing: false, followersCount: await countFollowers(target.id) });
 });
 
 // Public lists backing the tappable follower/following counts on a
 // profile — same row shape as GET /api/users/search, so tapping into one
 // of these results opens UserProfileScreen just like a search result does.
-app.get("/api/users/:username/followers", (req, res) => {
+app.get("/api/users/:username/followers", async (req, res) => {
   const { username } = req.params;
-  const target = mapUserRow(stmt.getUserByUsername.get(username));
+  const target = mapUserRow(await getUserByUsername(username));
   if (!target) {
     return res.status(404).json({ error: "User not found." });
   }
 
-  const viewer = resolveSessionUser(req);
-  const followers = stmt.followerRows.all(target.id).map(mapUserRow);
-  const ctx = buildAscentCountContext();
-  res.json({
-    users: followers.map((u) => toSearchResultEntry(u, viewer, ascentCountForUser(u.id, ctx))),
-  });
+  const viewer = await resolveSessionUser(req);
+  const followers = (await followerRows(target.id)).map(mapUserRow);
+  const ctx = await buildAscentCountContext();
+  const results = [];
+  for (const u of followers) {
+    results.push(await toSearchResultEntry(u, viewer, await ascentCountForUser(u.id, ctx)));
+  }
+  res.json({ users: results });
 });
 
-app.get("/api/users/:username/following", (req, res) => {
+app.get("/api/users/:username/following", async (req, res) => {
   const { username } = req.params;
-  const target = mapUserRow(stmt.getUserByUsername.get(username));
+  const target = mapUserRow(await getUserByUsername(username));
   if (!target) {
     return res.status(404).json({ error: "User not found." });
   }
 
-  const viewer = resolveSessionUser(req);
-  const following = stmt.followingRows.all(target.id).map(mapUserRow);
-  const ctx = buildAscentCountContext();
-  res.json({
-    users: following.map((u) => toSearchResultEntry(u, viewer, ascentCountForUser(u.id, ctx))),
-  });
+  const viewer = await resolveSessionUser(req);
+  const following = (await followingRows(target.id)).map(mapUserRow);
+  const ctx = await buildAscentCountContext();
+  const results = [];
+  for (const u of following) {
+    results.push(await toSearchResultEntry(u, viewer, await ascentCountForUser(u.id, ctx)));
+  }
+  res.json({ users: results });
 });
 
 // Public list of every setter-flagged account — backs the Setter dropdown
 // in NewClimbForm client-side. Moderators/setters only see the "+" button
 // that opens that form, but who counts as a setter isn't sensitive on its
 // own (same reasoning as the public search results above).
-app.get("/api/users/setters", (req, res) => {
-  const setters = stmt.setterUsers.all().map(mapUserRow);
+app.get("/api/users/setters", async (req, res) => {
+  const setters = (await setterUsers()).map(mapUserRow);
   res.json({ setters: setters.map(toSetterListEntry) });
 });
 
-app.post("/api/users/:username/role", authenticate, requireAdmin, (req, res) => {
+app.post("/api/users/:username/role", authenticate, requireAdmin, async (req, res) => {
   const { username } = req.params;
   const { role } = req.body || {};
 
@@ -1223,7 +1371,7 @@ app.post("/api/users/:username/role", authenticate, requireAdmin, (req, res) => 
     return res.status(400).json({ error: "Role must be member, moderator, setter, or admin." });
   }
 
-  const user = mapUserRow(stmt.getUserByUsername.get(username));
+  const user = mapUserRow(await getUserByUsername(username));
   if (!user) {
     return res.status(404).json({ error: "User not found." });
   }
@@ -1231,7 +1379,7 @@ app.post("/api/users/:username/role", authenticate, requireAdmin, (req, res) => 
   const isModerator = role === "moderator" || role === "admin";
   const isSetter = role === "setter" || role === "admin";
   const isAdmin = role === "admin";
-  stmt.updateUserRole.run(isModerator ? 1 : 0, isSetter ? 1 : 0, isAdmin ? 1 : 0, user.id);
+  await updateUserRole(isModerator, isSetter, isAdmin, user.id);
 
   res.json({ user: toRoleListEntry({ ...user, isModerator, isSetter, isAdmin }) });
 });
@@ -1240,15 +1388,15 @@ app.post("/api/users/:username/role", authenticate, requireAdmin, (req, res) => 
 // never had a password set — their next login hits the empty-passwordHash
 // branch in POST /api/login (needsPasswordReset: true) and lets them straight
 // through to set a new one via ChangePasswordForm, no old password needed.
-app.post("/api/users/:username/reset-password", authenticate, requireAdmin, (req, res) => {
+app.post("/api/users/:username/reset-password", authenticate, requireAdmin, async (req, res) => {
   const { username } = req.params;
 
-  const user = mapUserRow(stmt.getUserByUsername.get(username));
+  const user = mapUserRow(await getUserByUsername(username));
   if (!user) {
     return res.status(404).json({ error: "User not found." });
   }
 
-  stmt.updateUserPassword.run("", user.id);
+  await updateUserPassword("", user.id);
   res.json({ success: true });
 });
 
@@ -1257,17 +1405,14 @@ app.post("/api/users/:username/reset-password", authenticate, requireAdmin, (req
 // (climbs.wall_id is FK-enforced). Not yet consumed client-side; src/App.jsx
 // still has its own hardcoded WALLS array, so this exists for forward
 // compatibility with whoever wires that up.
-app.get("/api/walls", (req, res) => {
-  const walls = db
-    .prepare("SELECT id, name FROM walls ORDER BY display_order")
-    .all()
-    .map((row) => ({ id: row.id, name: row.name }));
-  res.json({ walls });
+app.get("/api/walls", async (req, res) => {
+  const { rows } = await pool.query("SELECT id, name FROM walls ORDER BY display_order");
+  res.json({ walls: rows.map((row) => ({ id: row.id, name: row.name })) });
 });
 
-app.get("/api/climbs", (req, res) => {
-  const climbs = attachClaimsAndProposals(getAllClimbs());
-  res.json({ climbs: withAscentStats(currentClimbsOnly(climbs)) });
+app.get("/api/climbs", async (req, res) => {
+  const climbs = await attachClaimsAndProposals(await getAllClimbs());
+  res.json({ climbs: await withAscentStats(currentClimbsOnly(climbs)) });
 });
 
 // currentClimbsOnly/groupIntoCycles/archivedClimbsByWall all compare setDate
@@ -1299,7 +1444,7 @@ function isValidSetDate(s) {
 // "reset" climbs with the same setDate lands them all in the same cycle
 // (see groupIntoCycles, which groups by date rather than by each climb's
 // own setId).
-app.post("/api/climbs", authenticate, requireModeratorOrSetter, (req, res) => {
+app.post("/api/climbs", authenticate, requireModeratorOrSetter, async (req, res) => {
   const { wallId, name, setterGrade, setter, setDate, photoUrl, setType } = req.body || {};
 
   const trimmedName = (name || "").trim();
@@ -1328,26 +1473,28 @@ app.post("/api/climbs", authenticate, requireModeratorOrSetter, (req, res) => {
   }
 
   // Climb identity is wallId + setterName (case-insensitive, via the
-  // column's COLLATE NOCASE), so that pair has to be unique across every
-  // climb ever put up on that wall, current or archived — not just the
-  // currently active set. UNIQUE(wall_id, setter_name) also enforces this
-  // structurally; this pre-check exists purely to give a friendlier 409
-  // instead of surfacing a raw constraint-violation error.
-  if (stmt.getClimbByWallAndSetterName.get(numericWallId, trimmedName)) {
+  // climbs table's functional lowercase unique index — see server/db.js),
+  // so that pair has to be unique across every climb ever put up on that
+  // wall, current or archived — not just the currently active set. The
+  // index also enforces this structurally; this pre-check exists purely to
+  // give a friendlier 409 instead of surfacing a raw constraint-violation
+  // error — the isUniqueViolation catch below is the actual backstop for a
+  // concurrent request racing this same check.
+  if (await getClimbByWallAndSetterName(numericWallId, trimmedName)) {
     return res.status(409).json({ error: "A climb with that name already exists on this wall." });
   }
 
   // Existence only, not the isSetter flag — a climb set by someone who has
   // since lost the flag is still historically correct; requiring isSetter
   // here would make a role change retroactively invalidate history.
-  if (!stmt.getUserByUsername.get(trimmedSetter)) {
+  if (!(await getUserByUsername(trimmedSetter))) {
     return res.status(400).json({ error: "Unknown setter." });
   }
 
   let savedPhotoUrl = "";
   if (photoUrl) {
     try {
-      savedPhotoUrl = saveDataUrlImage(photoUrl);
+      savedPhotoUrl = await saveDataUrlImage(photoUrl);
     } catch (err) {
       if (err instanceof ImageValidationError) {
         return res.status(400).json({ error: err.message });
@@ -1359,24 +1506,36 @@ app.post("/api/climbs", authenticate, requireModeratorOrSetter, (req, res) => {
   const resolvedSetDate = setDate || new Date().toISOString().slice(0, 10);
   const resolvedSetType = setType === "reset" ? "reset" : "backfill";
 
-  const climbId = withTransaction(() => {
-    const result = stmt.insertClimb.run(
-      numericWallId,
-      trimmedName,
-      trimmedName, // display name starts equal to setterName — see the
-      // naming-rights note on the climbs table in server/db.js
-      trimmedSetterGrade,
-      "", // grade — not confirmed yet, see POST /api/climbs/grade
-      trimmedSetter,
-      savedPhotoUrl,
-      crypto.randomUUID(),
-      resolvedSetDate,
-      resolvedSetType
-    );
-    return Number(result.lastInsertRowid);
-  });
+  let climbId;
+  try {
+    climbId = await withTransaction(async (client) => {
+      const { rows } = await client.query(
+        `INSERT INTO climbs (wall_id, setter_name, name, setter_grade, grade, setter, photo_url, set_id, set_date, set_type)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+        [
+          numericWallId,
+          trimmedName,
+          trimmedName, // display name starts equal to setterName — see the
+          // naming-rights note on the climbs table in server/db.js
+          trimmedSetterGrade,
+          "", // grade — not confirmed yet, see POST /api/climbs/grade
+          trimmedSetter,
+          savedPhotoUrl,
+          crypto.randomUUID(),
+          resolvedSetDate,
+          resolvedSetType,
+        ]
+      );
+      return rows[0].id;
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return res.status(409).json({ error: "A climb with that name already exists on this wall." });
+    }
+    throw err;
+  }
 
-  const climb = attachClaimsAndProposals([mapClimbRow(stmt.getClimbById.get(climbId))])[0];
+  const climb = (await attachClaimsAndProposals([mapClimbRow(await getClimbById(climbId))]))[0];
   res.json({ climb });
 });
 
@@ -1386,7 +1545,7 @@ app.post("/api/climbs", authenticate, requireModeratorOrSetter, (req, res) => {
 // wall's current set (i.e. a newer reset has superseded it — see
 // currentClimbsOnly) — the setter's original range guess (setterGrade)
 // stands until then.
-app.post("/api/climbs/grade", authenticate, requireAdmin, (req, res) => {
+app.post("/api/climbs/grade", authenticate, requireAdmin, async (req, res) => {
   const { wallId, setterName, grade } = req.body || {};
 
   const trimmedGrade = (grade || "").trim();
@@ -1400,15 +1559,15 @@ app.post("/api/climbs/grade", authenticate, requireAdmin, (req, res) => {
     return res.status(400).json({ error: "Unrecognized grade." });
   }
 
-  // Case-insensitive via the column's COLLATE NOCASE — matches POST
-  // /api/climbs' duplicate check, which used to disagree with this lookup
-  // before the migration (§14.17g).
-  const climb = mapClimbRow(stmt.getClimbByWallAndSetterName.get(numericWallId, setterName));
+  // Case-insensitive via the functional lowercase unique index — matches
+  // POST /api/climbs' duplicate check, which used to disagree with this
+  // lookup before the migration (§14.17g).
+  const climb = mapClimbRow(await getClimbByWallAndSetterName(numericWallId, setterName));
   if (!climb) {
     return res.status(404).json({ error: "Climb not found." });
   }
 
-  const climbs = getAllClimbs();
+  const climbs = await getAllClimbs();
   const isCurrent = currentClimbsOnly(climbs).some((c) => c.id === climb.id);
   if (isCurrent) {
     return res.status(409).json({
@@ -1416,17 +1575,17 @@ app.post("/api/climbs/grade", authenticate, requireAdmin, (req, res) => {
     });
   }
 
-  stmt.updateClimbGrade.run(trimmedGrade, climb.id);
+  await updateClimbGrade(trimmedGrade, climb.id);
 
-  res.json({ climb: attachClaimsAndProposals([{ ...climb, grade: trimmedGrade }])[0] });
+  res.json({ climb: (await attachClaimsAndProposals([{ ...climb, grade: trimmedGrade }]))[0] });
 });
 
 // Climbs eligible for an admin to confirm a final grade for — every climb
 // no longer current on its wall (superseded by a newer reset) that doesn't
 // have one yet. Backs the Grades tab's grade-setting list. Admin-only, same
 // audience as POST /api/climbs/grade above.
-app.get("/api/climbs/needs-grade", authenticate, requireAdmin, (req, res) => {
-  const climbs = getAllClimbs();
+app.get("/api/climbs/needs-grade", authenticate, requireAdmin, async (req, res) => {
+  const climbs = await getAllClimbs();
   const currentIds = new Set(currentClimbsOnly(climbs).map((c) => c.id));
 
   const needsGrade = climbs
@@ -1440,10 +1599,10 @@ app.get("/api/climbs/needs-grade", authenticate, requireAdmin, (req, res) => {
 // pendingNames note on POST /api/ascents. Backs the Approve tab's queue.
 // Moderator/setter-only, same audience as the old grade-approval tab this
 // one took over the name/slot of.
-app.get("/api/climbs/needs-name-approval", authenticate, requireModeratorOrSetter, (req, res) => {
-  const climbIds = new Set(stmt.climbIdsWithProposals.all().map((r) => r.climb_id));
-  const climbs = attachClaimsAndProposals(
-    getAllClimbs().filter((c) => climbIds.has(c.id))
+app.get("/api/climbs/needs-name-approval", authenticate, requireModeratorOrSetter, async (req, res) => {
+  const climbIds = new Set((await climbIdsWithProposals()).map((r) => r.climb_id));
+  const climbs = (
+    await attachClaimsAndProposals((await getAllClimbs()).filter((c) => climbIds.has(c.id)))
   ).sort((a, b) => (a.setDate < b.setDate ? 1 : -1));
 
   res.json({ climbs });
@@ -1455,7 +1614,7 @@ app.get("/api/climbs/needs-name-approval", authenticate, requireModeratorOrSette
 // rejecting just discards the one proposal. Either way the climb keeps its
 // immutable `setterName` — nothing else that references the climb by id
 // needs to change.
-app.post("/api/climbs/approve-name", authenticate, requireModeratorOrSetter, (req, res) => {
+app.post("/api/climbs/approve-name", authenticate, requireModeratorOrSetter, async (req, res) => {
   const { wallId, setterName, proposalId, action } = req.body || {};
   const numericWallId = Number(wallId);
 
@@ -1466,31 +1625,31 @@ app.post("/api/climbs/approve-name", authenticate, requireModeratorOrSetter, (re
     return res.status(400).json({ error: "Action must be 'approve' or 'reject'." });
   }
 
-  const climb = mapClimbRow(stmt.getClimbByWallAndSetterName.get(numericWallId, setterName));
+  const climb = mapClimbRow(await getClimbByWallAndSetterName(numericWallId, setterName));
   if (!climb) {
     return res.status(404).json({ error: "Climb not found." });
   }
 
-  const proposal = stmt.proposalById.get(proposalId, climb.id);
+  const proposal = await proposalById(proposalId, climb.id);
   if (!proposal) {
     return res.status(404).json({ error: "Proposal not found." });
   }
 
-  withTransaction(() => {
+  await withTransaction(async (client) => {
     if (action === "approve") {
-      stmt.updateClimbName.run(proposal.name, climb.id);
-      stmt.deleteProposalsForClimb.run(climb.id);
+      await client.query("UPDATE climbs SET name = $1 WHERE id = $2", [proposal.name, climb.id]);
+      await client.query("DELETE FROM name_proposals WHERE climb_id = $1", [climb.id]);
     } else {
-      stmt.deleteProposal.run(proposalId);
+      await client.query("DELETE FROM name_proposals WHERE id = $1", [proposalId]);
     }
   });
 
-  const updated = mapClimbRow(stmt.getClimbById.get(climb.id));
-  res.json({ climb: attachClaimsAndProposals([updated])[0] });
+  const updated = mapClimbRow(await getClimbById(climb.id));
+  res.json({ climb: (await attachClaimsAndProposals([updated]))[0] });
 });
 
-app.get("/api/archive", (req, res) => {
-  const climbs = attachClaimsAndProposals(getAllClimbs());
+app.get("/api/archive", async (req, res) => {
+  const climbs = await attachClaimsAndProposals(await getAllClimbs());
   const walls = archivedClimbsByWall(climbs);
   const archivedFlat = walls.flatMap((wall) => wall.climbs);
 
@@ -1499,7 +1658,7 @@ app.get("/api/archive", (req, res) => {
   // Older cycles beyond that stay view-only.
   const loggableIds = new Set(currentClimbsOnly(archivedFlat).map((climb) => climb.id));
 
-  const statsById = new Map(withAscentStats(archivedFlat).map((c) => [c.id, c]));
+  const statsById = new Map((await withAscentStats(archivedFlat)).map((c) => [c.id, c]));
 
   const wallsWithStats = walls.map((wall) => ({
     ...wall,
@@ -1538,7 +1697,7 @@ function isValidAttemptsValue(value, { allowZero }) {
   return typeof value === "number" && Number.isInteger(value) && (allowZero ? value >= 0 : value >= 1);
 }
 
-app.post("/api/ascents", authenticate, (req, res) => {
+app.post("/api/ascents", authenticate, async (req, res) => {
   const {
     wallId,
     climbName,
@@ -1560,11 +1719,11 @@ app.post("/api/ascents", authenticate, (req, res) => {
   // before it had even read climbs.json, so any {wallId, climbName} string
   // pair was accepted, stored, counted, and rendered as a comment on a climb
   // that might not exist (§14.6).
-  const climb = mapClimbRow(stmt.getClimbByWallAndSetterName.get(numericWallId, climbName));
+  const climb = mapClimbRow(await getClimbByWallAndSetterName(numericWallId, climbName));
   if (!climb) {
     return res.status(404).json({ error: "Climb not found." });
   }
-  const climbs = getAllClimbs();
+  const climbs = await getAllClimbs();
   if (!isLoggable(climb, climbs)) {
     return res.status(409).json({
       error: "This climb is no longer accepting new ascents.",
@@ -1595,18 +1754,22 @@ app.post("/api/ascents", authenticate, (req, res) => {
 
   const ascentId = crypto.randomUUID();
 
-  withTransaction(() => {
-    stmt.insertAscent.run(
-      ascentId,
-      req.user.id,
-      climb.id,
-      starRating ?? null,
-      trimmedGrade,
-      comment || "",
-      logAttempts ? attempts ?? null : null,
-      logAttempts ? attemptsThisSession ?? null : null,
-      new Date().toISOString() // new ascents get an honest timestamp —
-      // only pre-migration rows are NULL (§14.20)
+  await withTransaction(async (client) => {
+    await client.query(
+      `INSERT INTO ascents (id, user_id, climb_id, star_rating, grade, comment, attempts, attempts_this_session, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        ascentId,
+        req.user.id,
+        climb.id,
+        starRating ?? null,
+        trimmedGrade,
+        comment || "",
+        logAttempts ? attempts ?? null : null,
+        logAttempts ? attemptsThisSession ?? null : null,
+        new Date().toISOString(), // new ascents get an honest timestamp —
+        // only pre-migration rows are NULL (§14.20)
+      ]
     );
 
     // Optional first/second/.../fifth-ascent claim offered alongside this
@@ -1614,41 +1777,51 @@ app.post("/api/ascents", authenticate, (req, res) => {
     // one slot per ordinal, first come first served, capped at 5 (the
     // ascent_claims PRIMARY KEY also enforces this structurally).
     if (ascentClaim && (ascentClaim.name || ascentClaim.pass)) {
-      const claimCount = stmt.countClaims.get(climb.id).n;
+      const { rows: claimCountRows } = await client.query(
+        "SELECT COUNT(*)::int AS n FROM ascent_claims WHERE climb_id = $1",
+        [climb.id]
+      );
+      const claimCount = claimCountRows[0].n;
       if (claimCount < 5) {
         const trimmedClaimName = (ascentClaim.name || "").trim();
-        stmt.insertClaim.run(climb.id, claimCount + 1, trimmedClaimName, ascentClaim.pass ? 1 : 0);
+        await client.query(
+          "INSERT INTO ascent_claims (climb_id, ordinal, name, pass) VALUES ($1, $2, $3, $4)",
+          [climb.id, claimCount + 1, trimmedClaimName, Boolean(ascentClaim.pass)]
+        );
 
         // Naming rights: whoever names an ascenter also proposes a new name
         // for the climb itself, queued for a moderator/setter to approve
         // (see GET /api/climbs/needs-name-approval, POST
         // /api/climbs/approve-name) rather than taking effect immediately.
         if (trimmedClaimName) {
-          stmt.insertProposal.run(crypto.randomUUID(), climb.id, trimmedClaimName, req.user.username);
+          await client.query(
+            "INSERT INTO name_proposals (id, climb_id, name, claimed_by) VALUES ($1, $2, $3, $4)",
+            [crypto.randomUUID(), climb.id, trimmedClaimName, req.user.username]
+          );
         }
       }
     }
   });
 
   // Derived fresh rather than stored (§14.7) — see computeAscentCount.
-  const ctx = buildAscentCountContext();
-  const ascents = stmt.ascentsForUser.all(req.user.id).map(mapAscentRow);
-  res.json({ ascents, ascentCount: ascentCountForUser(req.user.id, ctx) });
+  const ctx = await buildAscentCountContext();
+  const ascents = (await ascentsForUser(req.user.id)).map(mapAscentRow);
+  res.json({ ascents, ascentCount: await ascentCountForUser(req.user.id, ctx) });
 });
 
 // Deleting a comment only clears the `comment` text off the ascent it came
 // from — the rest of that ascent's data (grade, rating, attempts) is kept.
 // Only the ascent's owner can delete it — enforced via `requireSelf` against
 // the session cookie, not just the username in the URL.
-app.delete("/api/users/:username/ascents/:ascentId/comment", authenticate, requireSelf, (req, res) => {
+app.delete("/api/users/:username/ascents/:ascentId/comment", authenticate, requireSelf, async (req, res) => {
   const { ascentId } = req.params;
 
-  const ascent = stmt.ascentById.get(ascentId, req.user.id);
+  const ascent = await ascentById(ascentId, req.user.id);
   if (!ascent) {
     return res.status(404).json({ error: "Ascent not found." });
   }
 
-  stmt.clearAscentComment.run(ascentId);
+  await clearAscentComment(ascentId);
   res.json({ success: true });
 });
 
@@ -1657,20 +1830,20 @@ app.delete("/api/users/:username/ascents/:ascentId/comment", authenticate, requi
 // V-grade bucket. Prefers the grade typed on the user's most recent ascent
 // of that climb; falls back to the climb's own bucket grade (looked up by
 // climb id, across current AND archived climbs) when that was left blank.
-app.get("/api/users/:username/grade-counts", (req, res) => {
+app.get("/api/users/:username/grade-counts", async (req, res) => {
   const { username } = req.params;
-  const user = mapUserRow(stmt.getUserByUsername.get(username));
+  const user = mapUserRow(await getUserByUsername(username));
   if (!user) {
     return res.status(404).json({ error: "User not found." });
   }
 
-  const climbsById = new Map(getAllClimbs().map((c) => [c.id, c]));
+  const climbsById = new Map((await getAllClimbs()).map((c) => [c.id, c]));
 
   // One entry per climb — rows come back in insertion order, so later
   // ascents overwrite earlier ones, leaving each climb's most-recently-
   // logged grade opinion.
   const gradeByClimbId = new Map();
-  for (const row of stmt.ascentsForUser.all(user.id)) {
+  for (const row of await ascentsForUser(user.id)) {
     const climb = climbsById.get(row.climb_id);
     const grade = (row.grade && row.grade.trim()) || (climb ? climbBucketGrade(climb) : "") || "";
     gradeByClimbId.set(row.climb_id, grade);
@@ -1687,20 +1860,20 @@ app.get("/api/users/:username/grade-counts", (req, res) => {
 // ascent grade just doesn't count here rather than falling back to the
 // climb's official setterGrade/grade, since the point of this chart is
 // specifically what people actually typed.
-app.get("/api/climbs/grade-distribution", (req, res) => {
+app.get("/api/climbs/grade-distribution", async (req, res) => {
   const numericWallId = Number(req.query.wallId);
   const setterName = (req.query.setterName || "").toString();
   if (!Number.isFinite(numericWallId) || !setterName) {
     return res.status(400).json({ error: "Wall and climb name are required." });
   }
 
-  const climb = mapClimbRow(stmt.getClimbByWallAndSetterName.get(numericWallId, setterName));
+  const climb = mapClimbRow(await getClimbByWallAndSetterName(numericWallId, setterName));
   if (!climb) {
     return res.json({ counts: bucketCounts([]) });
   }
 
   const byUser = new Map();
-  for (const row of stmt.allAscentsForClimb.all(climb.id)) {
+  for (const row of await allAscentsForClimb(climb.id)) {
     byUser.set(row.username, row.grade); // later rows overwrite -> most recent
   }
 
@@ -1711,8 +1884,8 @@ app.get("/api/climbs/grade-distribution", (req, res) => {
 // wall's latest reset + backfill — see currentClimbsOnly) fall in each
 // V-grade bucket. Unlike the per-user chart above, this isn't about who's
 // climbed what — it's what's actually up on the walls right now.
-app.get("/api/climbs/grade-counts", (req, res) => {
-  const climbs = getAllClimbs();
+app.get("/api/climbs/grade-counts", async (req, res) => {
+  const climbs = await getAllClimbs();
   const grades = currentClimbsOnly(climbs).map(climbBucketGrade);
 
   res.json({ counts: bucketCounts(grades) });
@@ -1722,9 +1895,9 @@ app.get("/api/climbs/grade-counts", (req, res) => {
 // rather than only proving the process is listening — a process that's up
 // but can't read the database (the failure mode §14.3.1 describes) must NOT
 // report healthy, or the one external signal that matters is a lie.
-app.get("/api/health", (req, res) => {
+app.get("/api/health", async (req, res) => {
   try {
-    db.prepare("SELECT 1").get();
+    await pool.query("SELECT 1");
     res.json({ status: "ok" });
   } catch (err) {
     logError(err, req);
@@ -1740,8 +1913,32 @@ app.get("/api/health", (req, res) => {
 // 404 through Express's default handler rather than get index.html back.
 // Content-addressed filenames (see saveDataUrlImage above) mean these are
 // safe to cache forever — registered ahead of the DIST_DIR fallback below so
-// the SPA catch-all never swallows an /uploads request.
-app.use("/uploads", express.static(UPLOADS_DIR, { maxAge: "1y", immutable: true }));
+// the SPA catch-all never swallows an /uploads request. Proxies the object
+// out of S3 rather than serving it as a static file (there is no local
+// disk to serve from any more) — Garage isn't reachable from outside the
+// cluster, so this app is the only thing that can hand these back to a
+// browser.
+const UPLOAD_FILENAME_RE = /^[0-9a-f]{32}\.(png|jpg|webp)$/;
+app.get("/uploads/:filename", async (req, res) => {
+  const { filename } = req.params;
+  // Not just correctness — without this, the route param would let a
+  // client request or probe arbitrary keys in the bucket.
+  const match = UPLOAD_FILENAME_RE.exec(filename);
+  if (!match) {
+    return res.status(400).end();
+  }
+  try {
+    const object = await s3.send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: filename }));
+    res.set("Cache-Control", "public, max-age=31536000, immutable");
+    res.set("Content-Type", object.ContentType || CONTENT_TYPE_BY_EXT[match[1]]);
+    object.Body.pipe(res);
+  } catch (err) {
+    if (err.name === "NoSuchKey" || err.$metadata?.httpStatusCode === 404) {
+      return res.status(404).end();
+    }
+    throw err;
+  }
+});
 app.use(express.static(DIST_DIR));
 app.use((req, res, next) => {
   if (req.method !== "GET" || req.path.startsWith("/api")) return next();
@@ -1778,9 +1975,12 @@ app.use((err, req, res, next) => {
 
 // Skipped under the test runner (NODE_ENV=test) so importing this module for
 // unit tests doesn't bind a real socket — tests exercise `app` directly (e.g.
-// via supertest).
+// via supertest). worker.test.js calls ensureSchema() itself in a beforeAll
+// instead, since it needs the schema ready before any test runs, not just
+// before app.listen().
 if (process.env.NODE_ENV !== "test") {
   const PORT = process.env.PORT || 25100;
+  await ensureSchema();
   app.listen(PORT, () => {
     console.log(`Server listening on http://localhost:${PORT}`);
   });

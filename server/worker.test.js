@@ -1,27 +1,37 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import crypto from "crypto";
-import fs from "fs";
-import os from "os";
-import path from "path";
 import bcrypt from "bcryptjs";
 import request from "supertest";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { mockClient } from "aws-sdk-client-mock";
 
 process.env.NODE_ENV = "test";
-// A fresh in-memory SQLite database for this test file's whole run (see
-// server/db.js) rather than mocking fs/promises the way the old JSON-file
-// datastore's tests did (§14.3). Tables are wiped and reseeded per test via
-// the seedUsers/seedClimbs helpers below, not per file.
-process.env.DB_PATH = ":memory:";
-// A throwaway directory for saveDataUrlImage's writes (§14.5 step 2) so test
-// runs don't litter the real server/uploads/.
-process.env.UPLOADS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "uploads-test-"));
+// A real throwaway Postgres database for this test file's whole run (see
+// server/db.js), rather than SQLite's ":memory:" DatabaseSync or mocking
+// fs/promises the way the old JSON-file datastore's tests did (§14.3).
+// Tables are wiped and reseeded per test via the seedUsers/seedClimbs
+// helpers below, not per file. Defaults to the same host/port/db the CI
+// workflow's postgres service and a local `docker run postgres:18` use (see
+// .github/workflows/ci.yml) so this works unchanged in both places; only
+// set DATABASE_URL yourself if you're pointing at something else.
+process.env.DATABASE_URL ||= "postgresql://postgres:postgres@localhost:5433/rockon_test";
+// Dummy S3/Garage config so worker.js's module-level S3Client construction
+// has something to read — no real network call is ever made in tests, see
+// the mockClient(S3Client) setup below, which intercepts every PutObject/
+// GetObject regardless of which S3Client instance issues it.
+process.env.S3_ENDPOINT ||= "http://localhost:9000";
+process.env.S3_BUCKET ||= "rockon-test";
+process.env.S3_ACCESS_KEY ||= "test-access-key";
+process.env.S3_SECRET_KEY ||= "test-secret-key";
+
+const s3Mock = mockClient(S3Client);
 
 // The smallest valid PNG (a 1x1 transparent pixel) — real magic bytes so it
 // passes saveDataUrlImage's sniffing, unlike an arbitrary base64 string.
 const TINY_PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
-const { db } = await import("./db.js");
+const { pool, ensureSchema } = await import("./db.js");
 
 const {
   app,
@@ -50,43 +60,65 @@ const {
   recordRateLimitSuccess,
 } = await import("./worker.js");
 
+// Schema must exist before any test runs — worker.js only awaits
+// ensureSchema() itself under `if (NODE_ENV !== "test")` (see the bottom of
+// server/worker.js), since importing the module for tests must not bind a
+// real socket. Idempotent, so safe even if the database already has the
+// schema from a previous run against the same DATABASE_URL.
+beforeAll(async () => {
+  await ensureSchema();
+});
+
 // ---------------------------------------------------------------------------
 // Seed helpers. Each call REPLACES the relevant tables' contents (matching
 // the old JSON-mock seedUsers/seedClimbs semantics — one call sets up that
 // test's entire fixture), specifically so the ~200 existing test bodies
 // below didn't all need rewriting along with the datastore: they still
 // build plain camelCase fixture objects and read plain camelCase results
-// back, same as before the migration — only what's underneath changed.
+// back, same as before the migration — only what's underneath changed, and
+// every call site now awaits these (Postgres is async; SQLite's DatabaseSync
+// never was).
 //
 // seedUsers accepts (and currentUsers() returns) the same shape the old
 // users.json objects had, including `sessionToken` and `ascents` with
 // `climbName` strings — this is what lets the very common
-// `const users = currentUsers(); users[0].isAdmin = true; seedUsers(users);`
-// round-trip pattern keep working unchanged, cookie and all.
+// `const users = await currentUsers(); users[0].isAdmin = true; await
+// seedUsers(users);` round-trip pattern keep working unchanged, cookie and
+// all.
 // ---------------------------------------------------------------------------
 
-const insertClimbStmt = db.prepare(`
-  INSERT INTO climbs (wall_id, setter_name, name, setter_grade, grade, setter, photo_url, set_id, set_date, set_type)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
-const insertClaimStmt = db.prepare(
-  "INSERT INTO ascent_claims (climb_id, ordinal, name, pass) VALUES (?, ?, ?, ?)"
-);
-const insertProposalStmt = db.prepare(
-  "INSERT INTO name_proposals (id, climb_id, name, claimed_by) VALUES (?, ?, ?, ?)"
-);
+async function insertClimb(wallId, setterName, name, setterGrade, grade, setter, photoUrl, setId, setDate, setType) {
+  const { rows } = await pool.query(
+    `INSERT INTO climbs (wall_id, setter_name, name, setter_grade, grade, setter, photo_url, set_id, set_date, set_type)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+    [wallId, setterName, name, setterGrade, grade, setter, photoUrl, setId, setDate, setType]
+  );
+  return rows[0].id;
+}
+async function insertClaim(climbId, ordinal, name, pass) {
+  await pool.query(
+    "INSERT INTO ascent_claims (climb_id, ordinal, name, pass) VALUES ($1, $2, $3, $4)",
+    [climbId, ordinal, name, pass]
+  );
+}
+async function insertProposal(id, climbId, name, claimedBy) {
+  await pool.query(
+    "INSERT INTO name_proposals (id, climb_id, name, claimed_by) VALUES ($1, $2, $3, $4)",
+    [id, climbId, name, claimedBy]
+  );
+}
 
-function seedClimbs(climbs) {
-  db.exec("DELETE FROM ascent_claims");
-  db.exec("DELETE FROM name_proposals");
+async function seedClimbs(climbs) {
+  await pool.query("DELETE FROM ascent_claims");
+  await pool.query("DELETE FROM name_proposals");
   // Ascents FK-reference climbs — a fresh seedClimbs call means a fresh
   // climb set, same as replacing climbs.json outright used to.
-  db.exec("DELETE FROM ascents");
-  db.exec("DELETE FROM climbs");
+  await pool.query("DELETE FROM ascents");
+  await pool.query("DELETE FROM climbs");
 
   for (const c of climbs) {
     const setterName = c.setterName || c.name;
-    const result = insertClimbStmt.run(
+    const climbId = await insertClimb(
       c.wallId,
       setterName,
       c.name || setterName,
@@ -103,48 +135,65 @@ function seedClimbs(climbs) {
       c.setDate || "2026-01-01",
       c.setType === "reset" ? "reset" : "backfill"
     );
-    const climbId = Number(result.lastInsertRowid);
-    (c.ascentClaims || []).forEach((claim, i) =>
-      insertClaimStmt.run(climbId, i + 1, claim.name || "", claim.pass ? 1 : 0)
-    );
-    (c.pendingNames || []).forEach((p) =>
-      insertProposalStmt.run(p.id || crypto.randomUUID(), climbId, p.name, p.claimedBy || "")
-    );
+    let ordinal = 1;
+    for (const claim of c.ascentClaims || []) {
+      await insertClaim(climbId, ordinal, claim.name || "", Boolean(claim.pass));
+      ordinal += 1;
+    }
+    for (const p of c.pendingNames || []) {
+      await insertProposal(p.id || crypto.randomUUID(), climbId, p.name, p.claimedBy || "");
+    }
   }
 }
 
-const insertUserStmt = db.prepare(`
-  INSERT INTO users (username, name, password_hash, avatar_url, is_moderator, is_setter, is_admin)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
-`);
-const insertSessionStmt = db.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)");
-const insertFollowStmt = db.prepare(
-  "INSERT OR IGNORE INTO follows (follower_id, followee_id) VALUES (?, ?)"
-);
-const insertAscentStmt = db.prepare(`
-  INSERT INTO ascents (id, user_id, climb_id, star_rating, grade, comment, attempts, attempts_this_session, created_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
-const findClimbStmt = db.prepare("SELECT id FROM climbs WHERE wall_id = ? AND setter_name = ?");
+async function insertUser(username, name, passwordHash, avatarUrl, isModerator, isSetter, isAdmin) {
+  const { rows } = await pool.query(
+    `INSERT INTO users (username, name, password_hash, avatar_url, is_moderator, is_setter, is_admin)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+    [username, name, passwordHash, avatarUrl, isModerator, isSetter, isAdmin]
+  );
+  return rows[0].id;
+}
+async function insertSession(token, userId, expiresAt) {
+  await pool.query("INSERT INTO sessions (token, user_id, expires_at) VALUES ($1, $2, $3)", [token, userId, expiresAt]);
+}
+async function insertFollow(followerId, followeeId) {
+  // ON CONFLICT DO NOTHING => idempotent, same as the old INSERT OR IGNORE.
+  await pool.query(
+    "INSERT INTO follows (follower_id, followee_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    [followerId, followeeId]
+  );
+}
+async function insertAscent(id, userId, climbId, starRating, grade, comment, attempts, attemptsThisSession, createdAt) {
+  await pool.query(
+    `INSERT INTO ascents (id, user_id, climb_id, star_rating, grade, comment, attempts, attempts_this_session, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [id, userId, climbId, starRating, grade, comment, attempts, attemptsThisSession, createdAt]
+  );
+}
+async function findClimb(wallId, setterName) {
+  const { rows } = await pool.query("SELECT id FROM climbs WHERE wall_id = $1 AND setter_name = $2", [wallId, setterName]);
+  return rows[0];
+}
 
-function seedUsers(users) {
-  db.exec("DELETE FROM ascents");
-  db.exec("DELETE FROM follows");
-  db.exec("DELETE FROM sessions");
-  db.exec("DELETE FROM users");
+async function seedUsers(users) {
+  await pool.query("DELETE FROM ascents");
+  await pool.query("DELETE FROM follows");
+  await pool.query("DELETE FROM sessions");
+  await pool.query("DELETE FROM users");
 
   const idByUsername = new Map();
   for (const u of users) {
-    const result = insertUserStmt.run(
+    const id = await insertUser(
       u.username,
       u.name || "",
       u.passwordHash || "",
       u.avatarUrl || "",
-      u.isModerator ? 1 : 0,
-      u.isSetter ? 1 : 0,
-      u.isAdmin ? 1 : 0
+      Boolean(u.isModerator),
+      Boolean(u.isSetter),
+      Boolean(u.isAdmin)
     );
-    idByUsername.set(u.username, Number(result.lastInsertRowid));
+    idByUsername.set(u.username, id);
   }
 
   for (const u of users) {
@@ -152,24 +201,23 @@ function seedUsers(users) {
 
     if (u.sessionToken) {
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      insertSessionStmt.run(u.sessionToken, userId, expiresAt);
+      await insertSession(u.sessionToken, userId, expiresAt);
     }
 
     for (const followedUsername of u.following || []) {
       const followeeId = idByUsername.get(followedUsername);
-      if (followeeId) insertFollowStmt.run(userId, followeeId);
+      if (followeeId) await insertFollow(userId, followeeId);
     }
 
     for (const a of u.ascents || []) {
-      const climbRow = findClimbStmt.get(a.wallId, a.climbName);
+      const climbRow = await findClimb(a.wallId, a.climbName);
       // Ascents FK-reference a real climb row now, unlike the old flat
       // JSON. A fixture referencing a climb that was never seeded via
       // seedClimbs() is skipped rather than erroring — tests asserting on
       // "ascents against a climb that doesn't exist don't count toward
-      // anything" still get the right observable behavior this way, same
-      // as scripts/migrate-json-to-sqlite.js does for real orphaned data.
+      // anything" still get the right observable behavior this way.
       if (!climbRow) continue;
-      insertAscentStmt.run(
+      await insertAscent(
         a.id || crypto.randomUUID(),
         userId,
         climbRow.id,
@@ -184,26 +232,37 @@ function seedUsers(users) {
   }
 }
 
-function currentUsers() {
-  const users = db.prepare("SELECT * FROM users ORDER BY id").all();
-  return users.map((row) => {
-    const session = db.prepare("SELECT token FROM sessions WHERE user_id = ? LIMIT 1").get(row.id);
-    const followers = db
-      .prepare("SELECT users.username FROM follows JOIN users ON users.id = follows.follower_id WHERE follows.followee_id = ?")
-      .all(row.id)
-      .map((r) => r.username);
-    const following = db
-      .prepare("SELECT users.username FROM follows JOIN users ON users.id = follows.followee_id WHERE follows.follower_id = ?")
-      .all(row.id)
-      .map((r) => r.username);
-    const ascents = db
-      .prepare(
-        `SELECT ascents.*, climbs.wall_id, climbs.setter_name FROM ascents
-         JOIN climbs ON climbs.id = ascents.climb_id
-         WHERE ascents.user_id = ? ORDER BY ascents.rowid`
-      )
-      .all(row.id)
-      .map((a) => ({
+async function currentUsers() {
+  const { rows: users } = await pool.query("SELECT * FROM users ORDER BY id");
+  const result = [];
+  for (const row of users) {
+    const { rows: sessionRows } = await pool.query("SELECT token FROM sessions WHERE user_id = $1 LIMIT 1", [row.id]);
+    const { rows: followerRows } = await pool.query(
+      "SELECT users.username FROM follows JOIN users ON users.id = follows.follower_id WHERE follows.followee_id = $1",
+      [row.id]
+    );
+    const { rows: followingRows } = await pool.query(
+      "SELECT users.username FROM follows JOIN users ON users.id = follows.followee_id WHERE follows.follower_id = $1",
+      [row.id]
+    );
+    const { rows: ascentRows } = await pool.query(
+      `SELECT ascents.*, climbs.wall_id, climbs.setter_name FROM ascents
+       JOIN climbs ON climbs.id = ascents.climb_id
+       WHERE ascents.user_id = $1 ORDER BY ascents.seq`,
+      [row.id]
+    );
+    result.push({
+      username: row.username,
+      name: row.name,
+      passwordHash: row.password_hash,
+      avatarUrl: row.avatar_url,
+      sessionToken: sessionRows[0] ? sessionRows[0].token : "",
+      isModerator: !!row.is_moderator,
+      isSetter: !!row.is_setter,
+      isAdmin: !!row.is_admin,
+      followers: followerRows.map((r) => r.username),
+      following: followingRows.map((r) => r.username),
+      ascents: ascentRows.map((a) => ({
         id: a.id,
         wallId: a.wall_id,
         climbName: a.setter_name,
@@ -213,42 +272,29 @@ function currentUsers() {
         logAttempts: a.attempts !== null || a.attempts_this_session !== null,
         attempts: a.attempts,
         attemptsThisSession: a.attempts_this_session,
-      }));
-    return {
-      username: row.username,
-      name: row.name,
-      passwordHash: row.password_hash,
-      avatarUrl: row.avatar_url,
-      sessionToken: session ? session.token : "",
-      isModerator: !!row.is_moderator,
-      isSetter: !!row.is_setter,
-      isAdmin: !!row.is_admin,
-      followers,
-      following,
-      ascents,
-    };
-  });
+      })),
+    });
+  }
+  return result;
 }
 
 // The seedClimbs() counterpart to currentUsers() — used by tests that read
 // the current climb set, add/tweak one, and re-seed the whole thing (a
 // second reset superseding the first, say), same round-trip pattern.
-function currentClimbs() {
-  return db
-    .prepare("SELECT * FROM climbs ORDER BY id")
-    .all()
-    .map((row) => ({
-      wallId: row.wall_id,
-      setterName: row.setter_name,
-      name: row.name,
-      setterGrade: row.setter_grade,
-      grade: row.grade,
-      setter: row.setter,
-      photoUrl: row.photo_url,
-      setId: row.set_id,
-      setDate: row.set_date,
-      setType: row.set_type,
-    }));
+async function currentClimbs() {
+  const { rows } = await pool.query("SELECT * FROM climbs ORDER BY id");
+  return rows.map((row) => ({
+    wallId: row.wall_id,
+    setterName: row.setter_name,
+    name: row.name,
+    setterGrade: row.setter_grade,
+    grade: row.grade,
+    setter: row.setter,
+    photoUrl: row.photo_url,
+    setId: row.set_id,
+    setDate: row.set_date,
+    setType: row.set_type,
+  }));
 }
 
 function mockRes() {
@@ -260,10 +306,14 @@ function mockRes() {
   return res;
 }
 
-beforeEach(() => {
-  seedUsers([]);
-  seedClimbs([]);
+beforeEach(async () => {
+  await seedUsers([]);
+  await seedClimbs([]);
   resetRateLimits();
+  s3Mock.reset();
+  // Default: any PutObject succeeds — individual tests override with
+  // s3Mock.on(...) for specific assertions or failure cases.
+  s3Mock.on(PutObjectCommand).resolves({});
 });
 
 // ---------------------------------------------------------------------------
@@ -484,26 +534,27 @@ describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEnt
   // toClientUser/toSearchResultEntry now query followersCount/followingCount/
   // isFollowing straight from the follows table (§14.3), so they need a real
   // DB-backed user id rather than a plain object with a `followers` array.
-  function seedFullUser() {
-    seedUsers([
+  async function seedFullUser() {
+    await seedUsers([
       { username: "cube", name: "Cube Snail", avatarUrl: "http://example.com/a.png", isModerator: true, passwordHash: "secret-should-never-appear" },
       { username: "a", following: ["cube"] },
       { username: "b", following: ["cube"] },
       { username: "c" },
     ]);
     // cube follows "c" — set up the reverse edge too now both users exist.
-    const users = currentUsers();
+    const users = await currentUsers();
     users.find((u) => u.username === "cube").following = ["c"];
-    seedUsers(users);
-    return db.prepare("SELECT * FROM users WHERE username = 'cube'").get();
+    await seedUsers(users);
+    const { rows } = await pool.query("SELECT * FROM users WHERE username = 'cube'");
+    return rows[0];
   }
 
-  it("toClientUser exposes counts and roles, never the password hash", () => {
-    const row = seedFullUser();
+  it("toClientUser exposes counts and roles, never the password hash", async () => {
+    const row = await seedFullUser();
     const user = { id: row.id, username: row.username, name: row.name, avatarUrl: row.avatar_url, isModerator: !!row.is_moderator, isSetter: !!row.is_setter, isAdmin: !!row.is_admin };
     // ascentCount is no longer read off the user record (§14.7) — the
     // caller computes it and passes it in as the second argument.
-    const client = toClientUser(user, 5);
+    const client = await toClientUser(user, 5);
     expect(client).toEqual({
       username: "cube",
       name: "Cube Snail",
@@ -518,10 +569,11 @@ describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEnt
     expect(client.passwordHash).toBeUndefined();
   });
 
-  it("toClientUser defaults missing optional fields", () => {
-    seedUsers([{ username: "bare" }]);
-    const row = db.prepare("SELECT * FROM users WHERE username = 'bare'").get();
-    const client = toClientUser({ id: row.id, username: row.username });
+  it("toClientUser defaults missing optional fields", async () => {
+    await seedUsers([{ username: "bare" }]);
+    const { rows } = await pool.query("SELECT * FROM users WHERE username = 'bare'");
+    const row = rows[0];
+    const client = await toClientUser({ id: row.id, username: row.username });
     expect(client).toEqual({
       username: "bare",
       name: "",
@@ -545,10 +597,10 @@ describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEnt
     });
   });
 
-  it("toSearchResultEntry has no role info, and defaults isFollowing false with no viewer", () => {
-    const row = seedFullUser();
+  it("toSearchResultEntry has no role info, and defaults isFollowing false with no viewer", async () => {
+    const row = await seedFullUser();
     const user = { id: row.id, username: row.username, name: row.name, avatarUrl: row.avatar_url };
-    expect(toSearchResultEntry(user, undefined, 5)).toEqual({
+    expect(await toSearchResultEntry(user, undefined, 5)).toEqual({
       username: "cube",
       name: "Cube Snail",
       avatarUrl: "http://example.com/a.png",
@@ -559,13 +611,14 @@ describe("toClientUser / toRoleListEntry / toSearchResultEntry / toSetterListEnt
     });
   });
 
-  it("toSearchResultEntry reports isFollowing true when the viewer is in this user's followers", () => {
-    const row = seedFullUser();
+  it("toSearchResultEntry reports isFollowing true when the viewer is in this user's followers", async () => {
+    const row = await seedFullUser();
     const user = { id: row.id, username: row.username, name: row.name, avatarUrl: row.avatar_url };
-    const viewerA = db.prepare("SELECT id, username FROM users WHERE username = 'a'").get();
+    const { rows: viewerRows } = await pool.query("SELECT id, username FROM users WHERE username = 'a'");
+    const viewerA = viewerRows[0];
     const viewerElse = { id: -1, username: "someone-else" };
-    expect(toSearchResultEntry(user, viewerA).isFollowing).toBe(true);
-    expect(toSearchResultEntry(user, viewerElse).isFollowing).toBe(false);
+    expect((await toSearchResultEntry(user, viewerA)).isFollowing).toBe(true);
+    expect((await toSearchResultEntry(user, viewerElse)).isFollowing).toBe(false);
   });
 
   it("toSetterListEntry only has username and name", () => {
@@ -636,7 +689,7 @@ describe("authenticate", () => {
   });
 
   it("401s when the session token doesn't match any user", async () => {
-    seedUsers([{ username: "cube", sessionToken: "real-token" }]);
+    await seedUsers([{ username: "cube", sessionToken: "real-token" }]);
     const req = { headers: { cookie: "session=wrong-token" } };
     const res = mockRes();
     const next = vi.fn();
@@ -647,7 +700,7 @@ describe("authenticate", () => {
   });
 
   it("sets req.user and calls next() for a valid token", async () => {
-    seedUsers([{ username: "cube", sessionToken: "real-token" }]);
+    await seedUsers([{ username: "cube", sessionToken: "real-token" }]);
     const req = { headers: { cookie: "session=real-token" } };
     const res = mockRes();
     const next = vi.fn();
@@ -658,7 +711,7 @@ describe("authenticate", () => {
 
   it("never authenticates against an empty sessionToken", async () => {
     // Logged-out users have sessionToken: "" — must not match an empty cookie.
-    seedUsers([{ username: "cube", sessionToken: "" }]);
+    await seedUsers([{ username: "cube", sessionToken: "" }]);
     const req = { headers: { cookie: "session=" } };
     const res = mockRes();
     const next = vi.fn();
@@ -667,18 +720,18 @@ describe("authenticate", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it("401s cleanly when the cookie is a different length than any stored token", () => {
+  it("401s cleanly when the cookie is a different length than any stored token", async () => {
     // Used to guard crypto.timingSafeEqual against throwing on mismatched
     // buffer lengths, back when sessions were found via a linear array scan
     // with a manual constant-time compare. That scan is gone (§14.3) —
     // sessions are looked up by an indexed primary key instead, which
     // doesn't care about length at all — but the "doesn't blow up on a
     // bogus cookie" behavior is still worth pinning.
-    seedUsers([{ username: "cube", sessionToken: "a-much-longer-real-session-token" }]);
+    await seedUsers([{ username: "cube", sessionToken: "a-much-longer-real-session-token" }]);
     const req = { headers: { cookie: "session=short" } };
     const res = mockRes();
     const next = vi.fn();
-    expect(() => authenticate(req, res, next)).not.toThrow();
+    await expect(authenticate(req, res, next)).resolves.not.toThrow();
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
   });
@@ -752,16 +805,17 @@ describe("requireModeratorOrSetter", () => {
 //
 // readUsers/writeUsers/readClimbs/writeClimbs and their lazy-schema-backfill
 // tests are gone (§14.3) — that whole pattern existed to migrate old-shaped
-// JSON records on read; the SQLite schema now guarantees the shape
+// JSON records on read; the Postgres schema now guarantees the shape
 // structurally (NOT NULL/CHECK/UNIQUE constraints), so there's nothing left
-// to backfill. See server/db.js and scripts/migrate-json-to-sqlite.js.
+// to backfill. See server/db.js.
 // ---------------------------------------------------------------------------
 
 // withAscentStats now keys off each climb's real database id rather than a
 // wallId+setterName string (§14.3), so these tests seed via seedClimbs and
 // read the real id back rather than constructing a plain fixture object.
-function climbRowByName(wallId, setterName) {
-  const row = db.prepare("SELECT * FROM climbs WHERE wall_id = ? AND setter_name = ?").get(wallId, setterName);
+async function climbRowByName(wallId, setterName) {
+  const { rows } = await pool.query("SELECT * FROM climbs WHERE wall_id = $1 AND setter_name = $2", [wallId, setterName]);
+  const row = rows[0];
   return {
     id: row.id,
     wallId: row.wall_id,
@@ -778,9 +832,9 @@ function climbRowByName(wallId, setterName) {
 }
 
 describe("withAscentStats", () => {
-  it("adds zeroed stats and no comments when nobody has climbed it", () => {
-    seedClimbs([{ wallId: 1, name: "X", setDate: "2026-01-01", setType: "reset" }]);
-    const [climb] = withAscentStats([climbRowByName(1, "X")]);
+  it("adds zeroed stats and no comments when nobody has climbed it", async () => {
+    await seedClimbs([{ wallId: 1, name: "X", setDate: "2026-01-01", setType: "reset" }]);
+    const [climb] = await withAscentStats([await climbRowByName(1, "X")]);
     expect(climb.ascentCount).toBe(0);
     expect(climb.averageStars).toBe(0);
     // No seeded comments are carried across by the migration (§14.20) — a
@@ -788,26 +842,26 @@ describe("withAscentStats", () => {
     expect(climb.comments).toEqual([]);
   });
 
-  it("averages one rating per user across distinct users", () => {
-    seedClimbs([{ wallId: 1, name: "X", setDate: "2026-01-01", setType: "reset" }]);
-    seedUsers([
+  it("averages one rating per user across distinct users", async () => {
+    await seedClimbs([{ wallId: 1, name: "X", setDate: "2026-01-01", setType: "reset" }]);
+    await seedUsers([
       { username: "a", ascents: [{ id: "1", wallId: 1, climbName: "X", starRating: 5 }] },
       { username: "b", ascents: [{ id: "2", wallId: 1, climbName: "X", starRating: null }] },
       { username: "c", ascents: [{ id: "3", wallId: 1, climbName: "X", starRating: 3 }] },
     ]);
-    const [climb] = withAscentStats([climbRowByName(1, "X")]);
+    const [climb] = await withAscentStats([await climbRowByName(1, "X")]);
     expect(climb.ascentCount).toBe(3); // 3 distinct users, regardless of who rated
     expect(climb.averageStars).toBe(4); // (5 + 3) / 2 valid ratings, null skipped
   });
 
-  it("counts distinct users, not ascent rows — one user repeat-logging isn't 3 ascents", () => {
+  it("counts distinct users, not ascent rows — one user repeat-logging isn't 3 ascents", async () => {
     // Repeats are allowed (§14.6): the same user logs the same climb three
     // times. ascentCount must reflect 1 person having climbed it, and
     // averageStars must use only their most recent rating (3), not average
     // across all three repeats — otherwise one climber could single-
     // handedly skew both numbers for every other viewer of the climb.
-    seedClimbs([{ wallId: 1, name: "X", setDate: "2026-01-01", setType: "reset" }]);
-    seedUsers([
+    await seedClimbs([{ wallId: 1, name: "X", setDate: "2026-01-01", setType: "reset" }]);
+    await seedUsers([
       {
         username: "a",
         ascents: [
@@ -817,14 +871,14 @@ describe("withAscentStats", () => {
         ],
       },
     ]);
-    const [climb] = withAscentStats([climbRowByName(1, "X")]);
+    const [climb] = await withAscentStats([await climbRowByName(1, "X")]);
     expect(climb.ascentCount).toBe(1);
     expect(climb.averageStars).toBe(3);
   });
 
-  it("merges user comments, skipping blank/whitespace-only ones", () => {
-    seedClimbs([{ wallId: 1, name: "X", setDate: "2026-01-01", setType: "reset" }]);
-    seedUsers([
+  it("merges user comments, skipping blank/whitespace-only ones", async () => {
+    await seedClimbs([{ wallId: 1, name: "X", setDate: "2026-01-01", setType: "reset" }]);
+    await seedUsers([
       {
         username: "a",
         ascents: [
@@ -833,7 +887,7 @@ describe("withAscentStats", () => {
         ],
       },
     ]);
-    const [climb] = withAscentStats([climbRowByName(1, "X")]);
+    const [climb] = await withAscentStats([await climbRowByName(1, "X")]);
     expect(climb.comments).toEqual([
       { id: "ascent-1", ascentId: "1", author: "a", text: "great climb" },
     ]);
@@ -862,7 +916,7 @@ describe("POST /api/signup", () => {
     expect(res.body.user.username).toBe("cube");
     expect(cookie).toBeDefined();
 
-    const stored = currentUsers()[0];
+    const stored = (await currentUsers())[0];
     expect(stored.passwordHash).not.toBe("pw123456");
     expect(await bcrypt.compare("pw123456", stored.passwordHash)).toBe(true);
   });
@@ -918,7 +972,7 @@ describe("POST /api/login", () => {
   });
 
   it("lets a user with a blank passwordHash straight in and flags needsPasswordReset", async () => {
-    seedUsers([{ username: "reset-me", passwordHash: "", ascents: [], followers: [], following: [] }]);
+    await seedUsers([{ username: "reset-me", passwordHash: "", ascents: [], followers: [], following: [] }]);
     const res = await request(app).post("/api/login").send({ username: "reset-me", password: "anything" });
     expect(res.status).toBe(200);
     expect(res.body.needsPasswordReset).toBe(true);
@@ -1068,16 +1122,16 @@ describe("GET /api/me", () => {
 
   it("reflects a role change made after the session was issued", async () => {
     const { cookie } = await signup("cube");
-    const users = currentUsers();
+    const users = await currentUsers();
     users[0].isModerator = true;
-    seedUsers(users);
+    await seedUsers(users);
 
     const res = await request(app).get("/api/me").set("Cookie", cookie);
     expect(res.body.user.isModerator).toBe(true);
   });
 
   it("reports a derived ascentCount, same as everywhere else", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube");
     await request(app).post("/api/ascents").set("Cookie", cookie).send({ wallId: 1, climbName: "X" });
 
@@ -1116,7 +1170,7 @@ describe("GET /api/health", () => {
 
   it("503s if the datastore can't be read, rather than reporting healthy", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const prepareSpy = vi.spyOn(db, "prepare").mockImplementationOnce(() => {
+    const querySpy = vi.spyOn(pool, "query").mockImplementationOnce(() => {
       throw new Error("disk I/O error");
     });
 
@@ -1124,7 +1178,7 @@ describe("GET /api/health", () => {
     expect(res.status).toBe(503);
     expect(res.body).toEqual({ status: "error" });
 
-    prepareSpy.mockRestore();
+    querySpy.mockRestore();
     errorSpy.mockRestore();
   });
 });
@@ -1164,7 +1218,7 @@ describe("POST /api/users/:username/avatar", () => {
     expect(res.status).toBe(400);
   });
 
-  it("sets the avatar, saving it to disk under a content-hash filename", async () => {
+  it("sets the avatar, saving it to S3 under a content-hash filename", async () => {
     const { cookie } = await signup("cube");
     const res = await request(app)
       .post("/api/users/cube/avatar")
@@ -1173,8 +1227,44 @@ describe("POST /api/users/:username/avatar", () => {
     expect(res.status).toBe(200);
     expect(res.body.user.avatarUrl).toMatch(/^\/uploads\/[0-9a-f]{32}\.png$/);
 
-    const savedPath = path.join(process.env.UPLOADS_DIR, path.basename(res.body.user.avatarUrl));
-    expect(fs.existsSync(savedPath)).toBe(true);
+    const filename = res.body.user.avatarUrl.replace("/uploads/", "");
+    const putCalls = s3Mock.commandCalls(PutObjectCommand);
+    expect(putCalls).toHaveLength(1);
+    expect(putCalls[0].args[0].input).toMatchObject({
+      Bucket: "rockon-test",
+      Key: filename,
+      ContentType: "image/png",
+    });
+  });
+});
+
+describe("GET /uploads/:filename", () => {
+  it("400s on a filename that isn't a content-hash shape", async () => {
+    // A single path segment (Express's :filename param can't itself contain
+    // "/", so an actual path-traversal attempt wouldn't even reach this
+    // route) that still isn't 32 hex chars + a known extension.
+    const res = await request(app).get("/uploads/not-a-real-upload.png");
+    expect(res.status).toBe(400);
+  });
+
+  it("404s when the object isn't in the bucket", async () => {
+    s3Mock.on(GetObjectCommand).rejects(
+      Object.assign(new Error("NoSuchKey"), { name: "NoSuchKey" })
+    );
+    const res = await request(app).get(`/uploads/${"a".repeat(32)}.png`);
+    expect(res.status).toBe(404);
+  });
+
+  it("streams the object back with caching headers", async () => {
+    const { Readable } = await import("stream");
+    const body = Readable.from([Buffer.from("fake-png-bytes")]);
+    s3Mock.on(GetObjectCommand).resolves({ Body: body, ContentType: "image/png" });
+
+    const res = await request(app).get(`/uploads/${"a".repeat(32)}.png`).buffer(true);
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toBe("image/png");
+    expect(res.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+    expect(Buffer.from(res.body).toString()).toBe("fake-png-bytes");
   });
 });
 
@@ -1244,7 +1334,7 @@ describe("POST /api/users/:username/password", () => {
   });
 
   it("skips the current-password check for an account with no password set", async () => {
-    seedUsers([{ username: "reset-me", passwordHash: "", sessionToken: "tok", ascents: [], followers: [], following: [] }]);
+    await seedUsers([{ username: "reset-me", passwordHash: "", sessionToken: "tok", ascents: [], followers: [], following: [] }]);
     const res = await request(app)
       .post("/api/users/reset-me/password")
       .set("Cookie", "session=tok")
@@ -1262,9 +1352,9 @@ describe("GET /api/users (admin roles list)", () => {
 
   it("200s for an admin and lists roles", async () => {
     const { cookie } = await signup("admin-user");
-    const users = currentUsers();
+    const users = await currentUsers();
     users[0].isAdmin = true;
-    seedUsers(users);
+    await seedUsers(users);
     const res = await request(app).get("/api/users").set("Cookie", cookie);
     expect(res.status).toBe(200);
     expect(res.body.users[0]).toEqual(
@@ -1281,9 +1371,9 @@ describe("GET /api/users/search", () => {
 
   it("matches case-insensitively on username or name", async () => {
     await signup("cubesnail");
-    const users = currentUsers();
+    const users = await currentUsers();
     users[0].name = "Derrick";
-    seedUsers(users);
+    await seedUsers(users);
 
     const byUsername = await request(app).get("/api/users/search").query({ q: "CUBE" });
     expect(byUsername.body.users.map((u) => u.username)).toEqual(["cubesnail"]);
@@ -1320,41 +1410,41 @@ describe("GET /api/users/leaderboard", () => {
   });
 
   it("excludes zero-ascent users and ranks the rest by ascentCount descending", async () => {
-    seedClimbs(makeCurrentClimbs(20));
+    await seedClimbs(makeCurrentClimbs(20));
     await signup("low");
     await signup("high");
     await signup("mid");
     await signup("none");
-    const users = currentUsers();
+    const users = await currentUsers();
     users.find((u) => u.username === "low").ascents = makeAscentsAgainst(3);
     users.find((u) => u.username === "high").ascents = makeAscentsAgainst(20);
     users.find((u) => u.username === "mid").ascents = makeAscentsAgainst(10);
-    seedUsers(users);
+    await seedUsers(users);
 
     const res = await request(app).get("/api/users/leaderboard");
     expect(res.body.users.map((u) => u.username)).toEqual(["high", "mid", "low"]);
   });
 
   it("breaks ties alphabetically by username", async () => {
-    seedClimbs(makeCurrentClimbs(5));
+    await seedClimbs(makeCurrentClimbs(5));
     await signup("zed");
     await signup("amy");
-    const users = currentUsers();
+    const users = await currentUsers();
     users.forEach((u) => (u.ascents = makeAscentsAgainst(5)));
-    seedUsers(users);
+    await seedUsers(users);
 
     const res = await request(app).get("/api/users/leaderboard");
     expect(res.body.users.map((u) => u.username)).toEqual(["amy", "zed"]);
   });
 
   it("respects a custom limit", async () => {
-    seedClimbs(makeCurrentClimbs(10));
+    await seedClimbs(makeCurrentClimbs(10));
     await signup("a");
     await signup("b");
     await signup("c");
-    const users = currentUsers();
+    const users = await currentUsers();
     users.forEach((u, i) => (u.ascents = makeAscentsAgainst(10 - i)));
-    seedUsers(users);
+    await seedUsers(users);
 
     const res = await request(app).get("/api/users/leaderboard").query({ limit: 2 });
     expect(res.body.users).toHaveLength(2);
@@ -1363,7 +1453,7 @@ describe("GET /api/users/leaderboard", () => {
 
 describe("ascentCount can never go stale after a reset (§14.7)", () => {
   it("drops immediately on the next read, with no write of any kind in between", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setterName: "X", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "X", setterName: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube", "correct-password");
     await request(app)
       .post("/api/ascents")
@@ -1384,7 +1474,7 @@ describe("ascentCount can never go stale after a reset (§14.7)", () => {
     // through seedClimbs() (which wipes and reinserts every climb, and with
     // it, via ON DELETE CASCADE, the ascent just logged above — exactly the
     // write this test must NOT make).
-    insertClimbStmt.run(1, "Y", "Y", "V4", "", "setter", "", crypto.randomUUID(), "2026-02-01", "reset");
+    await insertClimb(1, "Y", "Y", "V4", "", "setter", "", crypto.randomUUID(), "2026-02-01", "reset");
 
     const after = await request(app)
       .post("/api/login")
@@ -1397,9 +1487,9 @@ describe("GET /api/users/setters", () => {
   it("only returns setter-flagged accounts", async () => {
     await signup("setter-user");
     await signup("plain-user");
-    const users = currentUsers();
+    const users = await currentUsers();
     users[0].isSetter = true;
-    seedUsers(users);
+    await seedUsers(users);
 
     const res = await request(app).get("/api/users/setters");
     expect(res.body.setters.map((s) => s.username)).toEqual(["setter-user"]);
@@ -1432,7 +1522,7 @@ describe("POST /api/users/:username/follow", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ isFollowing: true, followersCount: 1 });
 
-    const users = currentUsers();
+    const users = await currentUsers();
     expect(users.find((u) => u.username === "alice").following).toEqual(["bob"]);
     expect(users.find((u) => u.username === "bob").followers).toEqual(["alice"]);
   });
@@ -1444,7 +1534,7 @@ describe("POST /api/users/:username/follow", () => {
     const res = await request(app).post("/api/users/bob/follow").set("Cookie", cookie);
 
     expect(res.body.followersCount).toBe(1);
-    const users = currentUsers();
+    const users = await currentUsers();
     expect(users.find((u) => u.username === "bob").followers).toEqual(["alice"]);
   });
 });
@@ -1470,7 +1560,7 @@ describe("POST /api/users/:username/unfollow", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ isFollowing: false, followersCount: 0 });
 
-    const users = currentUsers();
+    const users = await currentUsers();
     expect(users.find((u) => u.username === "alice").following).toEqual([]);
     expect(users.find((u) => u.username === "bob").followers).toEqual([]);
   });
@@ -1530,9 +1620,9 @@ describe("GET /api/users/:username/followers and /following", () => {
 describe("POST /api/users/:username/role", () => {
   it("400s an invalid role", async () => {
     const { cookie } = await signup("admin-user");
-    const users = currentUsers();
+    const users = await currentUsers();
     users[0].isAdmin = true;
-    seedUsers(users);
+    await seedUsers(users);
     const res = await request(app).post("/api/users/admin-user/role").set("Cookie", cookie).send({ role: "wizard" });
     expect(res.status).toBe(400);
   });
@@ -1545,9 +1635,9 @@ describe("POST /api/users/:username/role", () => {
 
   it("404s an unknown target user", async () => {
     const { cookie } = await signup("admin-user");
-    const users = currentUsers();
+    const users = await currentUsers();
     users[0].isAdmin = true;
-    seedUsers(users);
+    await seedUsers(users);
     const res = await request(app).post("/api/users/ghost/role").set("Cookie", cookie).send({ role: "member" });
     expect(res.status).toBe(404);
   });
@@ -1555,9 +1645,9 @@ describe("POST /api/users/:username/role", () => {
   it("admin role implies moderator + setter", async () => {
     const { cookie } = await signup("admin-user");
     await signup("target");
-    const users = currentUsers();
+    const users = await currentUsers();
     users[0].isAdmin = true;
-    seedUsers(users);
+    await seedUsers(users);
 
     const res = await request(app).post("/api/users/target/role").set("Cookie", cookie).send({ role: "admin" });
     expect(res.body.user).toEqual(
@@ -1570,20 +1660,20 @@ describe("POST /api/users/:username/reset-password", () => {
   it("blanks the target's passwordHash", async () => {
     const { cookie } = await signup("admin-user");
     await signup("target", "some-password");
-    let users = currentUsers();
+    let users = await currentUsers();
     users[0].isAdmin = true;
-    seedUsers(users);
+    await seedUsers(users);
 
     const res = await request(app).post("/api/users/target/reset-password").set("Cookie", cookie);
     expect(res.status).toBe(200);
-    users = currentUsers();
+    users = await currentUsers();
     expect(users.find((u) => u.username === "target").passwordHash).toBe("");
   });
 });
 
 describe("GET /api/climbs", () => {
   it("returns only current climbs with stats merged in", async () => {
-    seedClimbs([
+    await seedClimbs([
       { wallId: 1, name: "Old", setType: "reset", setDate: "2026-01-01", comments: [] },
       { wallId: 1, name: "New", setType: "reset", setDate: "2026-02-01", comments: [] },
     ]);
@@ -1622,9 +1712,9 @@ describe("Security headers (§14.15)", () => {
 describe("POST /api/climbs", () => {
   async function setterCookie() {
     const { cookie } = await signup("setter-user");
-    const users = currentUsers();
+    const users = await currentUsers();
     users[0].isSetter = true;
-    seedUsers(users);
+    await seedUsers(users);
     return cookie;
   }
 
@@ -1650,7 +1740,7 @@ describe("POST /api/climbs", () => {
 
   it("409s a duplicate name on the same wall (case-insensitive)", async () => {
     const cookie = await setterCookie();
-    seedClimbs([{ wallId: 1, name: "Crimpy", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "Crimpy", setType: "reset", setDate: "2026-01-01" }]);
     const res = await request(app)
       .post("/api/climbs")
       .set("Cookie", cookie)
@@ -1742,9 +1832,9 @@ describe("POST /api/climbs", () => {
 describe("POST /api/climbs/grade", () => {
   async function adminCookie() {
     const { cookie } = await signup("admin-user");
-    const users = currentUsers();
+    const users = await currentUsers();
     users[0].isAdmin = true;
-    seedUsers(users);
+    await seedUsers(users);
     return cookie;
   }
 
@@ -1755,9 +1845,9 @@ describe("POST /api/climbs/grade", () => {
 
   it("403s a non-admin (including moderators/setters)", async () => {
     const { cookie } = await signup("setter-user");
-    const users = currentUsers();
+    const users = await currentUsers();
     users[0].isSetter = true;
-    seedUsers(users);
+    await seedUsers(users);
     const res = await request(app).post("/api/climbs/grade").set("Cookie", cookie).send({});
     expect(res.status).toBe(403);
   });
@@ -1770,7 +1860,7 @@ describe("POST /api/climbs/grade", () => {
 
   it("404s an unknown climb", async () => {
     const cookie = await adminCookie();
-    seedClimbs([]);
+    await seedClimbs([]);
     const res = await request(app)
       .post("/api/climbs/grade")
       .set("Cookie", cookie)
@@ -1780,7 +1870,7 @@ describe("POST /api/climbs/grade", () => {
 
   it("409s a climb that's still current", async () => {
     const cookie = await adminCookie();
-    seedClimbs([{ wallId: 1, name: "Current", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "Current", setType: "reset", setDate: "2026-01-01" }]);
     const res = await request(app)
       .post("/api/climbs/grade")
       .set("Cookie", cookie)
@@ -1790,7 +1880,7 @@ describe("POST /api/climbs/grade", () => {
 
   it("sets the grade on an archived climb", async () => {
     const cookie = await adminCookie();
-    seedClimbs([
+    await seedClimbs([
       { wallId: 1, name: "Old", setType: "reset", setDate: "2026-01-01" },
       { wallId: 1, name: "New", setType: "reset", setDate: "2026-02-01" },
     ]);
@@ -1804,7 +1894,7 @@ describe("POST /api/climbs/grade", () => {
 
   it("400s an out-of-list grade", async () => {
     const cookie = await adminCookie();
-    seedClimbs([
+    await seedClimbs([
       { wallId: 1, name: "Old", setType: "reset", setDate: "2026-01-01" },
       { wallId: 1, name: "New", setType: "reset", setDate: "2026-02-01" },
     ]);
@@ -1817,7 +1907,7 @@ describe("POST /api/climbs/grade", () => {
 
   it("finds the climb case-insensitively, matching creation's dedupe check", async () => {
     const cookie = await adminCookie();
-    seedClimbs([
+    await seedClimbs([
       { wallId: 1, name: "Old", setterName: "Old", setType: "reset", setDate: "2026-01-01" },
       { wallId: 1, name: "New", setterName: "New", setType: "reset", setDate: "2026-02-01" },
     ]);
@@ -1833,9 +1923,9 @@ describe("POST /api/climbs/grade", () => {
 describe("GET /api/climbs/needs-grade", () => {
   async function adminCookie() {
     const { cookie } = await signup("admin-user");
-    const users = currentUsers();
+    const users = await currentUsers();
     users[0].isAdmin = true;
-    seedUsers(users);
+    await seedUsers(users);
     return cookie;
   }
 
@@ -1852,7 +1942,7 @@ describe("GET /api/climbs/needs-grade", () => {
 
   it("lists ungraded archived climbs, newest first", async () => {
     const cookie = await adminCookie();
-    seedClimbs([
+    await seedClimbs([
       { wallId: 1, name: "OldUngraded", setType: "reset", setDate: "2026-01-01", grade: "" },
       { wallId: 1, name: "MidUngraded", setType: "reset", setDate: "2026-01-15", grade: "" },
       { wallId: 1, name: "Current", setType: "reset", setDate: "2026-02-01", grade: "" },
@@ -1865,7 +1955,7 @@ describe("GET /api/climbs/needs-grade", () => {
 
 describe("GET /api/archive", () => {
   it("groups archived climbs by wall and flags the most recent archived cycle as loggable", async () => {
-    seedClimbs([
+    await seedClimbs([
       { wallId: 1, name: "Oldest", setType: "reset", setId: "s1", setDate: "2026-01-01", comments: [] },
       { wallId: 1, name: "Middle", setType: "reset", setId: "s2", setDate: "2026-02-01", comments: [] },
       { wallId: 1, name: "Current", setType: "reset", setId: "s3", setDate: "2026-03-01", comments: [] },
@@ -1891,7 +1981,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("logs an ascent and recomputes ascentCount", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube");
     const res = await request(app)
       .post("/api/ascents")
@@ -1903,7 +1993,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("404s a climb that doesn't exist", async () => {
-    seedClimbs([]);
+    await seedClimbs([]);
     const { cookie } = await signup("cube");
     const res = await request(app)
       .post("/api/ascents")
@@ -1916,7 +2006,7 @@ describe("POST /api/ascents", () => {
     // groupIntoCycles (which archived-loggability is built on) keys cycles
     // by setId, same as real climbs.json data always has — distinct setIds
     // per cycle here are load-bearing, not decorative.
-    seedClimbs([
+    await seedClimbs([
       { wallId: 1, name: "TooOld", setterName: "TooOld", setId: "s1", setType: "reset", setDate: "2026-01-01" },
       {
         wallId: 1,
@@ -1937,7 +2027,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("logging against the most recently archived cycle still succeeds", async () => {
-    seedClimbs([
+    await seedClimbs([
       {
         wallId: 1,
         name: "StillLoggable",
@@ -1957,7 +2047,7 @@ describe("POST /api/ascents", () => {
   });
 
   it.each([1000, -5, 0.3])("400s an out-of-range or non-half-step starRating (%j)", async (starRating) => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube");
     const res = await request(app)
       .post("/api/ascents")
@@ -1967,7 +2057,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("accepts a valid half-step starRating", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube");
     const res = await request(app)
       .post("/api/ascents")
@@ -1977,7 +2067,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("400s an out-of-list grade", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube");
     const res = await request(app)
       .post("/api/ascents")
@@ -1987,7 +2077,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("allows a blank grade — the climber declining to give an opinion", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube");
     const res = await request(app)
       .post("/api/ascents")
@@ -1997,7 +2087,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("400s a negative attempts value", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube");
     const res = await request(app)
       .post("/api/ascents")
@@ -2007,7 +2097,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("400s a non-integer attempts value", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube");
     const res = await request(app)
       .post("/api/ascents")
@@ -2017,7 +2107,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("accepts zero attemptsThisSession but not zero attempts", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube");
     const zeroSession = await request(app)
       .post("/api/ascents")
@@ -2033,7 +2123,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("ignores attempts/attemptsThisSession validation when logAttempts is false", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube");
     const res = await request(app)
       .post("/api/ascents")
@@ -2044,7 +2134,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("400s a comment over the length cap", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube");
     const res = await request(app)
       .post("/api/ascents")
@@ -2054,7 +2144,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("the same user logging one climb three times produces three ascent rows but an ascentCount of 1", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube");
     let res;
     for (let i = 0; i < 3; i++) {
@@ -2065,7 +2155,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("records an ascent claim on the target climb", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01", ascentClaims: [] }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01", ascentClaims: [] }]);
     const { cookie } = await signup("cube");
     await request(app)
       .post("/api/ascents")
@@ -2077,7 +2167,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("caps ascent claims at 5 and silently drops further ones", async () => {
-    seedClimbs([
+    await seedClimbs([
       {
         wallId: 1,
         name: "X",
@@ -2103,7 +2193,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("ignores an ascentClaim with neither a name nor pass", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01", ascentClaims: [] }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01", ascentClaims: [] }]);
     const { cookie } = await signup("cube");
     await request(app)
       .post("/api/ascents")
@@ -2115,7 +2205,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("queues a named ascent claim as a pending name proposal", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01", ascentClaims: [] }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01", ascentClaims: [] }]);
     const { cookie } = await signup("cube");
     await request(app)
       .post("/api/ascents")
@@ -2129,7 +2219,7 @@ describe("POST /api/ascents", () => {
   });
 
   it("does not queue a pending name proposal for a pass-only claim", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01", ascentClaims: [] }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01", ascentClaims: [] }]);
     const { cookie } = await signup("cube");
     await request(app)
       .post("/api/ascents")
@@ -2144,9 +2234,9 @@ describe("POST /api/ascents", () => {
 describe("GET /api/climbs/needs-name-approval", () => {
   async function modCookie() {
     const { cookie } = await signup("mod-user");
-    const users = currentUsers();
+    const users = await currentUsers();
     users[0].isModerator = true;
-    seedUsers(users);
+    await seedUsers(users);
     return cookie;
   }
 
@@ -2163,7 +2253,7 @@ describe("GET /api/climbs/needs-name-approval", () => {
 
   it("lists only climbs with pending name proposals", async () => {
     const cookie = await modCookie();
-    seedClimbs([
+    await seedClimbs([
       {
         wallId: 1,
         name: "X",
@@ -2181,9 +2271,9 @@ describe("GET /api/climbs/needs-name-approval", () => {
 describe("POST /api/climbs/approve-name", () => {
   async function modCookie() {
     const { cookie } = await signup("mod-user");
-    const users = currentUsers();
+    const users = await currentUsers();
     users[0].isModerator = true;
-    seedUsers(users);
+    await seedUsers(users);
     return cookie;
   }
 
@@ -2206,7 +2296,7 @@ describe("POST /api/climbs/approve-name", () => {
 
   it("404s an unknown climb", async () => {
     const cookie = await modCookie();
-    seedClimbs([]);
+    await seedClimbs([]);
     const res = await request(app)
       .post("/api/climbs/approve-name")
       .set("Cookie", cookie)
@@ -2216,7 +2306,7 @@ describe("POST /api/climbs/approve-name", () => {
 
   it("404s an unknown proposal", async () => {
     const cookie = await modCookie();
-    seedClimbs([{ wallId: 1, name: "X", pendingNames: [] }]);
+    await seedClimbs([{ wallId: 1, name: "X", pendingNames: [] }]);
     const res = await request(app)
       .post("/api/climbs/approve-name")
       .set("Cookie", cookie)
@@ -2226,7 +2316,7 @@ describe("POST /api/climbs/approve-name", () => {
 
   it("approving sets the confirmed name and discards the rest of the queue", async () => {
     const cookie = await modCookie();
-    seedClimbs([
+    await seedClimbs([
       {
         wallId: 1,
         name: "X",
@@ -2247,7 +2337,7 @@ describe("POST /api/climbs/approve-name", () => {
 
   it("rejecting drops only that proposal", async () => {
     const cookie = await modCookie();
-    seedClimbs([
+    await seedClimbs([
       {
         wallId: 1,
         name: "X",
@@ -2282,7 +2372,7 @@ describe("DELETE /api/users/:username/ascents/:ascentId/comment", () => {
   });
 
   it("clears only the comment, keeping the rest of the ascent", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
+    await seedClimbs([{ wallId: 1, name: "X", setType: "reset", setDate: "2026-01-01" }]);
     const { cookie } = await signup("cube");
     const logRes = await request(app)
       .post("/api/ascents")
@@ -2295,7 +2385,7 @@ describe("DELETE /api/users/:username/ascents/:ascentId/comment", () => {
       .set("Cookie", cookie);
     expect(delRes.status).toBe(200);
 
-    const users = currentUsers();
+    const users = await currentUsers();
     const ascent = users[0].ascents[0];
     expect(ascent.comment).toBe("");
     expect(ascent.grade).toBe("V4");
@@ -2309,11 +2399,11 @@ describe("GET /api/users/:username/grade-counts", () => {
   });
 
   it("prefers the ascent's own grade, falling back to the climb's bucket grade", async () => {
-    seedClimbs([
+    await seedClimbs([
       { wallId: 1, name: "NoGradeOnAscent", setterName: "NoGradeOnAscent", setterGrade: "V2-4", grade: "" },
       { wallId: 1, name: "HasGradeOnAscent", setterName: "HasGradeOnAscent", setterGrade: "V1", grade: "" },
     ]);
-    seedUsers([
+    await seedUsers([
       {
         username: "cube",
         ascents: [
@@ -2329,8 +2419,8 @@ describe("GET /api/users/:username/grade-counts", () => {
   });
 
   it("counts each climb once, using the most recent grade opinion — a repeat doesn't double it", async () => {
-    seedClimbs([{ wallId: 1, name: "X", setterName: "X", setterGrade: "V4", grade: "" }]);
-    seedUsers([
+    await seedClimbs([{ wallId: 1, name: "X", setterName: "X", setterGrade: "V4", grade: "" }]);
+    await seedUsers([
       {
         username: "cube",
         ascents: [
@@ -2348,7 +2438,7 @@ describe("GET /api/users/:username/grade-counts", () => {
 
 describe("GET /api/climbs/grade-counts", () => {
   it("buckets only currently-active climbs", async () => {
-    seedClimbs([
+    await seedClimbs([
       { wallId: 1, name: "Old", setType: "reset", setDate: "2026-01-01", grade: "V9" },
       { wallId: 1, name: "New", setType: "reset", setDate: "2026-02-01", grade: "V3" },
     ]);
@@ -2369,12 +2459,12 @@ describe("GET /api/climbs/grade-distribution", () => {
     // Ascents FK-reference a real climb row now (§14.3) — unlike the old
     // flat JSON, a fixture can't reference a climb name that was never
     // seeded.
-    seedClimbs([
+    await seedClimbs([
       { wallId: 1, name: "Target" },
       { wallId: 1, name: "Other" },
       { wallId: 2, name: "Target" },
     ]);
-    seedUsers([
+    await seedUsers([
       { username: "cube", ascents: [{ id: "1", wallId: 1, climbName: "Target", grade: "V4" }] },
       {
         username: "other",
@@ -2395,8 +2485,8 @@ describe("GET /api/climbs/grade-distribution", () => {
   });
 
   it("counts one vote per user — their most recent — not one per repeat ascent", async () => {
-    seedClimbs([{ wallId: 1, name: "Target" }]);
-    seedUsers([
+    await seedClimbs([{ wallId: 1, name: "Target" }]);
+    await seedUsers([
       {
         username: "cube",
         ascents: [
@@ -2414,8 +2504,8 @@ describe("GET /api/climbs/grade-distribution", () => {
   });
 
   it("does not fall back to the climb's own grade when an ascent left it blank", async () => {
-    seedClimbs([{ wallId: 1, name: "Target", setterGrade: "V4-6", grade: "V5" }]);
-    seedUsers([
+    await seedClimbs([{ wallId: 1, name: "Target", setterGrade: "V4-6", grade: "V5" }]);
+    await seedUsers([
       { username: "cube", ascents: [{ id: "1", wallId: 1, climbName: "Target", grade: "" }] },
     ]);
     const res = await request(app)

@@ -16,8 +16,9 @@ This file (CLAUDE.md) is the short version; that one is the detail.
 A mobile-oriented React climbing-gym app: bottom tab bar (Home, Walls, Search,
 Profile), drill-down navigation (Walls → Climbs → Climb, with a zoomable
 image and a comments page), sign-up/login, ascent logging, and
-moderator/setter/admin tooling — backed by a small Express API with a SQLite
-datastore (`server/db.js`, via Node's built-in `node:sqlite`).
+moderator/setter/admin tooling — backed by a small Express API with a
+Postgres datastore (`server/db.js`, via `pg`) and S3-compatible object
+storage for avatar/climb photos.
 
 ## Commands
 
@@ -35,12 +36,26 @@ npm start             # production-style: one process serves dist/ + API on :251
 
 There is no lint script configured.
 
-Tests set `NODE_ENV=test` (skips binding a real port) and `DB_PATH=":memory:"`
-(a fresh in-memory SQLite database for the whole test-file run, instead of
-the real `server/climbing.db`) themselves at the top of the test file, before
-importing `server/worker.js`. `server/worker.test.js` seeds that database
-directly (see `seedUsers`/`seedClimbs`/`currentUsers`/`currentClimbs`) and
-exercises `app` directly via `supertest`.
+Tests set `NODE_ENV=test` (skips binding a real port) themselves at the top
+of the test file, before importing `server/worker.js`, along with dummy
+`S3_*` env vars (upload calls are mocked via `aws-sdk-client-mock`, so these
+never reach real object storage) and a `DATABASE_URL` fallback
+(`postgresql://postgres:postgres@localhost:5433/rockon_test`, only used if
+the env var isn't already set) — **tests need a real reachable Postgres**,
+unlike the old SQLite-era `":memory:"` setup. The quickest way to get one:
+
+```bash
+docker run --rm -d --name rockon-test-pg -p 5433:5432 \
+  -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=rockon_test postgres:18
+npm test
+docker stop rockon-test-pg   # --rm cleans it up
+```
+
+(`.github/workflows/ci.yml` runs the same `postgres:18` image as a service
+container, same port/db-name convention, so CI and local dev match.)
+`server/worker.test.js` seeds that database directly (see
+`seedUsers`/`seedClimbs`/`currentUsers`/`currentClimbs`) via `ensureSchema()`
++ `pool` from `server/db.js`, and exercises `app` directly via `supertest`.
 
 **`NODE_ENV=production` is safe to set, including locally.** The session
 cookie's `secure` flag is driven by `req.secure` (the actual request), not
@@ -92,11 +107,19 @@ and being the root cause of two P0 crash-recovery bugs. `deploy/climbing-app.ser
 
 Because nothing forks or restarts this process on a normal write anymore,
 in-memory state *could* now survive across requests — but sessions and
-everything else still persist to the SQLite database (see below) because a
+everything else still persist to Postgres (see below) because a
 crash-and-restart would still wipe a module-level variable; don't start
 relying on one. (The one exception is login/signup rate-limit counters,
 deliberately in-memory — see the module comment above `rateLimitAttempts`
 in `server/worker.js`.)
+
+**On the Kubernetes cluster this runs as 2 replica pods, not one process**
+(see `k8s/site.yaml`) — the in-memory rate-limit counters above are
+therefore per-pod, not global: a brute-force attempt gets whichever pod's
+counter happened to see it, not a cluster-wide count. This is an accepted
+best-effort tradeoff (the alternative, a shared counter store, is more
+infra than this app's threat model currently justifies), not a security
+promise — don't treat it as airtight when reasoning about auth abuse.
 
 In dev (`npm run dev:all`), Vite (`:5173`) serves the UI and proxies `/api`
 to this same process on `:25100` (see `vite.config.js`). In production
@@ -104,49 +127,102 @@ to this same process on `:25100` (see `vite.config.js`). In production
 the README's "Running it persistently" section for the systemd deploy path
 (`deploy/climbing-app.service`).
 
-### Data model — SQLite (`server/db.js`, `server/climbing.db`)
+### Data model — Postgres (`server/db.js`)
 
-Replaced the hand-rolled `users.json`/`climbs.json` flat files (§14.3) —
-those `fs.readFile`/`writeFile`-whole-file reads/writes weren't atomic (a
-crash mid-write could truncate the JSON) or isolated (two interleaved
-requests could lose one's changes). `server/db.js` opens the database
-(`node:sqlite`'s `DatabaseSync`, built into Node — no native module, chosen
-specifically because the deploy target is a Raspberry Pi and a native
-module like `better-sqlite3` would need ARM prebuilds on every deploy) and
-owns the schema (`users`, `sessions`, `walls`, `climbs`, `ascents`,
-`ascent_claims`, `name_proposals`, `follows`). `DB_PATH` env var overrides
-the file location — tests use `":memory:"` (see above).
+Replaced the earlier SQLite datastore (§14.3, then itself replaced by
+Postgres in §14.26 for the move onto a stateless Kubernetes cluster — no
+local disk to keep a SQLite file on, and more than one replica pod reading
+and writing at once). `server/db.js` opens a connection pool
+(`pg`'s `Pool`, exported as `pool`) against `DATABASE_URL` — a full
+connection string, injected from the owner's `<owner>-pg` Kubernetes Secret
+in the cluster, read from a local `.env` in dev (see `.env.example`; loaded
+via `dotenv/config`, the first import in `server/worker.js`). It also
+exports `ensureSchema()` (creates the schema — `users`, `sessions`,
+`walls`, `climbs`, `ascents`, `ascent_claims`, `name_proposals`,
+`follows` — and seeds the 4 walls, idempotently; awaited once before
+`app.listen()` and again in `worker.test.js`'s `beforeAll`), `withTransaction(fn)`
+(checks out one pooled client, runs `fn(client)` between `BEGIN`/`COMMIT`,
+rolls back on throw — `pg` has no built-in transaction helper), and
+`isUniqueViolation(err)` (checks Postgres error code `23505`).
 
-`server/worker.js` talks to it via prepared statements (the `stmt` object
-near the top of the file) and maps snake_case rows to the app's existing
-camelCase shape (`mapUserRow`/`mapClimbRow`/`mapAscentRow`) — route bodies
-mostly still work with plain camelCase objects, same as before the
-migration. Multi-row mutations are wrapped in `withTransaction` (real
-`BEGIN`/`COMMIT`/`ROLLBACK` — `DatabaseSync` has no `.transaction()` helper
-of its own).
+`server/worker.js` talks to it via small async functions built on
+`pool.query`/`client.query` (replacing the old `stmt` object of prepared
+statements) and maps snake_case rows to the app's existing camelCase shape
+(`mapUserRow`/`mapClimbRow`/`mapAscentRow`) — route bodies mostly still work
+with plain camelCase objects, same as before the migration. Every
+multi-statement mutation goes through `withTransaction`, passing its client
+down so every statement in that transaction actually runs on the same
+connection (a call through `pool` directly would run outside it).
 
-**One-time setup:** a fresh clone/deploy needs
-`node scripts/migrate-json-to-sqlite.js` run once to populate the database
-from `server/users.json`/`server/climbs.json` — no longer read at runtime,
-and no longer committed either (§14.1, done 2026-08-15): they're real data
-(bcrypt hashes, live session tokens) that sat in git unrotated since before
-the SQLite migration retired them as the runtime store. Both are gitignored
-now; the migration script falls back to the committed, sanitized
-`server/*.example.json` when the real files aren't present (e.g. a fresh
-clone), so `npm test`/a fresh dev setup still works without them. The
-script is re-runnable — it wipes and reseeds every table from whichever
-pair it found each time, so re-run it if you need to start over.
-`server/climbing.db` itself is also gitignored; back it up separately in
-any real deployment.
+**Concurrency safety works differently than it used to.** SQLite's
+`DatabaseSync` was synchronous on one shared connection, so a request
+handler's read-modify-write had no `await` point mid-request for another
+request to interleave through — that guarantee doesn't come for free with
+`pg`'s async, multi-connection `Pool`. It's re-established two ways: (1)
+every multi-statement mutation is wrapped in `withTransaction`, same as
+before, just now backed by a real pooled-client transaction instead of the
+one shared synchronous connection; (2) anywhere that used to lean on
+"check, then act" being atomic purely because nothing else *could*
+interleave (the two cases here: username uniqueness at signup, climb
+`wallId`+`setterName` uniqueness at creation) now leans on a real Postgres
+`UNIQUE` index plus catching `isUniqueViolation(err)` as the actual
+backstop — the pre-check stays for a fast, friendly error in the common
+case, but it is no longer what makes the outcome correct under a race.
+
+**Case-insensitivity is a functional index now, not a column collation.**
+Postgres has no built-in equivalent to SQLite's `COLLATE NOCASE`, so
+`users.username` and `climbs.setter_name` uniqueness/lookup is enforced via
+`CREATE UNIQUE INDEX ... ON table (LOWER(col))` instead — every lookup by
+one of these must match that shape (`WHERE LOWER(username) = LOWER($1)`),
+not a plain `WHERE username = $1`, or it won't use the index and won't
+match the same rows a case-different duplicate would collide with.
+
+**`ascents.seq`** (`BIGINT GENERATED ALWAYS AS IDENTITY`) is a direct,
+minimal replacement for SQLite's implicit `rowid`, which the old schema
+relied on for insertion-order sorting (`ORDER BY ascents.rowid`) — Postgres
+exposes no such thing, and `ascents.id` is an app-generated TEXT/UUID
+primary key with no natural sort order of its own, so `seq` exists purely
+to be `ORDER BY`-ed.
+
+**`climbs.set_date` stays a plain `TEXT` `'YYYY-MM-DD'` string on purpose**,
+not a Postgres `DATE` — the app already treats it as an opaque string
+(`isValidSetDate` validates the format itself, and
+`currentClimbsOnly()`/`groupIntoCycles()` compare set dates lexically), and
+`node-postgres` round-trips a `DATE` column as a JS `Date` object by
+default, which is a well-known timezone footgun for exactly this kind of
+string comparison. `TEXT` sidesteps it with zero behavior change.
+
+Boolean columns (`is_moderator`/`is_setter`/`is_admin`/`pass`) are real
+Postgres `boolean` now, not SQLite's `0`/`1` integers — write sites use
+`true`/`false` literals, not `1`/`0` (Postgres doesn't implicitly cast an
+integer to boolean on insert).
+
+**Avatar/climb-photo uploads go to S3-compatible object storage**, not
+local disk — `saveDataUrlImage` in `server/worker.js` validates and decodes
+the same as before, then `PutObjectCommand`s the bytes to the bucket named
+by `S3_BUCKET` (via an `S3Client` configured with `forcePathStyle: true`,
+required for Garage — it isn't real AWS) under the same content-hash
+filename it always used. The returned `/uploads/<hash>.<ext>` path — what
+gets stored in `avatar_url`/`photo_url` and returned in API responses — is
+unchanged; only where the bytes live changed. Serving is a real route,
+`GET /uploads/:filename` (not `express.static` any more, since there's no
+local directory to serve from), which validates the filename against the
+exact content-hash shape *before* using it as an S3 key — a security
+boundary (an unvalidated route param would let a client probe arbitrary
+bucket keys), not just format-checking — then proxies a `GetObjectCommand`
+back to the client. Direct-to-bucket public URLs were deliberately not
+used: Garage's S3 endpoint isn't reachable from outside the cluster's LAN,
+so proxying through the app is what makes uploaded images visible to real
+users at all.
 
 - **Climbs have a real id now**, but `wallId` + `setterName` (immutable,
-  `UNIQUE` per wall, `COLLATE NOCASE` so lookups/uniqueness are
-  case-insensitive at the database level) is still the externally-visible
-  identity ascents/front-end lookups reference a climb by — unlike the
-  mutable, renameable `name`. A climber can propose renaming a climb by
-  filling in a name on an ascent claim; a moderator/setter approves or
-  rejects it on the Approve tab, which changes only `name`, never
-  `setterName`.
+  case-insensitively unique per wall — see the functional-index note above
+  — so lookups/uniqueness are enforced at the database level) is still the
+  externally-visible identity ascents/front-end lookups reference a climb
+  by — unlike the mutable, renameable `name`. A climber can propose
+  renaming a climb by filling in a name on an ascent claim; a
+  moderator/setter approves or rejects it on the Approve tab, which changes
+  only `name`, never `setterName`.
 - **Sets, not a flat climb list.** Each wall periodically gets a new "set" of
   climbs: a `reset` (every old climb comes down, replaced) or a `backfill`
   (new climbs added, nothing removed). Every climb tracks `set_id`,

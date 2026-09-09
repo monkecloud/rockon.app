@@ -7,34 +7,39 @@ image and a comments page, ascent logging, a sign-up/login flow on the
 Profile tab, and moderator/setter/admin tooling (adding climbs, confirming
 grades, managing roles) — all backed by a small Express API.
 
+## Deploying to Kubernetes
+
+This app runs as a container on a Kubernetes cluster in production —
+`Dockerfile` builds the image, `k8s/` holds the manifests Flux applies, and
+`.github/workflows/build-and-deploy.yml` builds/pushes the image and bumps
+the deployed tag on every push to `main`/`dev`. That cluster's own
+conventions (namespaces, secrets, Postgres/S3 provisioning) live in the
+separate `monkecloud-infra` repo, not here. Everything below this section is
+about running the app on your own machine for development.
+
 ## Setup
 
 ```bash
 npm install
+cp .env.example .env
 ```
+
+Fill in `.env` with a `DATABASE_URL` pointing at a local Postgres and
+`S3_*` pointing at a local S3-compatible store (MinIO, a local Garage, or
+the cluster's dev bucket if you have access) — see `.env.example`. There's
+no separate migration step: `ensureSchema()` in `server/db.js` creates the
+schema (and seeds the 4 walls) automatically the first time the server
+starts against an empty database.
 
 ## Run it
 
 This app has two parts: the Vite dev server (the UI) and a small Express
-API server (stores everything in a SQLite database, `server/climbing.db`,
-shared across everyone hitting this server). Run both at once:
+API server (stores everything in Postgres, reached via `DATABASE_URL`).
+Run both at once:
 
 ```bash
 npm run dev:all
 ```
-
-**First run only:** the database starts empty (just the 4 walls). Populate
-it from the bundled seed data with:
-
-```bash
-node scripts/migrate-json-to-sqlite.js
-```
-
-Re-runnable — it wipes and reseeds every table each time, so run it again
-any time you want to reset back to the seed data. Reads from
-`server/users.json` / `server/climbs.json` if present (real data, gitignored,
-not part of a fresh clone), otherwise falls back to the committed
-`server/users.example.json` / `server/climbs.example.json`.
 
 Then open the local URL Vite prints (usually `http://localhost:5173`).
 
@@ -44,10 +49,11 @@ npm run server   # starts the API on http://localhost:25100
 npm run dev      # starts the UI on http://localhost:5173
 ```
 
-## Running it persistently (production-style)
+## Running it persistently (production-style, without Kubernetes)
 
-For a deploy meant to stay up (e.g. on a home server or Raspberry Pi) rather
-than a dev session, build the frontend once and let the API server serve it
+Not everyone reading this is deploying to a cluster — this is the systemd
+path for self-hosting on a single machine (e.g. a home server or Raspberry
+Pi) instead. Build the frontend once and let the API server serve it
 directly — no separate Vite process needed:
 
 ```bash
@@ -91,7 +97,12 @@ sudo systemctl enable --now climbing-app
 ```
 
 Edit `User=`/`WorkingDirectory=` in that file first to match where you
-cloned the repo and which user should run it. Check on it with
+cloned the repo and which user should run it. **Also fill in the
+`DATABASE_URL`/`S3_ENDPOINT`/`S3_BUCKET`/`S3_ACCESS_KEY`/`S3_SECRET_KEY`
+`Environment=` lines** (placeholders are already there, commented out,
+alongside `Environment=NODE_ENV=production`) — there's no local SQLite file
+or local uploads directory to fall back to any more, so the server won't
+start without real values for these. Check on it with
 `systemctl status climbing-app` / `journalctl -u climbing-app -f`.
 
 ## Access it from other devices on your network
@@ -123,7 +134,7 @@ Wi-Fi.
 
 ## Notes
 
-- **Climbs are stored server-side** in the SQLite database (`climbs` table,
+- **Climbs are stored server-side** in Postgres (`climbs` table,
   see `server/db.js`) — each has a `wallId`, `setterName` (the name given at
   creation, unique within a wall and immutable after — climbs have a real id
   now, but `wallId` + `setterName` is still the key ascents/front-end
@@ -162,7 +173,7 @@ Wi-Fi.
   (`POST /api/users/:username/reset-password`). Roles are plain booleans
   (`isModerator`/`isSetter`/`isAdmin`) on the user record; `admin` sets all
   three.
-- **Users are stored server-side** in the SQLite database (`users` table).
+- **Users are stored server-side** in Postgres (`users` table).
   Passwords are hashed with bcrypt before they're written — the server
   owner never sees plain-text passwords, only a one-way hash. Login/signup
   issue a random session token, stored in the `sessions` table (with real
@@ -204,9 +215,13 @@ Wi-Fi.
 - **Settings** (from the Profile tab's "Settings" button) lets a logged-in
   user change their profile picture, username, or password, via
   `POST /api/users/:username/avatar`, `/username`, and `/password`
-  respectively. The avatar is uploaded as a base64 data URL and stored
-  directly on the user record (`avatarUrl`) — fine at prototype scale, but
-  a real app would upload to file storage instead of inlining images into
-  the database. Changing username can't strand a stale reference anywhere
+  respectively. The avatar (and a climb's photo, set via `POST
+  /api/climbs`) is uploaded as a base64 data URL, validated and decoded
+  server-side, and written to S3-compatible object storage under a
+  content-hash filename (`saveDataUrlImage` in `server/worker.js`) — only
+  the resulting `/uploads/<hash>.<ext>` path is stored on the user/climb
+  record (`avatarUrl`/`photoUrl`). `GET /uploads/:filename` proxies the
+  bytes back from the bucket rather than serving a public bucket URL
+  directly. Changing username can't strand a stale reference anywhere
   — follows/ascents reference the user's id, not their username string.
 - Styling is plain inline styles, no CSS framework required.

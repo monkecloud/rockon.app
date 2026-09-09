@@ -1,61 +1,102 @@
-import { DatabaseSync } from "node:sqlite";
-import path from "path";
-import { fileURLToPath } from "url";
+import pg from "pg";
+
+const { Pool } = pg;
 
 // ---------------------------------------------------------------------------
-// SQLite datastore (§14.3). Replaces the hand-rolled users.json/climbs.json
-// "databases" that server/worker.js used to read/write directly as whole
-// files on every request — see APP_REFERENCE.md §14.3 for the full history
-// of why (atomicity: a crash mid `fs.writeFile` truncated the JSON; write
-// locking: two interleaved requests could lose one's changes with no
-// isolation between them).
+// Postgres datastore. Replaces the SQLite datastore (node:sqlite, §14.3 in
+// APP_REFERENCE.md) that this app used when it ran as a single process on a
+// Raspberry Pi. Running on the shared Tamarin k3s cluster means: no local
+// disk to keep a durable file on (pods are stateless, no PVC), and more than
+// one replica reading/writing at once — Postgres is the cluster's shared,
+// replicated, durable store for exactly this.
 //
-// node:sqlite (built into Node, stable as of this version — no
-// --experimental-sqlite flag needed) was chosen over better-sqlite3
-// specifically because the deploy target is a Raspberry Pi: better-sqlite3
-// is a native module needing node-gyp/prebuilds on ARM, which
-// `ExecStartPre=npm run build` in the systemd unit would hit on every
-// deploy. node:sqlite has zero dependencies and zero native-build risk.
+// DATABASE_URL is a full connection string, injected by Kubernetes as an env
+// var in the cluster (from the owner's `<owner>-pg` Secret) and read from
+// .env locally / a real Postgres for `npm test` (see .env.example).
 //
-// DatabaseSync is synchronous — queries block the event loop for their
-// duration, same as the old fs.readFileSync would have. That's the correct
-// tradeoff here: it means a request handler's read-modify-write has no
-// `await` point in the middle for another request to interleave through,
-// which is what actually closes the write-race a purely async API would
-// have reopened.
+// node:sqlite's DatabaseSync was synchronous, which is what made a request
+// handler's read-modify-write safe with no explicit locking: there was no
+// `await` point mid-request for another request to interleave through, and
+// every multi-statement mutation was wrapped in a real BEGIN/COMMIT/ROLLBACK
+// on the one shared connection. `pg`'s Pool is async and holds multiple
+// connections, so that guarantee doesn't come for free any more. It's
+// re-established two ways instead:
+//   1. Every multi-statement mutation still goes through withTransaction
+//      below, now backed by a single client checked out from the pool for
+//      the whole transaction (BEGIN...COMMIT/ROLLBACK on that one client).
+//   2. Every place that used to rely on "check, then act" being atomic
+//      because nothing else could interleave (e.g. a uniqueness check
+//      before an insert) now leans on a real UNIQUE constraint/index in the
+//      schema instead, and the route handler catches Postgres error code
+//      23505 (unique_violation) as the actual source of truth — see
+//      isUniqueViolation() below. The pre-check stays (for a fast, friendly
+//      error in the common case) but is no longer what makes it correct.
 // ---------------------------------------------------------------------------
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
-// DB_PATH lets tests point at ":memory:" instead of a real file — see
-// worker.test.js, which creates a fresh in-memory database per test file
-// run rather than mocking fs/promises the way the JSON-file version did.
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, "climbing.db");
+// Postgres's DATE type (OID 1082) round-trips through node-postgres as a JS
+// Date by default, which silently shifts across a timezone boundary. climbs
+// .set_date is stored as a plain 'YYYY-MM-DD' string deliberately (see the
+// column comment below) specifically to avoid that footgun, since
+// currentClimbsOnly()/groupIntoCycles() in worker.js compare set dates as
+// strings — this override is what keeps a DATE column (if one is ever added
+// back) returning the same plain string instead of a Date object. Harmless
+// no-op today since set_date is TEXT, not DATE; kept as a guardrail.
+pg.types.setTypeParser(1082, (val) => val);
 
-export const db = new DatabaseSync(DB_PATH);
+// Postgres error code for a UNIQUE constraint/index violation. Route
+// handlers catch this to turn a lost uniqueness race (two requests for the
+// same username/climb slot landing concurrently) into the same user-facing
+// 409 the old pre-check-only code returned — see the comment above.
+export function isUniqueViolation(err) {
+  return Boolean(err) && err.code === "23505";
+}
 
-db.exec("PRAGMA foreign_keys = ON;");
-// WAL mode allows concurrent readers alongside a writer, which matters once
-// this is a long-lived single process (§14.3.1) rather than a short-lived
-// script — journal mode has no effect on ":memory:" databases (tests) but
-// is a meaningful improvement for the real on-disk file.
-db.exec("PRAGMA journal_mode = WAL;");
+// node-postgres has no built-in transaction helper — this wraps
+// BEGIN/COMMIT/ROLLBACK around a single client checked out from the pool for
+// the duration of fn, mirroring what db.exec("BEGIN"/"COMMIT"/"ROLLBACK")
+// did against the one shared SQLite connection. fn receives that client and
+// must run every statement in the transaction through it (not through
+// `pool` directly), or those statements would run on a different pooled
+// connection outside the transaction.
+export async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
 
-// Idempotent — safe to run against an already-initialized database, which
-// is what happens on every process start.
-db.exec(`
+// Idempotent — safe to run against an already-initialized database, which is
+// what happens on every process start (see the ensureSchema() call at the
+// bottom of this file and its await in worker.js before app.listen()).
+const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY,
-    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    username TEXT NOT NULL,
     name TEXT NOT NULL DEFAULT '',
     password_hash TEXT NOT NULL DEFAULT '',
     avatar_url TEXT NOT NULL DEFAULT '',
-    is_moderator INTEGER NOT NULL DEFAULT 0,
-    is_setter    INTEGER NOT NULL DEFAULT 0,
-    is_admin     INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    is_moderator BOOLEAN NOT NULL DEFAULT false,
+    is_setter    BOOLEAN NOT NULL DEFAULT false,
+    is_admin     BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
+  -- Case-insensitive uniqueness (was UNIQUE ... COLLATE NOCASE in SQLite;
+  -- Postgres has no built-in case-insensitive collation, so this is a
+  -- functional unique index on the lowercased value instead). Every lookup
+  -- by username must match this shape: WHERE LOWER(username) = LOWER($1).
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_ci ON users (LOWER(username));
 
   -- Gives sessions real server-side expiry (§13.1 "tokens never expire"),
   -- which the old users.json.sessionToken field never had — a cookie just
@@ -64,7 +105,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    expires_at TEXT NOT NULL
+    expires_at TIMESTAMPTZ NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 
@@ -72,7 +113,7 @@ db.exec(`
   -- that array went invisible in the UI while still counting server-side
   -- (§13.8-e). The FK from climbs below makes that state unrepresentable.
   CREATE TABLE IF NOT EXISTS walls (
-    id INTEGER PRIMARY KEY,
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     display_order INTEGER NOT NULL DEFAULT 0
   );
@@ -80,15 +121,16 @@ db.exec(`
   -- The stable id climbs have never had. wall_id + setter_name is still the
   -- externally-visible identity (setter_name is immutable, unique per wall
   -- — see the naming-rights note on 'name' below), enforced here via the
-  -- UNIQUE constraint rather than an application-level scan.
-  -- setter_name is COLLATE NOCASE so case-insensitive lookup/uniqueness
-  -- (§14.17g -- creation and grade-confirmation used to disagree on this,
-  -- a climb named "crimpy" could be un-findable by "Crimpy") comes from the
-  -- database itself rather than scattered .toLowerCase() calls.
+  -- unique index below rather than an application-level scan.
+  -- setter_name uniqueness is case-insensitive (§14.17g — creation and
+  -- grade-confirmation used to disagree on this, a climb named "crimpy"
+  -- could be un-findable by "Crimpy") so it comes from the database itself
+  -- rather than scattered .toLowerCase() calls — same functional-index
+  -- approach as users.username above.
   CREATE TABLE IF NOT EXISTS climbs (
-    id INTEGER PRIMARY KEY,
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
     wall_id INTEGER NOT NULL REFERENCES walls(id),
-    setter_name TEXT NOT NULL COLLATE NOCASE,  -- immutable, the real identity/join key
+    setter_name TEXT NOT NULL,     -- immutable, the real identity/join key
     name TEXT NOT NULL,            -- mutable display name (naming-rights
                                     -- proposals change this, never setter_name)
     setter_grade TEXT NOT NULL,
@@ -101,10 +143,16 @@ db.exec(`
                                     -- history)
     photo_url TEXT NOT NULL DEFAULT '',
     set_id TEXT NOT NULL,
+    -- Deliberately TEXT, not DATE: the app treats this as an opaque
+    -- 'YYYY-MM-DD' string (isValidSetDate validates the format itself, and
+    -- currentClimbsOnly()/groupIntoCycles() in worker.js compare set dates
+    -- lexically), and a real DATE column round-trips through node-postgres
+    -- as a JS Date — a timezone footgun for exactly that kind of
+    -- comparison. TEXT sidesteps it with zero behavior change from SQLite.
     set_date TEXT NOT NULL,
-    set_type TEXT NOT NULL CHECK (set_type IN ('reset','backfill')),
-    UNIQUE (wall_id, setter_name)
+    set_type TEXT NOT NULL CHECK (set_type IN ('reset','backfill'))
   );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_climbs_wall_setter_ci ON climbs (wall_id, LOWER(setter_name));
   CREATE INDEX IF NOT EXISTS idx_climbs_wall_id ON climbs(wall_id);
 
   -- Naming-rights proposals — see the module comment in worker.js for the
@@ -114,7 +162,7 @@ db.exec(`
     climb_id INTEGER NOT NULL REFERENCES climbs(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     claimed_by TEXT NOT NULL,      -- a username
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS idx_name_proposals_climb_id ON name_proposals(climb_id);
 
@@ -124,7 +172,7 @@ db.exec(`
     climb_id INTEGER NOT NULL REFERENCES climbs(id) ON DELETE CASCADE,
     ordinal INTEGER NOT NULL CHECK (ordinal BETWEEN 1 AND 5),
     name TEXT NOT NULL DEFAULT '',
-    pass INTEGER NOT NULL DEFAULT 0,
+    pass BOOLEAN NOT NULL DEFAULT false,
     PRIMARY KEY (climb_id, ordinal)
   );
 
@@ -136,8 +184,17 @@ db.exec(`
   -- logAttempts boolean did (LogAscentSheet hardcodes it to true
   -- client-side, so the server-side branch it gated was dead code) --
   -- logAttempts:false is just both fields being NULL.
+  --
+  -- seq is a pure insertion-order surrogate: ascents.id is a TEXT/UUID
+  -- primary key (app-generated via crypto.randomUUID()), so unlike the
+  -- INTEGER PRIMARY KEY tables above there's no numeric id to sort by, and
+  -- SQLite's version of this table relied on its implicit rowid for
+  -- "insertion order" (ORDER BY ascents.rowid) — Postgres has no equivalent
+  -- exposed to queries. seq is the direct, minimal replacement: an
+  -- auto-incrementing column that exists purely to be ORDER BY-ed.
   CREATE TABLE IF NOT EXISTS ascents (
     id TEXT PRIMARY KEY,
+    seq BIGINT GENERATED ALWAYS AS IDENTITY,
     user_id  INTEGER NOT NULL REFERENCES users(id)  ON DELETE CASCADE,
     climb_id INTEGER NOT NULL REFERENCES climbs(id) ON DELETE CASCADE,
     star_rating REAL,
@@ -145,7 +202,7 @@ db.exec(`
     comment TEXT NOT NULL DEFAULT '',
     attempts INTEGER,
     attempts_this_session INTEGER,
-    created_at TEXT
+    created_at TIMESTAMPTZ
   );
   CREATE INDEX IF NOT EXISTS idx_ascents_user_id ON ascents(user_id);
   CREATE INDEX IF NOT EXISTS idx_ascents_climb_id ON ascents(climb_id);
@@ -156,33 +213,28 @@ db.exec(`
     PRIMARY KEY (follower_id, followee_id)
   );
   CREATE INDEX IF NOT EXISTS idx_follows_followee_id ON follows(followee_id);
-`);
-
-// node:sqlite's DatabaseSync has no .transaction() helper (unlike
-// better-sqlite3) — wrap multi-statement atomic operations in raw
-// BEGIN/COMMIT ourselves. Used here and by worker.js wherever a mutation
-// touches more than one table/row and needs to be all-or-nothing.
-export function withTransaction(fn) {
-  db.exec("BEGIN");
-  try {
-    const result = fn();
-    db.exec("COMMIT");
-    return result;
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
-  }
-}
+`;
 
 // Seeds the four walls if the table is empty — matches the WALLS constant
-// that used to be hardcoded in src/App.jsx (§13.8-e).
-const wallCount = db.prepare("SELECT COUNT(*) AS n FROM walls").get().n;
-if (wallCount === 0) {
-  const insertWall = db.prepare("INSERT INTO walls (id, name, display_order) VALUES (?, ?, ?)");
-  withTransaction(() => {
-    insertWall.run(1, "Back", 1);
-    insertWall.run(2, "Slab", 2);
-    insertWall.run(3, "Cave", 3);
-    insertWall.run(4, "Front", 4);
-  });
+// that used to be hardcoded in src/App.jsx (§13.8-e). Explicit ids (rather
+// than leaving them to the identity sequence) preserve the exact same wall
+// ids the SQLite version always seeded, in case anything outside this file
+// ever assumed them stable; GENERATED BY DEFAULT (not ALWAYS) AS IDENTITY on
+// walls.id is what makes an explicit id insert like this legal.
+async function seedWalls(client) {
+  const { rows } = await client.query("SELECT COUNT(*)::int AS n FROM walls");
+  if (rows[0].n > 0) return;
+  await client.query(
+    `INSERT INTO walls (id, name, display_order) VALUES
+       (1, 'Back', 1), (2, 'Slab', 2), (3, 'Cave', 3), (4, 'Front', 4)`
+  );
+}
+
+// Runs the schema DDL and wall seed. Async (unlike the old synchronous
+// module-load-time db.exec calls), so callers must await this once before
+// serving traffic — see the app.listen() call in worker.js and the
+// beforeAll in worker.test.js.
+export async function ensureSchema() {
+  await pool.query(SCHEMA_SQL);
+  await withTransaction((client) => seedWalls(client));
 }

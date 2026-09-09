@@ -1,0 +1,93 @@
+# What actually runs. This file is the source of truth: Flux applies it, so the cluster
+# matches the repo and nothing is configured by hand.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rockon
+  labels: { app: rockon }
+spec:
+  replicas: 2
+  # Spelled out rather than left to the defaults, because the namespace quota makes the
+  # surge size load-bearing: one extra pod fits, two would not.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels: { app: rockon }
+  template:
+    metadata:
+      labels: { app: rockon }
+    spec:
+      # One replica per node, so losing a node cannot take the app down.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels: { app: rockon }
+              topologyKey: kubernetes.io/hostname
+      # The GHCR package is private (this repo is private), so the pull needs a secret or
+      # it 401s and the pod sits in ImagePullBackOff.
+      imagePullSecrets:
+        - name: ghcr-creds
+      containers:
+        - name: app
+          # CI rewrites this tag on every push. Never `:latest` — the tag is how rollback
+          # works, and a moving tag means a restarted pod silently changes version.
+          image: ghcr.io/monkecloud/rockon.app:REPLACE-ME
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /api/health, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: 8080 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          env:
+            # Postgres. `uri` is the production database, `uri_dev` the scratch one — the
+            # dev branch's manifests (this app-environment's overlay) use uri_dev instead.
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: cubesnail-pg, key: uri }
+            # Garage (S3-compatible). Not AWS: every call needs the endpoint set
+            # explicitly and path-style addressing. Bucket + key are per app-environment
+            # (rockon-garage), not the owner's, so dev's key cannot reach prod's objects.
+            - name: S3_ENDPOINT
+              valueFrom:
+                secretKeyRef: { name: rockon-garage, key: endpoint }
+            - name: S3_BUCKET
+              valueFrom:
+                secretKeyRef: { name: rockon-garage, key: bucket }
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: { name: rockon-garage, key: access_key }
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef: { name: rockon-garage, key: secret_key }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rockon
+spec:
+  selector: { app: rockon }
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+# Required by the two-replica pattern: without it a node drain can take both replicas at
+# once. Drop it if you ever run a single replica, where minAvailable: 1 blocks every drain.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: rockon
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: rockon }
